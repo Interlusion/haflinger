@@ -60,7 +60,8 @@ def test_refuses_what_isnt_an_invoice(data: bytes, reason: str) -> None:
 
 
 def test_read_invoice_runs_without_saxon() -> None:
-    """KoSIT's stylesheet is not on the reading path (ADR-005)."""
+    """KoSIT's stylesheet is not on the reading path, and importing Haflinger doesn't load Saxon
+    (ADR-005)."""
     script = (
         "import sys, haflinger;"
         f"haflinger.read_invoice(open({str(CII)!r}, 'rb').read());"
