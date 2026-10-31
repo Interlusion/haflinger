@@ -26,7 +26,7 @@ _NAMES_2017 = frozenset(
 )
 
 
-@dataclass(frozen=True, slots=True, kw_only=True)
+@dataclass(frozen=True, kw_only=True)
 class Note:
     """BG-1."""
 
@@ -34,7 +34,7 @@ class Note:
     text: str | None = None  # BT-22
 
 
-@dataclass(frozen=True, slots=True, kw_only=True)
+@dataclass(frozen=True, kw_only=True)
 class Party:
     """BG-4 seller or BG-7 buyer."""
 
@@ -45,7 +45,7 @@ class Party:
     country_code: str | None = None  # BT-40, BT-55
 
 
-@dataclass(frozen=True, slots=True, kw_only=True)
+@dataclass(frozen=True, kw_only=True)
 class Totals:
     """BG-22."""
 
@@ -61,7 +61,7 @@ class Totals:
     amount_due: Decimal | None = None  # BT-115
 
 
-@dataclass(frozen=True, slots=True, kw_only=True)
+@dataclass(frozen=True, kw_only=True)
 class VatBreakdown:
     """BG-23."""
 
@@ -73,7 +73,7 @@ class VatBreakdown:
     exemption_reason_code: str | None = None  # BT-121
 
 
-@dataclass(frozen=True, slots=True, kw_only=True)
+@dataclass(frozen=True, kw_only=True)
 class InvoiceLine:
     """BG-25."""
 
@@ -87,7 +87,7 @@ class InvoiceLine:
     item_name: str | None = None  # BT-153
 
 
-@dataclass(frozen=True, slots=True, kw_only=True)
+@dataclass(frozen=True, kw_only=True)
 class Invoice:
     """An invoice as EN 16931 defines it.
 
