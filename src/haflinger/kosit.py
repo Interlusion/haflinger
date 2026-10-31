@@ -3,7 +3,8 @@
 
 KoSIT's stylesheets turn a CII invoice, a UBL invoice or a UBL credit note into one semantic XML
 in which every element carries its business term ID (`xr:id="BT-1"`). This module reads the
-model from that XML by business term ID alone; it knows nothing of CII or UBL.
+model from that XML by business term ID alone, apart from the root elements that pick the
+stylesheet and the one limit of KoSIT's stylesheet that `with_subject_codes` evens out.
 """
 
 import re
@@ -12,7 +13,7 @@ from datetime import date
 from decimal import Decimal
 
 from haflinger import _saxon, cii, ubl
-from haflinger._xml import Node, Reading, parse
+from haflinger._xml import XML_WHITESPACE, Node, Reading, parse
 from haflinger.errors import InvoiceReadError
 from haflinger.model import Invoice, InvoiceLine, Note, Party, Syntax, Totals, VatBreakdown
 from haflinger.read import ReadResult
@@ -49,6 +50,9 @@ def read_invoice(data: bytes) -> ReadResult:
 # that XRechnung and Peppol put at the start of the note's text (BT-22) in the text, while
 # REQ-003-PRS-F002 reads it as BT-21. No report needed: the prefix is a convention, not part of
 # EN 16931-3-2.
+#
+# The pattern repeats `ubl`'s on purpose: sharing its code would carry a mistake in Haflinger's
+# reading of notes into the reader that checks it.
 _SUBJECT_CODE = re.compile(r"#([A-Z]{3})#(.*)", re.DOTALL)
 
 
@@ -60,7 +64,7 @@ def with_subject_codes(invoice: Invoice) -> Invoice:
     for note in invoice.notes:
         match = _SUBJECT_CODE.fullmatch(note.text or "")
         if note.subject_code is None and match is not None:
-            note = Note(subject_code=match[1], text=match[2].strip(" \t\r\n") or None)
+            note = Note(subject_code=match[1], text=match[2].strip(XML_WHITESPACE) or None)
         notes.append(note)
     return replace(invoice, notes=tuple(notes))
 

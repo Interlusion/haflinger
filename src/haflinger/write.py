@@ -3,7 +3,7 @@
 from typing import cast
 
 from haflinger import _xsd, cii
-from haflinger.errors import InvoiceWriteError
+from haflinger.errors import InvoiceReadError, InvoiceWriteError
 from haflinger.findings import Finding
 from haflinger.model import Invoice
 from haflinger.validation import validate
@@ -35,7 +35,13 @@ def write_cii(invoice: Invoice) -> bytes:
 def check_written(document: bytes) -> tuple[Finding, ...]:
     """The findings of the XML Schema and the official rules for a CII invoice to hand out
     (REQ-004-PRS-F004, REQ-004-PRS-F005)."""
-    return (*_xsd.check_cii(document), *validate(document))
+    findings = tuple(_xsd.check_cii(document))
+    try:
+        return (*findings, *validate(document))
+    except InvoiceReadError as error:
+        raise InvoiceWriteError(
+            f"the invoice can't be validated: {error}", findings=findings, document=document
+        ) from None
 
 
 def refuse_if_invalid(findings: tuple[Finding, ...], document: bytes) -> None:

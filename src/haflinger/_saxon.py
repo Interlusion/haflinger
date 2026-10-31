@@ -2,6 +2,7 @@
 use, so that importing Haflinger and reading invoices don't load it (ADR-005)."""
 
 import tempfile
+import threading
 from functools import cache
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -12,6 +13,9 @@ if TYPE_CHECKING:
     from saxonche import PySaxonProcessor, PyXsltExecutable
 
 ARTEFACTS = Path(__file__).parent / "artefacts"
+# One thread at a time compiles and runs stylesheets: a compiled stylesheet keeps state while it
+# runs, and the caches below must not be filled twice.
+_LOCK = threading.Lock()
 
 
 @cache
@@ -35,8 +39,8 @@ def transform(data: bytes, *stylesheets: str) -> list[bytes]:
     see that (REQ-002-PRS-F006)."""
     from saxonche import PySaxonApiError
 
-    executables = [_executable(stylesheet) for stylesheet in stylesheets]
-    with tempfile.TemporaryDirectory(prefix="haflinger-") as directory:
+    with tempfile.TemporaryDirectory(prefix="haflinger-") as directory, _LOCK:
+        executables = [_executable(stylesheet) for stylesheet in stylesheets]
         source = Path(directory) / "input.xml"
         source.write_bytes(data)
         try:

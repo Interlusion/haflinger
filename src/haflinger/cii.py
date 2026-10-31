@@ -7,7 +7,7 @@ from decimal import Decimal
 from typing import cast
 from xml.etree.ElementTree import Element, SubElement, tostring
 
-from haflinger._xml import Node, choose_vat_totals
+from haflinger._xml import XML_WHITESPACE, Node, choose_vat_totals
 from haflinger.errors import InvoiceWriteError
 from haflinger.model import Invoice, InvoiceLine, Note, Party, Totals, VatBreakdown
 
@@ -60,15 +60,17 @@ def read(root: Node, specification_id: str | None) -> Invoice:
             if (note := _note(node)) is not None
         ),
         seller=_party(
-            root.find(f"{_AGREEMENT}/ram:SellerTradeParty"),
+            root.group(f"{_AGREEMENT}/ram:SellerTradeParty", "BG-4"),
             ("BT-27", "BT-28", "BT-30", "BT-31", "BT-40"),
         ),
         buyer=_party(
-            root.find(f"{_AGREEMENT}/ram:BuyerTradeParty"),
+            root.group(f"{_AGREEMENT}/ram:BuyerTradeParty", "BG-7"),
             ("BT-44", "BT-45", "BT-47", "BT-48", "BT-55"),
         ),
         totals=_totals(
-            root.find(f"{_SETTLEMENT}/ram:SpecifiedTradeSettlementHeaderMonetarySummation"),
+            root.group(
+                f"{_SETTLEMENT}/ram:SpecifiedTradeSettlementHeaderMonetarySummation", "BG-22"
+            ),
             currency_code,
             tax_currency_code,
         ),
@@ -382,7 +384,7 @@ def _checked_text(value: object, term: str) -> str | None:
         raise InvoiceWriteError(f"{term} is not a str: {value!r}")
     if not value:
         raise InvoiceWriteError(f"{term} is empty; a missing term is None")
-    if value != value.strip(" \t\r\n"):
+    if value != value.strip(XML_WHITESPACE):
         raise InvoiceWriteError(f"{term} has whitespace around it: {value!r}")
     if (character := _NOT_XML.search(value)) is not None:
         raise InvoiceWriteError(

@@ -13,10 +13,13 @@ import subprocess
 import sys
 import time
 from collections.abc import Callable
-from importlib.metadata import version
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 from haflinger import cii, read_invoice, validate
+from haflinger._input import open_invoice
+from haflinger._xml import MAX_SIZE
+from haflinger.validation import rule_set
 
 ROOT = Path(__file__).resolve().parents[1]
 SUITE = sorted((ROOT / "tests/data/kosit-testsuite/instances").rglob("*.xml"))
@@ -50,21 +53,28 @@ print(seconds, peak if sys.platform == "darwin" else peak * 1024)
 """
 
 
-def fresh(step: str, path: Path) -> tuple[float, int]:
+def fresh(step: str, path: Path) -> tuple[float, int] | str:
+    """Seconds and peak memory of `step` in a fresh process, or why it failed."""
     command = [sys.executable, "-c", MEASURE, step, str(path)]
-    output = subprocess.run(command, capture_output=True, text=True, check=True).stdout  # noqa: S603
-    seconds, peak = output.split()
+    result = subprocess.run(command, capture_output=True, text=True, check=False)  # noqa: S603
+    if result.returncode != 0:
+        lines = result.stderr.strip().splitlines()
+        return f"failed: {lines[-1] if lines else result.returncode}"
+    seconds, peak = result.stdout.split()
     return float(seconds), int(peak)
 
 
-def per_file(action: Callable[[bytes], object], paths: list[Path]) -> list[float]:
+def timed[T](action: Callable[[T], object], items: list[T]) -> list[float]:
     times: list[float] = []
-    for path in paths:
-        data = path.read_bytes()
+    for item in items:
         start = time.perf_counter()
-        action(data)
+        action(item)
         times.append(time.perf_counter() - start)
     return times
+
+
+def per_file(action: Callable[[bytes], object], paths: list[Path]) -> list[float]:
+    return timed(action, [path.read_bytes() for path in paths])
 
 
 def ms(times: list[float]) -> str:
@@ -87,15 +97,20 @@ def processor() -> str:
     return f"{model}, {os.cpu_count()} logical cores"
 
 
-def rule_set_samples() -> list[Path]:
-    """One file per rule set the official files exercise: by root element and BT-24."""
-    samples: dict[tuple[str | None, bool, str | None], Path] = {}
+def rule_set_samples() -> dict[str, Path]:
+    """One file per rule set the official files exercise, by the rule set's name."""
+    samples: dict[str, Path] = {}
     for path in [*SUITE, CREDIT_NOTE]:
-        data = path.read_bytes()
-        invoice = read_invoice(data).invoice
-        key = (invoice.syntax, b"CreditNote-2" in data[:2000], invoice.specification_id)
-        samples.setdefault(key, path)
-    return list(samples.values())
+        name, _ = rule_set(open_invoice(path.read_bytes(), MAX_SIZE, pdf="a PDF"))
+        samples.setdefault(name, path)
+    return samples
+
+
+def installed(name: str) -> str:
+    try:
+        return version(name)
+    except PackageNotFoundError:
+        return "not installed"
 
 
 def main(arguments: list[str]) -> int:
@@ -106,11 +121,7 @@ def main(arguments: list[str]) -> int:
     rows.append(
         ("REQ-003-PRS-NF002", "Read a KoSIT file", "20 ms", ms(per_file(read_invoice, SUITE)))
     )
-    write_times: list[float] = []
-    for invoice in models:
-        start = time.perf_counter()
-        cii.write(invoice)
-        write_times.append(time.perf_counter() - start)
+    write_times = timed(cii.write, models)
     rows.append(
         (
             "REQ-004-PRS-NF001",
@@ -119,15 +130,14 @@ def main(arguments: list[str]) -> int:
             ms(write_times),
         )
     )
-    for path in rule_set_samples():
-        seconds, _ = fresh("validate-first", path)
-        name = path.relative_to(ROOT / "tests/data").as_posix()
+    for name, path in rule_set_samples().items():
+        measured = fresh("validate-first", path)
         rows.append(
             (
                 "REQ-002-PRS-NF002",
-                f"First validation in a fresh process: `{name}`",
+                f"First validation in a fresh process: {name}",
                 "2 s",
-                f"{seconds:.2f} s",
+                measured if isinstance(measured, str) else f"{measured[0]:.2f} s",
             )
         )
     per_file(validate, SUITE)  # every rule set compiled
@@ -158,15 +168,16 @@ def main(arguments: list[str]) -> int:
         if path is None or not path.is_file():
             rows.append((requirement, what, limit, "skipped: no corpus clone"))
             continue
-        seconds, peak = fresh(step, path)
-        rows.append(
-            (requirement, what, limit, f"{seconds:.1f} s, peak memory {peak / 2**20:.0f} MiB")
-        )
+        measured = fresh(step, path)
+        if not isinstance(measured, str):
+            seconds, peak = measured
+            measured = f"{seconds:.1f} s, peak memory {peak / 2**20:.0f} MiB"
+        rows.append((requirement, what, limit, measured))
 
     system = f"{platform.system()} {platform.machine()}, Python {platform.python_version()}"
     print(f"Machine: {processor()}; {system}")
     packages = ("haflinger", "saxonche", "lxml", "pypdf", "factur-x")
-    print("Versions: " + ", ".join(f"{name} {version(name)}" for name in packages))
+    print("Versions: " + ", ".join(f"{name} {installed(name)}" for name in packages))
     print()
     print("| Requirement | Measured step | Limit | Measured |")
     print("| :- | :- | :- | :- |")

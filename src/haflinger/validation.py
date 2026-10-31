@@ -65,15 +65,26 @@ def validate(data: bytes, *, max_size: int = MAX_SIZE) -> list[Finding]:
         max_size,
         pdf="the input is a PDF; validate the XML that haflinger.pdf.extract_xml gives",
     )
-    findings: list[Finding] = []
-    name = _RULE_SETS.get((opened.document, opened.specification_id or ""))
-    if name is None:
-        name = _RULE_SETS[opened.document, _EN16931]
-        findings.append(_no_profile(opened))
+    name, no_profile = rule_set(opened)
+    findings = [] if no_profile is None else [no_profile]
     scenario = _scenarios()[name]
     for report in _saxon.transform(data, *scenario.stylesheets):
         findings.extend(_findings(parse(report), scenario.levels))
     return findings
+
+
+def rule_set(opened: Opened) -> tuple[str, Finding | None]:
+    """The name of KoSIT's scenario for the invoice (REQ-002-PRS-F003) and, where its profile has
+    none, CEN's rules with the `HAFL-PROFILE` finding (REQ-002-PRS-F004)."""
+    name = _RULE_SETS.get((opened.document, _as_written(opened)))
+    if name is None:
+        return _RULE_SETS[opened.document, _EN16931], _no_profile(opened)
+    return name, None
+
+
+def _as_written(opened: Opened) -> str:
+    """BT-24 exactly as written, as KoSIT's scenarios match it (REQ-002-PRS-F003)."""
+    return "" if opened.specification is None else opened.specification.element.text or ""
 
 
 def _no_profile(opened: Opened) -> Finding:
@@ -85,8 +96,7 @@ def _no_profile(opened: Opened) -> Finding:
     else:
         location = opened.specification.path
         text = (
-            f"BT-24 {opened.specification_id!r} names no profile Haflinger has rules for in"
-            f" {document}"
+            f"BT-24 {_as_written(opened)!r} names no profile Haflinger has rules for in {document}"
         )
     return Finding(
         rule="HAFL-PROFILE",

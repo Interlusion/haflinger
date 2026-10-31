@@ -33,8 +33,10 @@ class Opened:
 
 
 def is_pdf(data: bytes) -> bool:
-    """The PDF header within the first 1,024 bytes (REQ-003-PRS-F006)."""
-    return b"%PDF-" in data[:1024]
+    """The PDF header within the first 1,024 bytes, before any `<`, which XML would have
+    (REQ-003-PRS-F006)."""
+    header = data.find(b"%PDF-", 0, 1024)
+    return header >= 0 and b"<" not in data[:header]
 
 
 def open_invoice(data: bytes, max_size: int, *, pdf: str) -> Opened:
