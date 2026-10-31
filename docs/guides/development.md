@@ -50,6 +50,8 @@ CI runs the same checks on every pull request and on `main` (`.github/workflows/
 
 Tests come before code where a spec's Definition of Done describes the behaviour ([AGENTS.md](../../AGENTS.md)).
 
+**veraPDF**, the reference PDF/A validator, checks the PDFs `embed` writes where it is installed ([REQ-004-PRS-F007](../specs/req-004-outgoing-invoices.md#req-004-prs-f007-zugferd-pdf)); otherwise its test is skipped. Install it from [verapdf.org](https://verapdf.org/software/) (it needs Java) and put `verapdf` on the `PATH`, or name the program in `HAFLINGER_VERAPDF`.
+
 **When an official file looks wrong**, never edit it. Record the case in the test, with the business term and the reason, so that only that term is left out; the test that checks the recorded differences fails once a new release fixes it ([REQ-002-PRS-F008](../specs/req-002-conformance.md#req-002-prs-f008-differences-in-the-official-files)). Then tell upstream, the same for a rule that looks wrong:
 
 1. Decide whether it is a defect. A difference the standard allows (zero or absent, [REQ-003-PRS-F004](../specs/req-003-incoming-invoices.md#req-003-prs-f004-cii-and-ubl-agree)) or a placeholder text is recorded with that reason, not reported.

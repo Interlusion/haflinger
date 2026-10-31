@@ -144,15 +144,15 @@ The personas are [REQ-001's](req-001-core.md#personas).
 
 #### REQ-004-PRS-F007: ZUGFeRD PDF
 
-**Description**: With the extra `pdf` installed, `haflinger.pdf.embed(pdf: bytes, xml: bytes) -> bytes` SHALL return the given PDF as PDF/A-3 with the XML embedded under the file name its profile prescribes, with the relationship and the XMP metadata (profile, version) that ZUGFeRD and Factur-X require, and the pages unchanged. It SHALL raise `InvoiceWriteError`, and no other exception, when:
+**Description**: With the extra `pdf` installed, `haflinger.pdf.embed(pdf: bytes, xml: bytes) -> bytes` SHALL return the given PDF as PDF/A-3 with the XML embedded as `factur-x.xml`, with the relationship and the XMP metadata (profile, version) that ZUGFeRD and Factur-X require, and the pages unchanged. It SHALL raise `InvoiceWriteError`, and no other exception, when:
 
 - the PDF isn't readable, or its XMP metadata declares no PDF/A conformance (the reason says that the input must be PDF/A);
-- the XML isn't a CII invoice whose BT-24 is a target profile of REQ-004-PRS-F002;
+- the XML isn't a CII invoice whose BT-24 is `urn:cen.eu:en16931:2017`, the ZUGFeRD / Factur-X EN 16931 profile; XRechnung, the other target profile of REQ-004-PRS-F002, is sent as XML;
 - the XML fails REQ-004-PRS-F004 or REQ-004-PRS-F005, with the findings.
 
-**Related URS**: REQ-004-URS-F002, REQ-004-URS-F004
+**Related URS**: REQ-004-URS-F002, REQ-004-URS-F004 | **Rationale**: ZUGFeRD PDFs go to businesses, XRechnung to public authorities as XML (Intended Use). ZUGFeRD's XRECHNUNG profile in a PDF (`xrechnung.xml`) is an open question; `factur-x` doesn't write it.
 
-**Definition of Done**: for a CII invoice of each target profile and a PDF/A test file, `haflinger.pdf.extract_xml` on the result returns the XML byte for byte, the result reads with `read_invoice` to the invoice's model, the XMP names the invoice's profile, the page content equals the input's, and veraPDF, the reference PDF/A validator, finds the result conformant to PDF/A-3 (tests; veraPDF runs where it is installed, as an oracle); one test per refusal.
+**Definition of Done**: for a CII invoice of the EN 16931 profile and a PDF/A test file, `haflinger.pdf.extract_xml` on the result returns the XML byte for byte, the result reads with `read_invoice` to the invoice's model, the XMP names the invoice's profile, the page content equals the input's, and veraPDF, the reference PDF/A validator, finds the result conformant to PDF/A-3 (tests; veraPDF runs where it is installed, as an oracle); one test per refusal.
 
 ## PRS — Non-Functional
 
@@ -180,3 +180,4 @@ The personas are [REQ-001's](req-001-core.md#personas).
 ## Open Questions
 
 - More target profiles (EXTENDED, BASIC) when a customer needs them?
+- XRechnung as a ZUGFeRD PDF (profile XRECHNUNG, `xrechnung.xml`), which `factur-x` doesn't write: needed by any recipient?

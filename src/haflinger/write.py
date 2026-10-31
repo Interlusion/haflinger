@@ -4,6 +4,7 @@ from typing import cast
 
 from haflinger import _xsd, cii
 from haflinger.errors import InvoiceWriteError
+from haflinger.findings import Finding
 from haflinger.model import Invoice
 from haflinger.validation import validate
 
@@ -27,12 +28,21 @@ def write_cii(invoice: Invoice) -> bytes:
             f" it writes {' and '.join(TARGET_PROFILES)}"
         )
     document = cii.write(invoice)
-    findings = (*_xsd.check_cii(document), *validate(document))
+    refuse_if_invalid(check_written(document), document)
+    return document
+
+
+def check_written(document: bytes) -> tuple[Finding, ...]:
+    """The findings of the XML Schema and the official rules for a CII invoice to hand out
+    (REQ-004-PRS-F004, REQ-004-PRS-F005)."""
+    return (*_xsd.check_cii(document), *validate(document))
+
+
+def refuse_if_invalid(findings: tuple[Finding, ...], document: bytes) -> None:
     failed = sorted({f.rule for f in findings if f.flag in ("fatal", "error")})
     if failed:
         raise InvoiceWriteError(
-            f"the written invoice is not valid; it fails {', '.join(failed)}",
+            f"the invoice is not valid; it fails {', '.join(failed)}",
             findings=findings,
             document=document,
         )
-    return document

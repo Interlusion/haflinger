@@ -267,8 +267,9 @@ def test_refuses_xml_that_is_not_well_formed() -> None:
 
 
 @pytest.mark.parametrize("prefix", [b"", b"\x00" * 100, b"junk\r\n" * 100])
-def test_refuses_a_pdf_without_the_pdf_extra(prefix: bytes) -> None:
-    assert "pdf" in refusal(prefix + b"%PDF-1.7\n%\xe2\xe3\xcf\xd3\n1 0 obj\n").lower()
+def test_detects_a_pdf_within_the_first_1024_bytes(prefix: bytes) -> None:
+    """Read as a PDF, not as XML; this one is broken (the extra's absence: test_pdf)."""
+    assert "isn't a readable PDF" in refusal(prefix + b"%PDF-1.7\n%\xe2\xe3\xcf\xd3\n1 0 obj\n")
 
 
 DECLARATION = b'<?xml version="1.0" encoding="UTF-8"?>'

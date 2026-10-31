@@ -32,10 +32,15 @@ class Opened:
         return None if self.specification is None else self.specification.value
 
 
+def is_pdf(data: bytes) -> bool:
+    """The PDF header within the first 1,024 bytes (REQ-003-PRS-F006)."""
+    return b"%PDF-" in data[:1024]
+
+
 def open_invoice(data: bytes, max_size: int, *, pdf: str) -> Opened:
     """Check and parse `data`; `pdf` is the reason given for a PDF."""
     check_size(data, max_size)
-    if b"%PDF-" in data[:1024]:
+    if is_pdf(data):
         raise InvoiceReadError(pdf)
     root = parse(data)
     match root.tag:

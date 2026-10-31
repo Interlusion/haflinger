@@ -127,7 +127,7 @@ flowchart TB
 
 | Block | Responsibility | State |
 | :- | :- | :- |
-| entry points (`read_invoice`, `write_cii`, `validate`) | Check size and safety, detect the syntax from the root element, dispatch, hand back a model with findings, a document, findings, or a refusal | Built (XML; PDFs later) |
+| entry points (`read_invoice`, `write_cii`, `validate`) | Check size and safety, detect the syntax from the root element, dispatch, hand back a model with findings, a document, findings, or a refusal | Built |
 | `model` | The business terms as frozen dataclasses with `Decimal` and `date`, each field mapped to its BT or BG ID by REQ-001; equal invoices compare equal whatever their syntax | Built, 45 terms in 6 groups |
 | `_xml` | Parse outside XML with `defusedxml`; read elements by path, with `HAFL-VALUE` and `HAFL-DROPPED` findings that name the business term | Built |
 | `cii`, `ubl` | The syntax bindings: each business term read from the element EN 16931-3-3 (CII) or -3-2 (UBL) assigns it, CII also written | Built |
@@ -136,7 +136,7 @@ flowchart TB
 | `kosit` | Read through KoSIT's stylesheet into the same model; the tests' independent second reader | Built; agrees with `read_invoice` on the KoSIT suite and CEN's UBL credit note |
 | `_saxon` | Compile each stylesheet once per process, run it on the original bytes | Built; imports `saxonche` on first use |
 | `artefacts` | KoSIT's visualisation stylesheets (the reading stylesheet) and validator stylesheets, unchanged, with provenance READMEs | Vendored: KoSIT's visualisation and validator configuration; the Factur-X rules and XML Schemas to come |
-| `pdf` | Extract the XML from a ZUGFeRD PDF without parsing it; embed checked XML into a PDF/A file the caller rendered (PDF/A-3, XMP), via `factur-x` | Planned, extra `pdf` |
+| `pdf` | Extract the XML from a ZUGFeRD PDF without parsing it; embed checked XML into a PDF/A file the caller rendered (PDF/A-3, XMP), via `factur-x` | Built, extra `pdf`: `extract_xml` inflates against the size limit itself; `embed` writes the EN 16931 profile |
 
 Which spec owns which block: the placement map in the [specs index](../specs/README.md).
 
