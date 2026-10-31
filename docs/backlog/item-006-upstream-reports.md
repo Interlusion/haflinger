@@ -14,7 +14,7 @@ Report upstream the differences between the CII and UBL files of the KoSIT test 
 
 ## Context / Motivation
 
-The spikes compared what KoSIT's reading stylesheet makes of the CII and UBL file of each business case, over every business term in them, in the KoSIT test suite `v2026-08-31`. Apart from differences in the files themselves, both agree. Those differences:
+The spikes compared what KoSIT's reading stylesheet makes of the CII and UBL file of each business case, over every business term in them, in the KoSIT test suite `v2026-08-31`. Apart from differences in the files themselves, both agree. Those differences, with the technical cases' found by Haflinger's reading in the rebuild:
 
 | Business term | Cases | Difference | Report? |
 | :- | :- | :- | :- |
@@ -24,6 +24,8 @@ The spikes compared what KoSIT's reading stylesheet makes of the CII and UBL fil
 | BT-31, BT-82, BT-107, BT-120 | 01.21a | Different values | Yes |
 | BT-45 | 03.01a | Only in UBL | Yes |
 | BT-29, BT-61, BT-122 | 03.07a | Only in one of the two files | Yes |
+| BT-44, BT-45 | technical 01.01 to 01.04 | The UBL files swap the buyer's name and trading name placeholders | Yes |
+| BT-110 | technical 01.05 | Absent in CII, 0 in UBL | No: the term is optional, and UBL's `cac:TaxTotal` needs an amount |
 
 ## Open Questions
 
