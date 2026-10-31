@@ -76,6 +76,7 @@ Where the official files come from, where their releases appear, and where to re
 | CEN [`eInvoicing-EN16931`](https://github.com/ConnectingEurope/eInvoicing-EN16931) | The unit tests of the EN 16931 rules (the rules themselves through KoSIT) | [releases.atom](https://github.com/ConnectingEurope/eInvoicing-EN16931/releases.atom) | EUPL-1.2 |
 | FeRD's [ZUGFeRD package](https://www.ferd-net.de/en/downloads/publications) | The Factur-X rules and XML Schemas per profile, samples | FeRD's downloads page; the maintainer downloads through FeRD's form | Schemas and Schematron Apache-2.0 by FeRD's [rights of use](https://www.ferd-net.de/en/ueber-uns/ressourcen-1/veroeffentlichungen/disclaimer-and-rights-of-use-zugferd) |
 | [`ZUGFeRD/corpus`](https://github.com/ZUGFeRD/corpus) | A selection of test files | No releases: pinned to a commit (`git ls-remote`) | Apache-2.0 |
+| [SchXslt](https://codeberg.org/SchXslt/schxslt) | The Schematron compiler for FeRD's Factur-X rules | Codeberg releases (`git ls-remote --tags`) | MIT |
 | veraPDF [`veraPDF-corpus`](https://github.com/veraPDF/veraPDF-corpus) | One PDF/A file, the input for embedding invoices | Tags (`git ls-remote --tags`) | CC BY 4.0 |
 | OpenPeppol [`peppol-bis-invoice-3`](https://github.com/OpenPEPPOL/peppol-bis-invoice-3) | Later: the Peppol BIS rules and unit tests | [releases.atom](https://github.com/OpenPEPPOL/peppol-bis-invoice-3/releases.atom) | To check |
 
