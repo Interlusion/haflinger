@@ -24,7 +24,7 @@ Vendor the official material beyond KoSIT's test suite that the specs' Definitio
 
 **CEN's unit tests** are in VEFA `testSet` format: each `<test>` holds an `<assert>` with the rule IDs expected to succeed (`<success>`) or fail (`<error>`, `<warning>`), and an invoice fragment. A test is met when every expected failure fires and no expected success does. On 2026-10-30, with CEN's stylesheet of the tests' own commit (`b17b269`, rules 1.3.17), all 1,131 were met; the tests of tag `validation-1.3.16` against the 1.3.16 rules bundled in KoSIT's configuration, all 1,131 too; the 1.3.17 tests against the 1.3.16 rules, 1,066 (the misses all in BR-IG and BR-IP, changed in 1.3.17). The tests must therefore come from the release of the rules in use. The runner is now `tests/conformance/test_validate_official.py`: it serialises each fragment with ElementTree and validates it; fragments are constructed test input, so the original-bytes rule ([REQ-002-PRS-F006](../specs/req-002-conformance.md#req-002-prs-f006-the-document-as-received)) doesn't apply to them.
 
-**The ZUGFeRD corpus** is 152 MB; only a selection is vendored:
+**The ZUGFeRD corpus** is 152 MB; only a selection is vendored. Since 2026-10-31, Mustang's own PDFs are in `tests/data/zugferd-corpus/`; the corpus's copies of FeRD's and FNFE-MPE's samples wait for their terms (open question below). The selection planned:
 
 - one valid file per supported Factur-X profile (MINIMUM, BASIC WL, BASIC, EN 16931, EXTENDED, as XML and as PDF);
 - one file per alternative spelling of BT-24 the corpus has (`urn:zugferd.de:2p0:minimum`, the ZUGFeRD 2.0 BASIC and EXTENDED identifiers, the colon spellings of BASIC and EXTENDED), for REQ-002-PRS-F003;
