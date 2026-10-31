@@ -111,7 +111,8 @@ A value the rules find wrong is a finding, not a refusal.
 | :- | :- | :- | :- | :- |
 | EN 16931, also Factur-X / ZUGFeRD EN 16931 | `urn:cen.eu:en16931:2017` |  | CII, UBL | CEN's EN 16931 rules for the syntax |
 | XRechnung 3.0 | `urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0` |  | CII, UBL | CEN's EN 16931 rules and KoSIT's XRechnung 3.0 rules for the syntax |
-| XRechnung 3.0 extension | `urn:cen.eu:en16931:2017#conformant#urn:xeinkauf.de:kosit:extension:xrechnung_3.0` |  | CII, UBL | The rules KoSIT's scenario for the extension names |
+| XRechnung 3.0 extension | `urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0#conformant#urn:xeinkauf.de:kosit:extension:xrechnung_3.0` |  | CII, UBL | The rules KoSIT's scenario for the extension names |
+| XRechnung 3.0 CVD (Clean Vehicles Directive) | `urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0#compliant#urn:xeinkauf.de:kosit:xrechnung:cvd_0.9` |  | CII, UBL | The rules KoSIT's scenario for CVD names |
 | Factur-X / ZUGFeRD MINIMUM | `urn:factur-x.eu:1p0:minimum` | `urn:zugferd.de:2p0:minimum` | CII | The Factur-X rules of the profile |
 | Factur-X / ZUGFeRD BASIC WL | `urn:factur-x.eu:1p0:basicwl` | `urn:zugferd.de:2p0:basicwl` | CII | The Factur-X rules of the profile |
 | Factur-X / ZUGFeRD BASIC | `urn:cen.eu:en16931:2017#compliant#urn:factur-x.eu:1p0:basic` | `urn:cen.eu:en16931:2017#compliant#urn:zugferd.de:2p0:basic`, `urn:cen.eu:en16931:2017:compliant:factur-x.eu:1p0:basic` | CII | The Factur-X rules of the profile |
