@@ -49,6 +49,12 @@ Written invoices also need their XML Schema checked; the rules assume a schema-v
 
 **Rejected because**: incoming invoices are validated when they arrive, not when Haflinger is built.
 
+### Alternative 5: Xee (Rust, MIT) instead of Saxon
+
+Small, MIT-licensed and buildable for every platform, musl included: it would remove Saxon's size, licence question and missing wheels.
+
+**Rejected for now because** (as of 2026-10-31, commit `200b1e3`): its XSLT 3.0 is incomplete by its own account ("XSLT support is decidedly partial now"), it has no public XSLT API even in Rust, no Python binding, and its XSLT conformance tests don't run yet; its XPath 3.1 is nearly complete, but the official rules are XSLT. It replaces Saxon once a maintained Python binding runs the official stylesheets with the same findings on the official test files (trigger 2).
+
 ## Consequences
 
 ### Positive
@@ -78,4 +84,5 @@ Written invoices also need their XML Schema checked; the rules assume a schema-v
 
 - Affects: arc42 [§4](../README.md#4-solution-strategy), [§5](../README.md#5-building-block-view), [§6](../README.md#6-runtime-view), [§7](../README.md#7-deployment-view), [§8](../README.md#8-cross-cutting-concepts), [§10](../README.md#10-quality-requirements), [§11](../README.md#11-risks-and-technical-debt)
 - [ADR-003](ADR-003-integrate-dont-implement.md), [ADR-008](ADR-008-vendoring-official-files.md), [ADR-009](ADR-009-licences-and-name.md)
+- [Xee](https://github.com/Paligo/xee), an XPath and XSLT engine in Rust
 - [itplr-kosit/validator-configuration-xrechnung](https://github.com/itplr-kosit/validator-configuration-xrechnung), [ConnectingEurope/eInvoicing-EN16931](https://github.com/ConnectingEurope/eInvoicing-EN16931)
