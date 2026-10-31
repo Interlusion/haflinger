@@ -2,7 +2,7 @@
 
 Compact [arc42](https://arc42.org/): all twelve sections in this file, until one of them outgrows it. It describes the design that the requirement specifications ([index](../specs/README.md)) and the [ADRs](adr/README.md) set out. Where the code disagrees, the code wins and this file is fixed.
 
-**State:** a first layout. The code is being rebuilt from the specs; until a module lands on `main`, the modules named here exist only on the spike branches that proved them.
+**State:** the modules named here are built on `main`, rebuilt from the specs after the spikes that proved the approach; section 5 says where a block is still incomplete.
 
 Diagrams are Mermaid, rendered by GitHub. Background on the standards, formats and bodies: [E-Invoicing 101](../guides/e-invoicing-101.md).
 
@@ -235,7 +235,7 @@ See the [ADR index](adr/README.md).
 
 ## 10. Quality requirements
 
-The quality goals of section 1, made testable. The requirement column names the requirement that holds the test; the figures were measured in the spikes.
+The quality goals of section 1, made testable. The requirement column names the requirement that holds the test; the figures were measured on 2026-10-31 by the tests and `scripts/benchmark.py` ([development guide](../guides/development.md#running-the-zugferd-corpus)).
 
 ### Correctness
 
@@ -243,7 +243,7 @@ The quality goals of section 1, made testable. The requirement column names the 
 | :- | :- | :- | :- |
 | QS-01 | The same invoice arrives in CII and in UBL | The same model, for every business case of the KoSIT suite; differences in the official files listed with their reason | [REQ-003-PRS-F004](../specs/req-003-incoming-invoices.md#req-003-prs-f004-cii-and-ubl-agree) |
 | QS-02 | An amount has more decimal places than its currency | Read and written back unchanged | [REQ-001-PRS-F004](../specs/req-001-core.md#req-001-prs-f004-exact-values) |
-| QS-03 | Haflinger writes an invoice read from an official file | Our reader and KoSIT's both read it back to the same model; valid against the XML Schemas; measured: 66 of 66 KoSIT files with both readers and both XML Schemas, 180 of 180 corpus files with our reader and the CII XML Schema | [REQ-004-PRS-F006](../specs/req-004-outgoing-invoices.md#req-004-prs-f006-round-trip-over-the-kosit-suite) |
+| QS-03 | Haflinger writes an invoice read from an official file | Our reader and KoSIT's both read it back to the same model; valid against the XML Schemas; measured: 86 of 86 KoSIT files with both readers and the CII D16B XML Schema; Factur-X's XML Schemas wait for FeRD's package | [REQ-004-PRS-F006](../specs/req-004-outgoing-invoices.md#req-004-prs-f006-round-trip-over-the-kosit-suite) |
 | QS-04 | An invoice total is off by one cent | Validation reports `BR-CO-15` and `BR-CO-16` as fatal | [REQ-002-PRS-F002](../specs/req-002-conformance.md#req-002-prs-f002-findings) |
 | QS-11 | An invoice repeats a value the model holds once (two due dates) | The first is read, the second reported with `HAFL-DROPPED`; no value of a term the model holds is left out without a finding | [REQ-003-PRS-F002](../specs/req-003-incoming-invoices.md#req-003-prs-f002-reading-choices) |
 
@@ -267,7 +267,7 @@ Speed serves conformance: every invoice, received or sent, is validated.
 
 | ID | Scenario | Response and measure | Requirement |
 | :- | :- | :- | :- |
-| QS-08 | A 25.7 MB invoice with 26,813 lines arrives or is sent | Measured: reading 0.8 s with our mapping (KoSIT's stylesheet: 11 minutes, which is why it is not the reader), the rules 6.7 s, writing 0.5 s; reading and validating the 61 MB invoice not yet measured; compiling the rules 0.5 s once per process | [REQ-002-PRS-NF002](../specs/req-002-conformance.md#req-002-prs-nf002-speed), [REQ-003-PRS-NF002](../specs/req-003-incoming-invoices.md#req-003-prs-nf002-speed), [REQ-004-PRS-NF001](../specs/req-004-outgoing-invoices.md#req-004-prs-nf001-speed) |
+| QS-08 | A 25.7 MB invoice with 26,813 lines arrives or is sent | Measured: reading 0.8 s with our mapping (KoSIT's stylesheet: 11 minutes in the spikes, which is why it is not the reader), the rules 6.8 s, writing 0.6 s; the 61.1 MB invoice read in 2.5 s and validated in 16.3 s (1.3 GiB peak memory); the first validation in a process, compiling its rules included, under 0.3 s | [REQ-002-PRS-NF002](../specs/req-002-conformance.md#req-002-prs-nf002-speed), [REQ-003-PRS-NF002](../specs/req-003-incoming-invoices.md#req-003-prs-nf002-speed), [REQ-004-PRS-NF001](../specs/req-004-outgoing-invoices.md#req-004-prs-nf001-speed) |
 
 ### Keeping current
 

@@ -9,7 +9,7 @@
 | **Purpose** | Can writing rely on the read side, and how far does the model get towards a valid outgoing invoice? |
 | **Branch** | `spike/cii-writer` |
 
-> Archived on 2026-10-30. Its findings live in the ADRs, specs, architecture, guides and backlog; [analysis 005](../analysis-005-arc42-setup.md) lists where each one went.
+> Archived on 2026-10-30. Its findings live in the ADRs, specs, architecture, guides and backlog; [analysis 005](analysis-005-arc42-setup.md) lists where each one went.
 
 ## Question
 

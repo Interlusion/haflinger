@@ -9,7 +9,7 @@
 | **Purpose** | How robust are reading and validation on real invoices from many producers? |
 | **Branch** | `spike/zugferd-corpus` |
 
-> Archived on 2026-10-30. Its findings live in the ADRs, specs, architecture, guides and backlog; [analysis 005](../analysis-005-arc42-setup.md) lists where each one went.
+> Archived on 2026-10-30. Its findings live in the ADRs, specs, architecture, guides and backlog; [analysis 005](analysis-005-arc42-setup.md) lists where each one went.
 
 ## Question
 

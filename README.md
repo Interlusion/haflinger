@@ -2,7 +2,7 @@
 
 E-invoicing in Python: ZUGFeRD, XRechnung and Peppol, on one model of the EN 16931 business terms. Built for ERPNext first. *Das Zugpferd für ZUGFeRD und XRechnung.*
 
-**Status:** specs and architecture written; the library is being built from them, after spikes that proved the approach. Nothing is released.
+**Status:** built from its specs: reading CII, UBL and ZUGFeRD PDFs, validating with the official rules, writing CII and ZUGFeRD PDFs (EN 16931); the model holds the first 45 business terms, enough for plain EN 16931 invoices but not yet for XRechnung. Nothing is released.
 
 ## What it is
 
@@ -17,18 +17,22 @@ E-invoicing in Python: ZUGFeRD, XRechnung and Peppol, on one model of the EN 169
 
 ## Example
 
-The intended use, as the specs define it:
+Reading, validating and writing an invoice:
 
 ```python
+from dataclasses import replace
 from pathlib import Path
 
-from haflinger import read_invoice, validate
+from haflinger import read_invoice, validate, write_cii
 
-data = Path("invoice.xml").read_bytes()
+data = Path("invoice.xml").read_bytes()  # CII or UBL; a ZUGFeRD PDF with the extra "pdf"
 result = read_invoice(data)  # the model, and what reading couldn't take in
 findings = validate(data)  # the official rules' verdict
 invoice = result.invoice
-print(invoice.number, invoice.seller.name, invoice.totals.amount_due, len(findings))
+print(invoice.number, invoice.totals and invoice.totals.amount_due, len(findings))
+
+# CII, handed out only when it passes the XML Schema and the official rules
+xml = write_cii(replace(invoice, specification_id="urn:cen.eu:en16931:2017"))
 ```
 
 ## Development

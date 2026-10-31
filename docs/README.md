@@ -9,7 +9,7 @@
 | Understand how it fits together | [Architecture](arc42/README.md) |
 | Know why it is built this way | [ADRs](arc42/adr/README.md) |
 | Work on it: setup, checks, tests, updating official files | [Development](guides/development.md) |
-| See the analysis in progress | [Analysis 005](analysis/analysis-005-arc42-setup.md): the harvest of the spikes, until the rebuilt code is on `main`; older analyses in [archive](analysis/archive/) |
+| See past analyses | [Archive](analysis/archive/): the approach review, the spikes and the harvest of the spikes |
 | See open work | [Backlog](backlog/backlog.md): quick items, and the `item-NNN` files in the same [folder](backlog/) |
 
 ## Directories

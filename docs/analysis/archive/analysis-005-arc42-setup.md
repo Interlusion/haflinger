@@ -4,7 +4,7 @@
 | :- | :- |
 | **Date** | 2026-10-30 |
 | **Author** | loxy (drafted with Claude) |
-| **Status** | Draft |
+| **Status** | Done: every finding carried over; archived on 2026-10-31 |
 | **Audience** | Maintainer; review before the arc42 layout, the ADRs and the specs are written |
 | **Purpose** | Phase A of setting up arc42 for Haflinger (assessment before writing), and the list of everything the spikes found, with where it goes |
 
@@ -185,7 +185,7 @@ Every finding of the spikes, with its destination. When a row is done it is tick
 - [x] Large invoices: 26 MB in 0.8 s (ours), 677 s (KoSIT XSLT), 6.7 s (rules); a 61 MB file exists → ADR-005, REQ-003 (limits), arc42 11
 - [x] EXTENDED content joined in KoSIT's output (BT-9) → ADR-005
 - [x] PDF checks (PDF/A-3, embedded file name, XMP) → ITEM-004, linked from REQ-004
-- [ ] The corpus report → development guide (described); `scripts/corpus_report.py` carried over with the code, see below
+- [x] The corpus report → development guide; `scripts/corpus_report.py` rebuilt in step h
 - [x] A vendored selection of corpus files as regression tests → backlog, ADR-008
 
 ### Analysis 004: CII writer spike
@@ -205,19 +205,19 @@ Every finding of the spikes, with its destination. When a row is done it is tick
 - [x] REQ-001 draft → REQ-001 core (model, terms, personas, shared rules) and REQ-003 (reading); hygiene gates 3 and 4
 - [x] REQ-002 draft (writing CII) → REQ-004
 - [x] Backlog → quick items and `item-NNN` files; spec and ADR items removed once written
-- [ ] README → rewritten after the code (C6)
+- [x] README → status updated after the rebuild (C6)
 - [x] AGENTS.md → docs structure, vendoring rules (ADR-008)
 - [x] 101 guide → stays; §11 links to arc42
 
 ### Code and data on the spike branches
 
-- [ ] `model.py` → REQ-001
-- [ ] `read.py`, `_xml.py`, `errors.py`, `cii.py` and `ubl.py` (reading) → REQ-003
-- [ ] `cii.py` (writing), `write.py` → REQ-004
-- [ ] `kosit.py` → ADR-005; reader or test oracle
-- [ ] `validate.py`, `_saxon.py`, `typings/saxonche.pyi`, `artefacts/` → REQ-002, ADR-006, ADR-008
-- [ ] `tests/data/kosit/`, `tests/data/cii-d16b/`, `.gitattributes` → ADR-008
-- [ ] Tests: `test_kosit.py` (with `KNOWN_DIFFERENCES`, `ZERO_OR_ABSENT`), `test_kosit_xslt.py`, `test_cii_write.py` (with `MISSING_TERMS`), `test_read.py`, `test_write.py` → the specs' DoD
-- [ ] `scripts/corpus_report.py` → development guide
-- [ ] `spike-scratch/`: the CEN unit test runner (`cen_units.py`, `cen_units_kosit.py`) → carried over with the code (ITEM-002 names it); the rest is reference only
+- [x] `model.py` → REQ-001; rebuilt in step b
+- [x] `read.py`, `_xml.py`, `errors.py`, `cii.py` and `ubl.py` (reading) → REQ-003; rebuilt in step c
+- [x] `cii.py` (writing), `write.py` → REQ-004; rebuilt in step f
+- [x] `kosit.py` → ADR-005; rebuilt as the test oracle in step d
+- [x] `validate.py`, `_saxon.py`, `typings/saxonche.pyi`, `artefacts/` → REQ-002, ADR-006, ADR-008; rebuilt in steps a and e (`validate` is `validation.py`)
+- [x] `tests/data/kosit/`, `tests/data/cii-d16b/`, `.gitattributes` → ADR-008; vendored anew in step a
+- [x] Tests: `test_kosit.py` (with `KNOWN_DIFFERENCES`, `ZERO_OR_ABSENT`), `test_kosit_xslt.py`, `test_cii_write.py` (with `MISSING_TERMS`), `test_read.py`, `test_write.py` → the specs' DoD; rewritten from them in steps b to h
+- [x] `scripts/corpus_report.py` → development guide; rebuilt in step h
+- [x] `spike-scratch/`: the CEN unit test runner (`cen_units.py`, `cen_units_kosit.py`) → `tests/conformance/test_validate_official.py` in step e; the rest is reference only
 - [x] `pyproject.toml` dependencies → ADR-002

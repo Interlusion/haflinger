@@ -8,7 +8,7 @@
 | **Audience** | Maintainer; input for the ADRs and specs |
 | **Purpose** | Approaches, reuse and test material after the first reading spike |
 
-> Archived on 2026-10-30. Its findings live in the ADRs, specs, architecture, guides and backlog; [analysis 005](../analysis-005-arc42-setup.md) lists where each one went.
+> Archived on 2026-10-30. Its findings live in the ADRs, specs, architecture, guides and backlog; [analysis 005](analysis-005-arc42-setup.md) lists where each one went.
 
 After the first spike (REQ-001: reading CII and UBL into an own EN 16931 model, tested against the KoSIT test suite), this note reviews the approach: which alternatives exist, what can be reused, what test material is available, and what the spike missed. Background on the terms: [E-Invoicing 101](../../guides/e-invoicing-101.md).
 
