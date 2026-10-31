@@ -127,14 +127,14 @@ flowchart TB
 
 | Block | Responsibility | State |
 | :- | :- | :- |
-| entry points (`read_invoice`, `write_cii`, `validate`) | Check size and safety, detect the syntax from the root element, dispatch, hand back a model with findings, a document, findings, or a refusal | `read_invoice` built (XML; PDFs later); the others spike |
+| entry points (`read_invoice`, `write_cii`, `validate`) | Check size and safety, detect the syntax from the root element, dispatch, hand back a model with findings, a document, findings, or a refusal | `read_invoice` and `validate` built (XML; PDFs later); `write_cii` spike |
 | `model` | The business terms as frozen dataclasses with `Decimal` and `date`, each field mapped to its BT or BG ID by REQ-001; equal invoices compare equal whatever their syntax | Built, 45 terms in 6 groups |
 | `_xml` | Parse outside XML with `defusedxml`; read elements by path, with `HAFL-VALUE` and `HAFL-DROPPED` findings that name the business term | Built |
 | `cii`, `ubl` | The syntax bindings: each business term read from the element EN 16931-3-3 (CII) or -3-2 (UBL) assigns it, CII also written | Reading built; writing spike |
-| `validate` | Choose the rule set, run it, turn the SVRL report into findings (rule, flag, location, text) | Spike: EN 16931 and XRechnung rules only; no Factur-X rules, no KoSIT levels |
+| `validate` | Choose the rule set, run it, turn the SVRL report into findings (rule, flag, location, text) | Built: KoSIT's scenarios with their levels (EN 16931, XRechnung 3.0, its extension, CVD); the Factur-X rules wait for FeRD's licence answer |
 | XSD check | Check a written invoice against the CII and Factur-X XML Schemas | Planned; library open ([ADR-006](adr/ADR-006-validation-with-official-rules.md)) |
 | `kosit` | Read through KoSIT's stylesheet into the same model; the tests' independent second reader | Built; agrees with `read_invoice` on the KoSIT suite and CEN's UBL credit note |
-| `_saxon` | Compile each stylesheet once per process, run it on the original bytes | Built for `kosit` |
+| `_saxon` | Compile each stylesheet once per process, run it on the original bytes | Built; imports `saxonche` on first use |
 | `artefacts` | KoSIT's visualisation stylesheets (the reading stylesheet) and validator stylesheets, unchanged, with provenance READMEs | Vendored: KoSIT's visualisation and validator configuration; the Factur-X rules and XML Schemas to come |
 | `pdf` | Extract the XML from a ZUGFeRD PDF without parsing it; embed checked XML into a PDF/A file the caller rendered (PDF/A-3, XMP), via `factur-x` | Planned, extra `pdf` |
 
@@ -251,7 +251,7 @@ The quality goals of section 1, made testable. The requirement column names the 
 
 | ID | Scenario | Response and measure | Requirement |
 | :- | :- | :- | :- |
-| QS-05 | CEN's per-rule unit tests run against the rules of the same release | Every expected pass and failure met; measured: 1,131 of 1,131, with CEN 1.3.16 and with 1.3.17 | [REQ-002-PRS-F007](../specs/req-002-conformance.md#req-002-prs-f007-official-verdicts-reproduced) |
+| QS-05 | CEN's per-rule unit tests run against the rules of the same release | Every expected pass and failure met; measured: all 1,140 tests of CEN 1.3.16 (1,131 UBL, 9 CII) with the rules in KoSIT's configuration, and the 1,131 UBL tests of 1.3.17 with its own rules | [REQ-002-PRS-F007](../specs/req-002-conformance.md#req-002-prs-f007-official-verdicts-reproduced) |
 | QS-06 | KoSIT, CEN or FeRD publishes a new release | One pull request updates the vendored files; the tests show what changed | [REQ-002-PRS-NF003](../specs/req-002-conformance.md#req-002-prs-nf003-traceable-to-a-release), [ADR-008](adr/ADR-008-vendoring-official-files.md) |
 
 ### Safety with hostile input

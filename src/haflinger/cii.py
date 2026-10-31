@@ -24,8 +24,9 @@ _AGREEMENT = f"{_TRANSACTION}/ram:ApplicableHeaderTradeAgreement"
 _SETTLEMENT = f"{_TRANSACTION}/ram:ApplicableHeaderTradeSettlement"
 
 
-def specification_id(root: Node) -> str | None:
-    return root.text(f"{_CONTEXT}/ram:GuidelineSpecifiedDocumentContextParameter/ram:ID", "BT-24")
+def specification(root: Node) -> Node | None:
+    """BT-24's element."""
+    return root.first(f"{_CONTEXT}/ram:GuidelineSpecifiedDocumentContextParameter/ram:ID", "BT-24")
 
 
 def read(root: Node, specification_id: str | None) -> Invoice:

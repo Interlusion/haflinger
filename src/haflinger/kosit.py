@@ -36,7 +36,8 @@ def read_invoice(data: bytes) -> ReadResult:
             f"the root element {root.tag} is neither a CII invoice nor a UBL invoice or credit note"
         )
     stylesheet, syntax = _STYLESHEETS[root.tag]
-    reading = Reading(parse(_saxon.transform(data, stylesheet)), {"xr": XR}, "xr:invoice")
+    (semantic,) = _saxon.transform(data, stylesheet)
+    reading = Reading(parse(semantic), {"xr": XR}, "xr:invoice")
     return ReadResult(invoice=_invoice(reading.root, syntax), findings=reading.findings())
 
 
