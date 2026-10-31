@@ -15,7 +15,7 @@ In Python, only Saxon runs XSLT 3: `saxonche`, the C build of Saxon's Home Editi
 - All 66 files of the KoSIT test suite pass the EN 16931 and XRechnung rules; a total changed by one cent fails `BR-CO-15` and `BR-CO-16`.
 - CEN's per-rule unit tests: 1,131 of 1,131 met with the rules of their own release, both for 1.3.17 and for 1.3.16, the release KoSIT bundles; 1.3.17's tests against 1.3.16's rules met only 1,066, all 65 misses in rules that changed between the two.
 - Compiling the stylesheets takes 0.5 s once per process; validating an invoice 7 ms; the 25.7 MB Peppol invoice 6.7 s.
-- Passing Saxon a tree re-serialised by ElementTree made 18 valid files fail `PEPPOL-EN16931-R008`: re-serialising drops comments, and an element holding only a comment became empty.
+- Passing Saxon a tree re-serialised by ElementTree made valid files fail `PEPPOL-EN16931-R008` (20 of the 86 in the KoSIT suite, re-measured on 2026-10-31): ElementTree writes its own namespace prefixes (`ns1:`), and the rule exempts the empty `ram:ApplicableHeaderTradeDelivery` by its prefixed name. Re-serialising also drops comments.
 - Over the ZUGFeRD corpus, most failures of files filed as correct were the wrong rules for the file: XRechnung 1.2 and 2.1 checked with 3.0 rules, MINIMUM, BASIC WL and EXTENDED checked with EN 16931 rules, code-list values since removed.
 - `saxonche` 13.1.1: wheels of about 38 MB (about 105 MB installed) for Linux with glibc ≥ 2.24 (x86_64, aarch64), macOS and Windows; none for musl (Alpine), no source distribution; the package metadata names no licence.
 

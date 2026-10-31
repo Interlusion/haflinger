@@ -11,8 +11,8 @@ CEN's per-rule unit tests for the EN 16931 rules, and one of its examples, uncha
 
 | Folder | Files | Tests | What they are |
 | :- | :- | :- | :- |
-| `test/Invoice-unit-UBL/` | 206 | 732 | Unit tests on UBL invoices |
-| `test/CreditNote-unit-UBL/` | 71 | 172 | Unit tests on UBL credit notes |
+| `test/Invoice-unit-UBL/` | 206 | 915 | Unit tests on UBL invoices |
+| `test/CreditNote-unit-UBL/` | 71 | 216 | Unit tests on UBL credit notes |
 | `test/cii/` | 2 | 9 | Unit tests on CII invoices (`BR-CO-15`, `BR-CO-17`) |
 | `ubl/examples/` | 1 |  | `ubl-tc434-creditnote1.xml`, a UBL credit note, for reading (REQ-003-PRS-F001) |
 

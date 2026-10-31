@@ -111,7 +111,7 @@ A value the rules find wrong is a finding, not a refusal.
 | :- | :- | :- | :- | :- |
 | EN 16931, also Factur-X / ZUGFeRD EN 16931 | `urn:cen.eu:en16931:2017` |  | CII, UBL | CEN's EN 16931 rules for the syntax |
 | XRechnung 3.0 | `urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0` |  | CII, UBL | CEN's EN 16931 rules and KoSIT's XRechnung 3.0 rules for the syntax |
-| XRechnung 3.0 extension | `urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0#conformant#urn:xeinkauf.de:kosit:extension:xrechnung_3.0` |  | CII, UBL | The rules KoSIT's scenario for the extension names |
+| XRechnung 3.0 extension | `urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0#conformant#urn:xeinkauf.de:kosit:extension:xrechnung_3.0` |  | CII, UBL invoice | The rules KoSIT's scenario for the extension names; KoSIT has none for a UBL credit note |
 | XRechnung 3.0 CVD (Clean Vehicles Directive) | `urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0#compliant#urn:xeinkauf.de:kosit:xrechnung:cvd_0.9` |  | CII, UBL | The rules KoSIT's scenario for CVD names |
 | Factur-X / ZUGFeRD MINIMUM | `urn:factur-x.eu:1p0:minimum` | `urn:zugferd.de:2p0:minimum` | CII | The Factur-X rules of the profile |
 | Factur-X / ZUGFeRD BASIC WL | `urn:factur-x.eu:1p0:basicwl` | `urn:zugferd.de:2p0:basicwl` | CII | The Factur-X rules of the profile |
@@ -140,11 +140,11 @@ A value the rules find wrong is a finding, not a refusal.
 
 #### REQ-002-PRS-F006: The document as received
 
-**Description**: The rules SHALL judge the invoice exactly as received, comments and whitespace included, not a copy written out again.
+**Description**: The rules SHALL judge the invoice exactly as received, its namespace prefixes, comments and whitespace included, not a copy written out again.
 
-**Related URS**: REQ-002-URS-F001
+**Related URS**: REQ-002-URS-F001 | **Rationale**: Some rules test an element's prefixed name: `PEPPOL-EN16931-R008`, "no empty elements", exempts the empty `ram:ApplicableHeaderTradeDelivery` by name, so a copy written out with other prefixes fails it.
 
-**Definition of Done**: a test validates a CII file of the KoSIT suite that has an element holding only a comment and gets no `PEPPOL-EN16931-R008` finding.
+**Definition of Done**: a test validates KoSIT case 01.01a in CII, whose `ram:ApplicableHeaderTradeDelivery` is empty, and gets no `PEPPOL-EN16931-R008` finding, while the same file written out again by ElementTree gets one.
 
 #### REQ-002-PRS-F007: Official verdicts reproduced
 
