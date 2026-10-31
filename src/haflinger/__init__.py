@@ -4,6 +4,7 @@ from haflinger.errors import InvoiceReadError
 from haflinger.findings import Finding
 from haflinger.model import Invoice, InvoiceLine, Note, Party, Totals, VatBreakdown
 from haflinger.read import ReadResult, read_invoice
+from haflinger.validation import validate
 
 __all__ = [
     "Finding",
@@ -16,4 +17,5 @@ __all__ = [
     "Totals",
     "VatBreakdown",
     "read_invoice",
+    "validate",
 ]
