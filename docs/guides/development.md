@@ -19,7 +19,8 @@ tests/
                           both readers, round trip, XML Schema, rules
   data/<source>/          official test files, vendored (ADR-008)
 scripts/
-  corpus_report.py        runs a corpus of invoices through Haflinger (after the rebuild)
+  corpus_report.py        runs a corpus of invoices through Haflinger
+  benchmark.py            time and memory against the specs' limits
 docs/                     specs, architecture, ADRs, guides, backlog
 AGENTS.md                 rules for coding agents; CLAUDE.md imports it
 pyproject.toml, uv.lock, .python-version
@@ -107,14 +108,20 @@ The rules are in [ADR-008](../arc42/adr/ADR-008-vendoring-official-files.md). On
 
 ## Running the ZUGFeRD corpus
 
-The script comes over from the spikes with the code rebuild; until then this section describes it as it will be. `scripts/corpus_report.py` runs every PDF and XML file below a directory through Haflinger: extraction from PDFs, both readers, their comparison, and validation. It prints a summary and writes one row per file as TSV. Only a few of its files are vendored, in `tests/data/zugferd-corpus/` ([ITEM-002](../backlog/item-002-official-test-material.md)); clone it into a directory of its own:
+`scripts/corpus_report.py` runs every PDF and XML file below a directory through Haflinger: the invoice taken out of a PDF, both readers, the business terms on which they differ (after KoSIT's known limit, `kosit.with_subject_codes`), and validation. It prints a summary, with any crash (an exception other than `InvoiceReadError`), and writes one row per file as TSV. A file below a `fail` folder is marked as filed as failing. Only a few of its files are vendored, in `tests/data/zugferd-corpus/` ([ITEM-002](../backlog/item-002-official-test-material.md)); clone it into a directory of its own:
 
 ```sh
 git clone --filter=blob:none https://github.com/ZUGFeRD/corpus /path/to/zugferd-corpus
 uv run python scripts/corpus_report.py /path/to/zugferd-corpus corpus.tsv
 ```
 
-Files above 5 MB are read with Haflinger's mapping only; KoSIT's reading stylesheet takes minutes for them. The same clone serves the speed benchmarks of [REQ-002-PRS-NF002](../specs/req-002-conformance.md#req-002-prs-nf002-speed) and [REQ-003-PRS-NF002](../specs/req-003-incoming-invoices.md#req-003-prs-nf002-speed), which use its two large Peppol invoices (`PEPPOL/Valid/Qvalia/Large_Invoice_sample1.xml`, 25.7 MB, and `Large_Invoice_sample2.xml`, 61.1 MB).
+Files above 5 MB are read with Haflinger's mapping only; KoSIT's reading stylesheet takes minutes for them. At commit `82e886f` (2026-10-31): 240 files, no crash; 197 read, 40 refused (22 ZUGFeRD 1.0, 14 FatturaPA, the rest broken or another format); the readers agree on all but FeRD's two EXTENDED invoices with two due dates, which KoSIT's stylesheet joins into one value (`HAFL-VALUE BT-9` in its column).
+
+The same clone serves the benchmark of [REQ-002-PRS-NF002](../specs/req-002-conformance.md#req-002-prs-nf002-speed), [REQ-003-PRS-NF002](../specs/req-003-incoming-invoices.md#req-003-prs-nf002-speed) and [REQ-004-PRS-NF001](../specs/req-004-outgoing-invoices.md#req-004-prs-nf001-speed), which uses its two large Peppol invoices (`PEPPOL/Valid/Qvalia/Large_Invoice_sample1.xml`, 25.7 MB, and `Large_Invoice_sample2.xml`, 61.1 MB). It prints a Markdown table with the machine it ran on, to record with a release; without the clone, the large invoices' rows are skipped:
+
+```sh
+uv run python scripts/benchmark.py /path/to/zugferd-corpus
+```
 
 ## References
 
