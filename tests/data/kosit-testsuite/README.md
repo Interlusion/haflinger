@@ -17,6 +17,6 @@ The test invoices of KoSIT's XRechnung test suite, unchanged and at their paths 
 | `instances/technical-cases/cius/` | 12 | Comprehensive and minimal invoices covering the business terms, each as CII and UBL |
 | `instances/technical-cases/cvd/` | 2 | An XRechnung CVD invoice as CII and UBL |
 
-Not included: the release's README, changelog, overview of the cases and development notes. The files keep their line endings (CRLF in most).
+Not included: the release's README, changelog, overview of the cases and development notes. The files keep their CRLF line endings.
 
 To update: [development guide](../../../docs/guides/development.md#updating-official-files).
