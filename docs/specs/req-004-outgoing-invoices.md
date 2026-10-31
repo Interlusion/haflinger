@@ -86,7 +86,7 @@ The personas are [REQ-001's](req-001-core.md#personas).
 **Description**: `haflinger.write_cii(invoice: Invoice) -> bytes` SHALL return a CII D16B document, UTF-8 with an XML declaration, when it passes REQ-004-PRS-F004 and REQ-004-PRS-F005. Otherwise it SHALL raise `haflinger.InvoiceWriteError`, and no other exception, with a reason that names the business term where there is one ([REQ-001-PRS-F005](req-001-core.md#req-001-prs-f005-refusals-and-findings-name-their-subject)). `InvoiceWriteError` SHALL carry `findings` and `document`:
 
 - **Before writing**, with no findings and no document, when the model's BT-24 is no supported target profile (REQ-004-PRS-F002); a value has the wrong type (an amount, quantity, price or rate that isn't a finite `Decimal`, a date that isn't a `date`, a text that isn't a `str`); a text is empty, has surrounding whitespace, or holds a character XML 1.0 doesn't allow; or the model holds a term without one it needs to be written (BT-111 without BT-6).
-- **After writing**, with the findings and the written document, when it fails REQ-004-PRS-F004 or REQ-004-PRS-F005.
+- **After writing**, with the findings and the written document, when it fails REQ-004-PRS-F004 or REQ-004-PRS-F005, or can't be checked by them (for example, larger than the size limit validation accepts).
 
 **Related URS**: REQ-004-URS-F001, REQ-004-URS-F002
 

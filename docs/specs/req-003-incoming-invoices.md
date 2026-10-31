@@ -111,8 +111,8 @@ The personas are [REQ-001's](req-001-core.md#personas).
 **Description**: Each business term SHALL be read from the element the EN 16931 syntax bindings assign to it (EN 16931-3-3 for CII, EN 16931-3-2 for UBL), with these choices where the bindings leave room:
 
 - **Notes (BG-1)**: in UBL, a `cbc:Note` starting with `#XXX#` carries the subject code `XXX` (the convention of XRechnung and Peppol), the rest is the text.
-- **VAT totals (BT-110, BT-111)**: chosen by currency. In CII, the `TaxTotalAmount` in the invoice currency (BT-5) is BT-110 and the one in the VAT accounting currency (BT-6) is BT-111; one without `currencyID` is BT-110. In UBL, the `cac:TaxTotal` whose `cbc:TaxAmount` is in the invoice currency gives BT-110 and the VAT breakdown, the one in the VAT accounting currency gives BT-111. A VAT total in another currency is left out with a `HAFL-DROPPED` finding.
-- **Repeated values**: where the invoice holds a term more often than the model does (two due dates, BT-9, in an EXTENDED invoice; two VAT totals in one currency), the first is read and each further one is left out with a `HAFL-DROPPED` finding.
+- **VAT totals (BT-110, BT-111)**: chosen by currency. In CII, the `TaxTotalAmount` in the invoice currency (BT-5) is BT-110 and the one in the VAT accounting currency (BT-6) is BT-111; one without `currencyID` is BT-110. In UBL, the `cac:TaxTotal` whose `cbc:TaxAmount` is in the invoice currency gives BT-110 and the VAT breakdown, the one in the VAT accounting currency gives BT-111; when no `cac:TaxTotal` gives BT-110, the first one holding a `cac:TaxSubtotal` gives the VAT breakdown, and the subtotals of every other `cac:TaxTotal` are left out with a `HAFL-DROPPED` finding. Where BT-6 equals BT-5, the first total in that currency is BT-110 and the second BT-111. A VAT total in another currency is left out with a `HAFL-DROPPED` finding.
+- **Repeated values**: where the invoice holds a term more often than the model does (two due dates, BT-9, in an EXTENDED invoice; two VAT totals in one currency), the first that holds a value is read and each further one that holds a value is left out with a `HAFL-DROPPED` finding. The same holds for the groups the model holds once (BG-4, BG-7, BG-22): the first element that holds any value is read.
 - **Whitespace**: whitespace around a value is removed, and an element empty after that counts as missing (the exception of [REQ-001-URS-NF001](req-001-core.md#req-001-urs-nf001-values-exactly-as-they-are)).
 - **Malformed values**: a number not written as `xs:decimal` (REQ-001's term Value as written), a CII date not written as `YYYYMMDD` with `format="102"`, or a UBL date not written as `YYYY-MM-DD` is read as missing, with a `HAFL-VALUE` finding.
 
@@ -150,7 +150,7 @@ The findings are those of [REQ-002-PRS-F010](req-002-conformance.md#req-002-prs-
 
 **Description**: `read_invoice` SHALL raise `haflinger.InvoiceReadError`, and no other exception, with a reason that names the problem, when the input:
 
-- is not well-formed XML, or has the PDF header `%PDF-` within its first 1,024 bytes but isn't a readable PDF;
+- is not well-formed XML, or has the PDF header `%PDF-` within its first 1,024 bytes, before any `<`, but isn't a readable PDF;
 - contains a document type or entity declaration (REQ-001-PRS-NF001);
 - has a root element that is neither a CII invoice nor a UBL invoice or credit note; for a ZUGFeRD 1.0 invoice (`CrossIndustryDocument`) and an Italian FatturaPA invoice the reason names the format, also when it is embedded in a PDF;
 - follows an edition other than 2017 ([REQ-002-PRS-F009](req-002-conformance.md#req-002-prs-f009-editions-supported));
@@ -163,7 +163,7 @@ The findings are those of [REQ-002-PRS-F010](req-002-conformance.md#req-002-prs-
 
 #### REQ-003-PRS-F007: ZUGFeRD PDFs
 
-**Description**: With the extra `pdf` installed, `read_invoice` SHALL read a PDF through its embedded invoice, and `haflinger.pdf.extract_xml(data: bytes, *, max_size: int = …) -> bytes` SHALL return the embedded invoice byte for byte, without parsing it. The embedded invoice is the embedded file named `factur-x.xml`, `zugferd-invoice.xml`, `xrechnung.xml` or, for ZUGFeRD 1.0, `ZUGFeRD-invoice.xml`; it is read whatever its syntax. `extract_xml` SHALL raise `InvoiceReadError` when the input isn't a readable PDF, holds none of these files, holds more than one of them, or the file exceeds `max_size`. Importing `haflinger.pdf` without the extra SHALL raise `ImportError` naming the extra.
+**Description**: With the extra `pdf` installed, `read_invoice` SHALL read a PDF through its embedded invoice, and `haflinger.pdf.extract_xml(data: bytes, *, max_size: int = …) -> bytes` SHALL return the embedded invoice byte for byte, without parsing it. The embedded invoice is the embedded file named `factur-x.xml`, `zugferd-invoice.xml`, `xrechnung.xml` or, for ZUGFeRD 1.0, `ZUGFeRD-invoice.xml`; it is read whatever its syntax. `extract_xml` SHALL raise `InvoiceReadError` when the input isn't a readable PDF, holds none of these files, holds more than one of them (two files of the same name included), or the file exceeds `max_size`. Importing `haflinger.pdf` without the extra SHALL raise `ImportError` naming the extra.
 
 **Related URS**: REQ-003-URS-F002
 

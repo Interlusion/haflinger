@@ -105,7 +105,7 @@ A value the rules find wrong is a finding, not a refusal.
 
 #### REQ-002-PRS-F003: Rule sets
 
-**Description**: The rule set SHALL be chosen by the invoice's syntax and its specification identifier (BT-24), from this table. The alternative spellings, used by ZUGFeRD 2.0 and by some producers, SHALL select the same rule set as the row's identifier; no other identifier SHALL.
+**Description**: The rule set SHALL be chosen by the invoice's syntax and its specification identifier (BT-24) exactly as written, whitespace included, as KoSIT's scenarios match it, from this table. The alternative spellings, used by ZUGFeRD 2.0 and by some producers, SHALL select the same rule set as the row's identifier; no other identifier SHALL.
 
 | Profile | BT-24 | Alternative spellings | Syntax | Rule set |
 | :- | :- | :- | :- | :- |
