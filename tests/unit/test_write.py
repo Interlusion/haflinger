@@ -1,5 +1,6 @@
 """Writing CII (REQ-004), on the model of KoSIT case 01.01a written as plain EN 16931."""
 
+import contextlib
 import re
 from dataclasses import replace
 from datetime import date, datetime
@@ -9,7 +10,7 @@ from typing import Any
 
 import pytest
 
-from haflinger import InvoiceWriteError, Note, read_invoice, write_cii
+from haflinger import InvoiceReadError, InvoiceWriteError, Note, read_invoice, write_cii
 from haflinger._xsd import check_cii
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -196,3 +197,33 @@ def test_the_schema_check_reports_each_violation() -> None:
     findings = check_cii(document)
     assert [finding.rule for finding in findings] == ["HAFL-XSD"]
     assert findings[0].location.startswith("/")
+
+
+def test_a_huge_text_is_checked_not_crashed_on() -> None:
+    """A text over libxml2's default limit of 10 MB: a result or InvoiceWriteError, nothing else."""
+    with contextlib.suppress(InvoiceWriteError):
+        write_cii(replace(INVOICE, notes=(Note(text="A" * 11_000_000),)))
+
+
+def test_a_document_validation_refuses_is_refused_after_writing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Validation's own refusals, such as the size limit, become InvoiceWriteError with the
+    document."""
+
+    def refuse(data: bytes) -> list[object]:
+        raise InvoiceReadError("the input is larger than max_size")
+
+    monkeypatch.setattr("haflinger.write.validate", refuse)
+    with pytest.raises(InvoiceWriteError, match="larger than max_size") as refusal:
+        write_cii(INVOICE)
+    assert refusal.value.document is not None
+
+
+def test_bt_111_in_the_invoice_currency_reads_back() -> None:
+    invoice = replace(
+        INVOICE,
+        tax_currency_code="EUR",
+        totals=replace(TOTALS, vat_total_in_tax_currency=TOTALS.vat_total),
+    )
+    assert read_invoice(written(invoice)).invoice == invoice

@@ -1,6 +1,7 @@
 """Validation with the official rules (REQ-002), on edited copies of official files."""
 
 import re
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from xml.etree.ElementTree import tostring
 
@@ -8,6 +9,7 @@ import defusedxml.ElementTree
 import pytest
 
 from haflinger import Finding, InvoiceReadError, validate
+from haflinger._xsd import check_cii
 
 ROOT = Path(__file__).resolve().parents[2]
 SUITE = ROOT / "tests/data/kosit-testsuite/instances"
@@ -304,3 +306,40 @@ def test_the_rules_judge_the_document_as_received() -> None:
     assert "PEPPOL-EN16931-R008" not in {finding.rule for finding in validate(data)}
     written_again = tostring(defusedxml.ElementTree.fromstring(data))
     assert "PEPPOL-EN16931-R008" in {finding.rule for finding in validate(written_again)}
+
+
+# REQ-002-PRS-F003: BT-24 exactly as written
+
+
+def test_bt_24_with_whitespace_names_no_profile() -> None:
+    """KoSIT's scenarios match BT-24's exact text; padded, it matches none."""
+    data = edited(UBL, (f">{XRECHNUNG}<", f"> {XRECHNUNG} <"), NO_BUYER_REFERENCE[UBL])
+    findings = validate(data)
+    assert len(profile_findings(findings)) == 1
+    assert xrechnung_rules(findings) == set()
+
+
+# Validation and writing from several threads at once
+
+
+def test_validation_from_several_threads() -> None:
+    inputs = [
+        CII.read_bytes(),
+        edited(CII, WRONG_TOTAL[CII]),
+        UBL.read_bytes(),
+        edited(UBL, WRONG_TOTAL[UBL]),
+    ]
+    expected = [validate(data) for data in inputs]
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(validate, inputs * 10))
+    assert results == expected * 10
+
+
+def test_schema_checks_from_several_threads() -> None:
+    valid = CII.read_bytes()
+    invalid = valid.replace(b"<ram:TypeCode>380</ram:TypeCode>", b"<ram:Unknown/>", 1)
+    inputs = [valid, invalid]
+    expected = [check_cii(data) for data in inputs]
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(check_cii, inputs * 50))
+    assert results == expected * 50

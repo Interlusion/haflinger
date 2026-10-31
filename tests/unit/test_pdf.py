@@ -334,3 +334,31 @@ def test_embed_refuses_an_invalid_invoice_with_its_findings() -> None:
         embed(PDFA, xml)
     assert "BR-CO-15" in {finding.rule for finding in refusal.value.findings}
     assert refusal.value.document == xml
+
+
+def test_two_embedded_files_of_one_name_are_two_invoices() -> None:
+    writer = PdfWriter(clone_from=io.BytesIO(PDFA))
+    writer.add_attachment("factur-x.xml", XML)
+    writer.add_attachment("factur-x.xml", b"<other/>")
+    output = io.BytesIO()
+    writer.write(output)
+    with pytest.raises(
+        InvoiceReadError, match=re.escape("more than one invoice: factur-x.xml, factur-x.xml")
+    ):
+        extract_xml(output.getvalue())
+
+
+def test_embed_refuses_xml_the_schema_check_cant_parse() -> None:
+    """lxml knows no encoding `latin_1`, which defusedxml accepts: a finding, not lxml's error."""
+    xml = XML.replace(b'encoding="UTF-8"', b'encoding="latin_1"', 1)
+    with pytest.raises(InvoiceWriteError) as refusal:
+        embed(PDFA, xml)
+    assert "HAFL-XSD" in {finding.rule for finding in refusal.value.findings}
+
+
+def test_embed_checks_the_pdf_before_the_invoice() -> None:
+    """A PDF that isn't PDF/A is refused without the seconds a validation can take."""
+    plain = raw_pdf(b"<< /Type /Catalog /Pages 2 0 R >>", b"<< /Type /Pages /Kids [] /Count 0 >>")
+    invalid = XML.replace(b"<ram:GrandTotalAmount>336.9<", b"<ram:GrandTotalAmount>336.91<")
+    with pytest.raises(InvoiceWriteError, match="the input must be PDF/A"):
+        embed(plain, invalid)

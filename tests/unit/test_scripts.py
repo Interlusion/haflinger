@@ -51,3 +51,12 @@ def test_benchmark_without_the_corpus() -> None:
     assert requirements == {"REQ-002-PRS-NF002", "REQ-003-PRS-NF002", "REQ-004-PRS-NF001"}
     assert sum("First validation in a fresh process" in line for line in table) == 7
     assert sum(line.endswith("| skipped: no corpus clone |") for line in table) == 4
+
+
+def test_corpus_report_counts_crashes_by_outcome_only(tmp_path: Path) -> None:
+    corpus = tmp_path / "CRASH"
+    corpus.mkdir()
+    source = ROOT / "tests/data/kosit-testsuite/instances/standard/01.01a-INVOICE_uncefact.xml"
+    (corpus / "CRASH.xml").write_bytes(source.read_bytes())
+    summary, _ = report(corpus, tmp_path)
+    assert "crashes: 0" in summary
