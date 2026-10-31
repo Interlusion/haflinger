@@ -131,11 +131,11 @@ flowchart TB
 | `model` | The business terms as frozen dataclasses with `Decimal` and `date`, each field mapped to its BT or BG ID by REQ-001; equal invoices compare equal whatever their syntax | Built, 45 terms in 6 groups |
 | `_xml` | Parse outside XML with `defusedxml`; read elements by path, with `HAFL-VALUE` and `HAFL-DROPPED` findings that name the business term | Built |
 | `cii`, `ubl` | The syntax bindings: each business term read from the element EN 16931-3-3 (CII) or -3-2 (UBL) assigns it, CII also written | Built |
-| `validate` | Choose the rule set, run it, turn the SVRL report into findings (rule, flag, location, text) | Built: KoSIT's scenarios with their levels (EN 16931, XRechnung 3.0, its extension, CVD); the Factur-X rules wait for FeRD's licence answer |
-| XSD check | Check a written invoice against the CII and Factur-X XML Schemas | Built for CII D16B, with lxml ([ADR-006](adr/ADR-006-validation-with-official-rules.md)); Factur-X's schemas wait for FeRD's licence answer |
+| `validate` | Choose the rule set, run it, turn the SVRL report into findings (rule, flag, location, text) | Built: KoSIT's scenarios with their levels (EN 16931, XRechnung 3.0, its extension, CVD); FeRD's Factur-X rules (MINIMUM, BASIC WL, BASIC, EXTENDED), compiled with SchXslt on first use |
+| XSD check | Check a written invoice against the CII and Factur-X XML Schemas | Built, with lxml ([ADR-006](adr/ADR-006-validation-with-official-rules.md)): CII D16B, and Factur-X's EN 16931 profile for that target |
 | `kosit` | Read through KoSIT's stylesheet into the same model; the tests' independent second reader | Built; agrees with `read_invoice` on the KoSIT suite and CEN's UBL credit note |
 | `_saxon` | Compile each stylesheet once per process, run it on the original bytes | Built; imports `saxonche` on first use |
-| `artefacts` | KoSIT's visualisation stylesheets (the reading stylesheet) and validator stylesheets, unchanged, with provenance READMEs | Vendored: KoSIT's visualisation and validator configuration; the Factur-X rules and XML Schemas to come |
+| `artefacts` | KoSIT's visualisation stylesheets (the reading stylesheet) and validator stylesheets, unchanged, with provenance READMEs | Vendored: KoSIT's visualisation and validator configuration, FeRD's Factur-X Schematron and XML Schemas, SchXslt |
 | `pdf` | Extract the XML from a ZUGFeRD PDF without parsing it; embed checked XML into a PDF/A file the caller rendered (PDF/A-3, XMP), via `factur-x` | Built, extra `pdf`: `extract_xml` inflates against the size limit itself; `embed` writes the EN 16931 profile |
 
 Which spec owns which block: the placement map in the [specs index](../specs/README.md).
@@ -243,7 +243,7 @@ The quality goals of section 1, made testable. The requirement column names the 
 | :- | :- | :- | :- |
 | QS-01 | The same invoice arrives in CII and in UBL | The same model, for every business case of the KoSIT suite; differences in the official files listed with their reason | [REQ-003-PRS-F004](../specs/req-003-incoming-invoices.md#req-003-prs-f004-cii-and-ubl-agree) |
 | QS-02 | An amount has more decimal places than its currency | Read and written back unchanged | [REQ-001-PRS-F004](../specs/req-001-core.md#req-001-prs-f004-exact-values) |
-| QS-03 | Haflinger writes an invoice read from an official file | Our reader and KoSIT's both read it back to the same model; valid against the XML Schemas; measured: 86 of 86 KoSIT files with both readers and the CII D16B XML Schema; Factur-X's XML Schemas wait for FeRD's package | [REQ-004-PRS-F006](../specs/req-004-outgoing-invoices.md#req-004-prs-f006-round-trip-over-the-kosit-suite) |
+| QS-03 | Haflinger writes an invoice read from an official file | Our reader and KoSIT's both read it back to the same model; valid against the XML Schemas; measured: 86 of 86 KoSIT files with both readers, the CII D16B XML Schema and Factur-X's EN 16931 XML Schema | [REQ-004-PRS-F006](../specs/req-004-outgoing-invoices.md#req-004-prs-f006-round-trip-over-the-kosit-suite) |
 | QS-04 | An invoice total is off by one cent | Validation reports `BR-CO-15` and `BR-CO-16` as fatal | [REQ-002-PRS-F002](../specs/req-002-conformance.md#req-002-prs-f002-findings) |
 | QS-11 | An invoice repeats a value the model holds once (two due dates) | The first is read, the second reported with `HAFL-DROPPED`; no value of a term the model holds is left out without a finding | [REQ-003-PRS-F002](../specs/req-003-incoming-invoices.md#req-003-prs-f002-reading-choices) |
 

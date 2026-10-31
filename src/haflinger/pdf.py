@@ -63,7 +63,7 @@ def embed(pdf: bytes, xml: bytes) -> bytes:
         raise InvoiceWriteError(
             "the PDF declares no PDF/A conformance in its XMP metadata; the input must be PDF/A"
         )
-    write.refuse_if_invalid(write.check_written(xml), xml)
+    write.refuse_if_invalid(write.check_written(xml, opened.specification_id), xml)
     try:
         return facturx.generate_from_binary(
             pdf, xml, flavor="factur-x", level=level, check_xsd=False

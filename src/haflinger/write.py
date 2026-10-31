@@ -28,14 +28,15 @@ def write_cii(invoice: Invoice) -> bytes:
             f" it writes {' and '.join(TARGET_PROFILES)}"
         )
     document = cii.write(invoice)
-    refuse_if_invalid(check_written(document), document)
+    refuse_if_invalid(check_written(document, invoice.specification_id), document)
     return document
 
 
-def check_written(document: bytes) -> tuple[Finding, ...]:
-    """The findings of the XML Schema and the official rules for a CII invoice to hand out
-    (REQ-004-PRS-F004, REQ-004-PRS-F005)."""
-    findings = tuple(_xsd.check_cii(document))
+def check_written(document: bytes, specification_id: str | None) -> tuple[Finding, ...]:
+    """The findings of the XML Schemas and the official rules for a CII invoice of the target
+    profile `specification_id` to hand out (REQ-004-PRS-F004, REQ-004-PRS-F005)."""
+    factur_x = specification_id == TARGET_PROFILES[0]  # Factur-X's EN 16931 profile
+    findings = tuple(_xsd.check_cii(document, factur_x_en16931=factur_x))
     try:
         return (*findings, *validate(document))
     except InvoiceReadError as error:

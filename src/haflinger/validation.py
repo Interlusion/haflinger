@@ -1,7 +1,8 @@
 """Validation with the official rules, run unchanged with Saxon (REQ-002, ADR-006).
 
-The rule sets and their levels are those of KoSIT's validator configuration: its scenario file
-names the stylesheets for each profile and lowers or raises the levels of some rules.
+The rule sets of EN 16931 and XRechnung, with their levels, are those of KoSIT's validator
+configuration: its scenario file names the stylesheets for each profile and lowers or raises the
+levels of some rules. The Factur-X profiles have FeRD's Schematron, compiled with SchXslt.
 """
 
 from dataclasses import dataclass
@@ -37,6 +38,42 @@ _RULE_SETS: dict[tuple[Document, str], str] = {
     ("ubl-credit-note", _XRECHNUNG): "EN16931 XRechnung (UBL CreditNote)",
     ("ubl-credit-note", _CVD): "EN16931 XRechnung CVD (UBL CreditNote)",
 }
+# REQ-002-PRS-F003: the Factur-X profiles, in CII only, by each BT-24 that names them (the
+# alternative spellings included), with FeRD's Schematron for the profile.
+_FERD = "ferd-zugferd/Schema"
+_FACTUR_X: dict[str, tuple[str, tuple[str, ...]]] = {
+    "Factur-X MINIMUM": (
+        f"{_FERD}/0_Factur-X_1.09.2_MINIMUM/FACTUR-X_MINIMUM.sch",
+        ("urn:factur-x.eu:1p0:minimum", "urn:zugferd.de:2p0:minimum"),
+    ),
+    "Factur-X BASIC WL": (
+        f"{_FERD}/1_Factur-X_1.09.2_BASICWL/FACTUR-X_BASIC-WL.sch",
+        ("urn:factur-x.eu:1p0:basicwl", "urn:zugferd.de:2p0:basicwl"),
+    ),
+    "Factur-X BASIC": (
+        f"{_FERD}/2_Factur-X_1.09.2_BASIC/FACTUR-X_BASIC.sch",
+        (
+            f"{_EN16931}#compliant#urn:factur-x.eu:1p0:basic",
+            f"{_EN16931}#compliant#urn:zugferd.de:2p0:basic",
+            f"{_EN16931}:compliant:factur-x.eu:1p0:basic",
+        ),
+    ),
+    "Factur-X EXTENDED": (
+        f"{_FERD}/4_Factur-X_1.09.2_EXTENDED/FACTUR-X_EXTENDED.sch",
+        (
+            f"{_EN16931}#conformant#urn:factur-x.eu:1p0:extended",
+            f"{_EN16931}#conformant#urn:zugferd.de:2p0:extended",
+            f"{_EN16931}:compliant:factur-x.eu:1p0:extended",
+        ),
+    ),
+}
+_RULE_SETS.update(
+    {
+        ("cii", specification_id): name
+        for name, (_, spellings) in _FACTUR_X.items()
+        for specification_id in spellings
+    }
+)
 _DOCUMENTS: dict[Document, str] = {
     "cii": "a CII invoice",
     "ubl-invoice": "a UBL invoice",
@@ -128,10 +165,15 @@ def _findings(report: Element, levels: dict[str, Flag]) -> list[Finding]:
 
 @cache
 def _scenarios() -> dict[str, _Scenario]:
-    """KoSIT's scenarios by name: their stylesheets and levels."""
+    """The rule sets by name: KoSIT's scenarios with their stylesheets and levels, and the
+    Factur-X profiles with FeRD's Schematron."""
     n = _SCENARIOS_NAMESPACE
     root = parse((_saxon.ARTEFACTS / _CONFIGURATION / "scenarios.xml").read_bytes())
-    return {
+    factur_x = {
+        name: _Scenario(stylesheets=(schematron,), levels={})
+        for name, (schematron, _) in _FACTUR_X.items()
+    }
+    return factur_x | {
         scenario.findtext(f"{n}name", ""): _Scenario(
             stylesheets=tuple(
                 f"{_CONFIGURATION}/{location.text}"

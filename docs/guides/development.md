@@ -51,6 +51,8 @@ CI runs the same checks on every pull request and on `main` (`.github/workflows/
 
 Tests come before code where a spec's Definition of Done describes the behaviour ([AGENTS.md](../../AGENTS.md)).
 
+**FeRD's samples** aren't vendored, as no terms name them ([ITEM-002](../backlog/item-002-official-test-material.md)). Their tests (`tests/conformance/test_ferd_samples.py`) read the unpacked ZUGFeRD package from the path in `HAFLINGER_FERD_PACKAGE`, and are skipped without it.
+
 **veraPDF**, the reference PDF/A validator, checks the PDFs `embed` writes where it is installed ([REQ-004-PRS-F007](../specs/req-004-outgoing-invoices.md#req-004-prs-f007-zugferd-pdf)); otherwise its test is skipped. Install it from [verapdf.org](https://verapdf.org/software/) (it needs Java) and put `verapdf` on the `PATH`, or name the program in `HAFLINGER_VERAPDF`.
 
 **When an official file looks wrong**, never edit it. Record the case in the test, with the business term and the reason, so that only that term is left out; the test that checks the recorded differences fails once a new release fixes it ([REQ-002-PRS-F008](../specs/req-002-conformance.md#req-002-prs-f008-differences-in-the-official-files)). Then tell upstream, the same for a rule that looks wrong:

@@ -97,7 +97,7 @@ A value the rules find wrong is a finding, not a refusal.
 
 #### REQ-002-PRS-F002: Findings
 
-**Description**: A `Finding` SHALL carry `rule` (the rule's ID, e.g. `BR-CO-15`), `flag` (`fatal`, `error`, `warning` or `information`), `location` (where in the invoice) and `text` (the rule's text). An invoice SHALL count as valid when no finding has the flag `fatal` or `error`.
+**Description**: A `Finding` SHALL carry `rule` (the rule's ID, e.g. `BR-CO-15`; empty where the rule set gives none, as FeRD's reports of elements a profile doesn't use), `flag` (`fatal`, `error`, `warning` or `information`; `error` where the rule set gives none or another), `location` (where in the invoice) and `text` (the rule's text). An invoice SHALL count as valid when no finding has the flag `fatal` or `error`.
 
 **Related URS**: REQ-002-URS-F003
 
@@ -229,9 +229,9 @@ A value the rules find wrong is a finding, not a refusal.
 ## Assumptions
 
 - XRechnung 3.0 is the only XRechnung version the authorities accept today; earlier versions need no rules of their own.
-- The Factur-X rules and XML Schemas for MINIMUM, BASIC WL, BASIC, EN 16931 and EXTENDED come from FeRD's ZUGFeRD package, whose rights of use put the schemas and Schematron under Apache-2.0, so that Haflinger can vendor them under [ADR-008](../arc42/adr/ADR-008-vendoring-official-files.md) ([ITEM-002](../backlog/item-002-official-test-material.md)).
+- The Factur-X rules and XML Schemas for MINIMUM, BASIC WL, BASIC, EN 16931 and EXTENDED come from FeRD's ZUGFeRD package, whose rights of use put the schemas and Schematron under Apache-2.0, so that Haflinger can vendor them under [ADR-008](../arc42/adr/ADR-008-vendoring-official-files.md) ([ITEM-002](../backlog/item-002-official-test-material.md)). The rights of use don't name the XSLT the package also holds; Haflinger compiles the Schematron itself ([ADR-006](../arc42/adr/ADR-006-validation-with-official-rules.md)).
 - KoSIT's scenario file, which sets the rule levels of REQ-002-PRS-F005, is vendored with KoSIT's stylesheets.
 
 ## Open Questions
 
-- FeRD's rights of use name the schemas and Schematron as Apache-2.0, not the XSLT its package also holds: does the licence cover the XSLT (to ask FeRD), or is the Schematron compiled to XSLT at vendoring time? Until this is settled, the Factur-X profiles get CEN's rules and `HAFL-PROFILE`, as REQ-002-PRS-F004 says.
+None at present.

@@ -25,11 +25,26 @@ def _processor() -> PySaxonProcessor:
     return PySaxonProcessor(license=False)
 
 
+# SchXslt's steps from a Schematron schema to a stylesheet that reports in SVRL.
+_SCHXSLT = ("schxslt/2.0/include.xsl", "schxslt/2.0/expand.xsl", "schxslt/2.0/compile-for-svrl.xsl")
+
+
 @cache
 def _executable(stylesheet: str) -> PyXsltExecutable:
-    """A stylesheet by its path below `artefacts/`, compiled once per process."""
+    """A stylesheet by its path below `artefacts/`, compiled once per process. A Schematron
+    schema (`.sch`) is compiled with SchXslt first; the stylesheet it gives resolves relative
+    paths, such as a code list read with `document()`, against the schema's folder."""
+    path = ARTEFACTS / stylesheet
     compiler = _processor().new_xslt30_processor()
-    return compiler.compile_stylesheet(stylesheet_file=str(ARTEFACTS / stylesheet))
+    if path.suffix != ".sch":
+        return compiler.compile_stylesheet(stylesheet_file=str(path))
+    node = _processor().parse_xml(xml_file_name=str(path))
+    text = ""
+    for step in _SCHXSLT:
+        text = _executable(step).transform_to_string(xdm_node=node) or ""
+        node = _processor().parse_xml(xml_text=text)
+    compiler.set_cwd(str(path.parent))
+    return compiler.compile_stylesheet(stylesheet_text=text)
 
 
 def transform(data: bytes, *stylesheets: str) -> list[bytes]:
