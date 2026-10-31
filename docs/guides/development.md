@@ -104,7 +104,7 @@ The rules are in [ADR-008](../arc42/adr/ADR-008-vendoring-official-files.md). On
 
 ## Running the ZUGFeRD corpus
 
-The script comes over from the spikes with the code rebuild; until then this section describes it as it will be. `scripts/corpus_report.py` runs every PDF and XML file below a directory through Haflinger: extraction from PDFs, both readers, their comparison, and validation. It prints a summary and writes one row per file as TSV. The corpus isn't vendored ([ITEM-002](../backlog/item-002-official-test-material.md)); clone it into a directory of its own:
+The script comes over from the spikes with the code rebuild; until then this section describes it as it will be. `scripts/corpus_report.py` runs every PDF and XML file below a directory through Haflinger: extraction from PDFs, both readers, their comparison, and validation. It prints a summary and writes one row per file as TSV. Only a few of its files are vendored, in `tests/data/zugferd-corpus/` ([ITEM-002](../backlog/item-002-official-test-material.md)); clone it into a directory of its own:
 
 ```sh
 git clone --filter=blob:none https://github.com/ZUGFeRD/corpus /path/to/zugferd-corpus
