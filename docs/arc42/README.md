@@ -127,10 +127,10 @@ flowchart TB
 
 | Block | Responsibility | State |
 | :- | :- | :- |
-| entry points (`read_invoice`, `write_cii`, `validate`) | Check size and safety, detect the syntax from the root element, dispatch, hand back a model with findings, a document, findings, or a refusal | Spike |
+| entry points (`read_invoice`, `write_cii`, `validate`) | Check size and safety, detect the syntax from the root element, dispatch, hand back a model with findings, a document, findings, or a refusal | `read_invoice` built (XML; PDFs later); the others spike |
 | `model` | The business terms as frozen dataclasses with `Decimal` and `date`, each field mapped to its BT or BG ID by REQ-001; equal invoices compare equal whatever their syntax | Built, 45 terms in 6 groups |
-| `_xml` | Parse outside XML with `defusedxml`; access elements by path with refusals that name the business term | Spike |
-| `cii`, `ubl` | The syntax bindings: each business term read from the element EN 16931-3-3 (CII) or -3-2 (UBL) assigns it, CII also written | Spike |
+| `_xml` | Parse outside XML with `defusedxml`; read elements by path, with `HAFL-VALUE` and `HAFL-DROPPED` findings that name the business term | Built |
+| `cii`, `ubl` | The syntax bindings: each business term read from the element EN 16931-3-3 (CII) or -3-2 (UBL) assigns it, CII also written | Reading built; writing spike |
 | `validate` | Choose the rule set, run it, turn the SVRL report into findings (rule, flag, location, text) | Spike: EN 16931 and XRechnung rules only; no Factur-X rules, no KoSIT levels |
 | XSD check | Check a written invoice against the CII and Factur-X XML Schemas | Planned; library open ([ADR-006](adr/ADR-006-validation-with-official-rules.md)) |
 | `kosit` | Read through KoSIT's stylesheet into the same model; the tests' independent second reader | Spike |
