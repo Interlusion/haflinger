@@ -2,9 +2,9 @@
 
 | Meta | Value |
 | :- | :- |
-| **Date** | 2026-10-30 |
+| **Date** | 2026-10-31 |
 | **Author** | loxy (drafted with Claude) |
-| **Status** | Draft: describes the layout the code is being rebuilt into, from the specs |
+| **Status** | Current |
 
 ## Repository layout
 

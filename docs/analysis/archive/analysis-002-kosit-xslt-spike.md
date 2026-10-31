@@ -9,7 +9,7 @@
 | **Purpose** | Can KoSIT's reading XSLT and the official Schematron be run unchanged from Python? |
 | **Branch** | `spike/kosit-xslt` |
 
-> Archived on 2026-10-30. Its findings live in the ADRs, specs, architecture, guides and backlog; [analysis 005](../analysis-005-arc42-setup.md) lists where each one went.
+> Archived on 2026-10-30. Its findings live in the ADRs, specs, architecture, guides and backlog; [analysis 005](analysis-005-arc42-setup.md) lists where each one went.
 
 ## Question
 
