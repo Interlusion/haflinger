@@ -101,7 +101,7 @@ def run(path: Path, base: Path) -> Row:
             row.extract = outcome(error)
             return row
     try:
-        result = read_invoice(data)
+        result = read_invoice(xml)
     except Exception as error:  # noqa: BLE001
         row.read = outcome(error)
         return row
@@ -172,7 +172,8 @@ def main(arguments: list[str]) -> int:
         print(f"{column}: {dict(counts.most_common())}")
     rules = Counter(rule for row in rows for rule in row.rules)
     print(f"most failed rules: {rules.most_common(15)}")
-    crashes = [row.path for row in rows if "CRASH" in "".join(cell(row, c) for c in COLUMNS)]
+    outcomes = ("extract", "read", "kosit", "validation")
+    crashes = [row.path for row in rows if any(cell(row, c).startswith("CRASH") for c in outcomes)]
     print(f"crashes: {len(crashes)}", *crashes, sep="\n  ")
     return 0
 

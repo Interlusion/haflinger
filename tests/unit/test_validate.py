@@ -1,6 +1,7 @@
 """Validation with the official rules (REQ-002), on edited copies of official files."""
 
 import re
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from xml.etree.ElementTree import tostring
 
@@ -8,6 +9,8 @@ import defusedxml.ElementTree
 import pytest
 
 from haflinger import Finding, InvoiceReadError, validate
+from haflinger._xsd import check_cii
+from haflinger.pdf import extract_xml
 
 ROOT = Path(__file__).resolve().parents[2]
 SUITE = ROOT / "tests/data/kosit-testsuite/instances"
@@ -167,34 +170,86 @@ def test_cvd_runs_its_scenario(path: Path) -> None:
     assert invalid(findings) == []
 
 
+# A rule of FeRD's for each Factur-X profile that a type code outside its code list fails.
+WRONG_TYPE_CODE = ("<ram:TypeCode>380<", "<ram:TypeCode>999<")
+FACTUR_X = [
+    ("urn:factur-x.eu:1p0:minimum", "FX-SCH-A-000023"),
+    ("urn:zugferd.de:2p0:minimum", "FX-SCH-A-000023"),
+    ("urn:factur-x.eu:1p0:basicwl", "FX-SCH-A-000417"),
+    ("urn:zugferd.de:2p0:basicwl", "FX-SCH-A-000417"),
+    (f"{EN16931}#compliant#urn:factur-x.eu:1p0:basic", "FX-SCH-A-000492"),
+    (f"{EN16931}#compliant#urn:zugferd.de:2p0:basic", "FX-SCH-A-000492"),
+    (f"{EN16931}:compliant:factur-x.eu:1p0:basic", "FX-SCH-A-000492"),
+    (f"{EN16931}#conformant#urn:factur-x.eu:1p0:extended", "FX-SCH-A-000635"),
+    (f"{EN16931}#conformant#urn:zugferd.de:2p0:extended", "FX-SCH-A-000635"),
+    (f"{EN16931}:compliant:factur-x.eu:1p0:extended", "FX-SCH-A-000635"),
+]
+
+
+@pytest.mark.parametrize(("specification_id", "rule"), FACTUR_X)
+def test_factur_x_runs_ferds_rules_for_its_profile(specification_id: str, rule: str) -> None:
+    """Each spelling of REQ-002-PRS-F003's Factur-X rows runs FeRD's rules for its profile."""
+    findings = validate(with_specification_id(CII, specification_id, WRONG_TYPE_CODE))
+    assert (rule, "error") in rules(findings)
+    assert profile_findings(findings) == []
+    assert xrechnung_rules(findings) == set()
+
+
 @pytest.mark.parametrize(
-    "specification_id",
+    ("specification_id", "rule"),
     [
-        "urn:factur-x.eu:1p0:minimum",
-        "urn:zugferd.de:2p0:minimum",
-        "urn:factur-x.eu:1p0:basicwl",
-        "urn:zugferd.de:2p0:basicwl",
-        f"{EN16931}#compliant#urn:factur-x.eu:1p0:basic",
-        f"{EN16931}#compliant#urn:zugferd.de:2p0:basic",
-        f"{EN16931}:compliant:factur-x.eu:1p0:basic",
-        f"{EN16931}#conformant#urn:factur-x.eu:1p0:extended",
-        f"{EN16931}#conformant#urn:zugferd.de:2p0:extended",
-        f"{EN16931}:compliant:factur-x.eu:1p0:extended",
+        (f"{EN16931}:compliant:factur-x.eu:1p0:basic", "FX-SCH-A-000493"),
+        (f"{EN16931}:compliant:factur-x.eu:1p0:extended", "FX-SCH-A-000636"),
     ],
 )
-def test_factur_x_gets_cens_rules_until_its_own_are_vendored(specification_id: str) -> None:
-    """REQ-002's open question: until FeRD's licence covers the Factur-X rules, the Factur-X
-    profiles are checked as REQ-002-PRS-F004 says."""
-    findings = validate(with_specification_id(CII, specification_id, WRONG_TOTAL[CII]))
-    assert ("BR-CO-15", "fatal") in rules(findings)
-    assert xrechnung_rules(findings) == set()
-    assert len(profile_findings(findings)) == 1
+def test_ferds_rules_judge_a_colon_spelling(specification_id: str, rule: str) -> None:
+    """The colon spellings select their profile's rules, whose code list for BT-24 lacks them:
+    the official verdict, reported as such."""
+    findings = validate(with_specification_id(CII, specification_id))
+    assert (rule, "error") in rules(findings)
+
+
+def test_an_official_extended_invoice_gets_the_extended_rules() -> None:
+    pdf = ROOT / (
+        "tests/data/zugferd-corpus/ZUGFeRDv2/fail/Mustangproject/"
+        "MustangGnuaccountingBeispielRE-20171118_506.pdf"
+    )
+    findings = validate(extract_xml(pdf.read_bytes()))
+    assert profile_findings(findings) == []
+    assert ("FX-SCH-A-000636", "error") in rules(findings)
+
+
+def test_a_rule_without_an_id() -> None:
+    """FeRD reports an element its profile doesn't use without a rule ID or flag: an `error`
+    with an empty rule (REQ-002-PRS-F002)."""
+    findings = validate(with_specification_id(CII, "urn:factur-x.eu:1p0:minimum"))
+    unnamed = [finding for finding in findings if finding.rule == ""]
+    assert unnamed
+    assert all(finding.flag == "error" for finding in unnamed)
+    assert any("is marked as not used in the given context" in f.text for f in unnamed)
+
+
+def test_the_factur_x_spellings_are_those_of_the_spec() -> None:
+    """The BT-24 values of REQ-002-PRS-F003's Factur-X rows, alternative spellings included."""
+    from haflinger.validation import _FACTUR_X  # pyright: ignore[reportPrivateUsage]
+
+    table = (ROOT / "docs/specs/req-002-conformance.md").read_text(encoding="utf-8")
+    rows = [line for line in table.splitlines() if line.startswith("| Factur-X / ZUGFeRD ")]
+    in_spec = {
+        value
+        for row in rows
+        if "| CII |" in row and "The Factur-X rules" in row
+        for value in re.findall(r"`([^`]+)`", row)
+    }
+    in_code = {value for _, spellings in _FACTUR_X.values() for value in spellings}
+    assert in_spec == in_code
 
 
 def test_each_rule_set_is_kosits_scenario_for_its_document_and_bt_24() -> None:
-    """The rule sets of REQ-002-PRS-F003, by syntax and BT-24, are the scenarios whose match
-    expressions name the same root element and BT-24; every scenario is used."""
-    from haflinger.validation import _RULE_SETS  # pyright: ignore[reportPrivateUsage]
+    """The rule sets of REQ-002-PRS-F003 other than Factur-X's, by syntax and BT-24, are the
+    scenarios whose match expressions name the same root element and BT-24; every scenario is
+    used."""
+    from haflinger.validation import _FACTUR_X, _RULE_SETS  # pyright: ignore[reportPrivateUsage]
 
     namespace = "{http://www.xoev.de/de/validator/framework/1/scenarios}"
     matches = {
@@ -208,10 +263,11 @@ def test_each_rule_set_is_kosits_scenario_for_its_document_and_bt_24() -> None:
         "ubl-invoice": "/invoice:Invoice",
         "ubl-credit-note": "/creditnote:CreditNote",
     }
-    for (document, specification_id), name in _RULE_SETS.items():
+    kosit = {key: name for key, name in _RULE_SETS.items() if name not in _FACTUR_X}
+    for (document, specification_id), name in kosit.items():
         assert roots[document] in matches[name], name
         assert re.findall(r"'([^']*)'", matches[name]) == [specification_id], name
-    assert set(_RULE_SETS.values()) == set(matches)
+    assert set(kosit.values()) == set(matches)
 
 
 # REQ-002-PRS-F004, REQ-002-PRS-F010
@@ -304,3 +360,40 @@ def test_the_rules_judge_the_document_as_received() -> None:
     assert "PEPPOL-EN16931-R008" not in {finding.rule for finding in validate(data)}
     written_again = tostring(defusedxml.ElementTree.fromstring(data))
     assert "PEPPOL-EN16931-R008" in {finding.rule for finding in validate(written_again)}
+
+
+# REQ-002-PRS-F003: BT-24 exactly as written
+
+
+def test_bt_24_with_whitespace_names_no_profile() -> None:
+    """KoSIT's scenarios match BT-24's exact text; padded, it matches none."""
+    data = edited(UBL, (f">{XRECHNUNG}<", f"> {XRECHNUNG} <"), NO_BUYER_REFERENCE[UBL])
+    findings = validate(data)
+    assert len(profile_findings(findings)) == 1
+    assert xrechnung_rules(findings) == set()
+
+
+# Validation and writing from several threads at once
+
+
+def test_validation_from_several_threads() -> None:
+    inputs = [
+        CII.read_bytes(),
+        edited(CII, WRONG_TOTAL[CII]),
+        UBL.read_bytes(),
+        edited(UBL, WRONG_TOTAL[UBL]),
+    ]
+    expected = [validate(data) for data in inputs]
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(validate, inputs * 10))
+    assert results == expected * 10
+
+
+def test_schema_checks_from_several_threads() -> None:
+    valid = CII.read_bytes()
+    invalid = valid.replace(b"<ram:TypeCode>380</ram:TypeCode>", b"<ram:Unknown/>", 1)
+    inputs = [valid, invalid]
+    expected = [check_cii(data) for data in inputs]
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(check_cii, inputs * 50))
+    assert results == expected * 50

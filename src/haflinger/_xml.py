@@ -20,7 +20,7 @@ MAX_SIZE = 100 * 1024 * 1024  # REQ-001-PRS-NF003
 
 # The lexical form of xs:decimal: REQ-001's term Value as written.
 _DECIMAL = re.compile(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)")
-_XML_WHITESPACE = " \t\r\n"
+XML_WHITESPACE = " \t\r\n"
 
 
 def check_size(data: bytes, max_size: int) -> None:
@@ -47,29 +47,33 @@ def choose_vat_totals[T](
     candidates: list[tuple[T, Node]], currency_code: str | None, tax_currency_code: str | None
 ) -> tuple[T | None, T | None]:
     """The candidates for BT-110 and BT-111, by the currency of their amount: the first in the
-    invoice currency (BT-5) and the first in the VAT accounting currency (BT-6); an amount without
-    `currencyID` is in the invoice currency. Every other amount is left out with a finding
-    (REQ-003-PRS-F002)."""
+    invoice currency (BT-5) and the first in the VAT accounting currency (BT-6); where the two
+    currencies are the same, the first and the second in it. An amount without `currencyID` is in
+    the invoice currency. Every other amount is left out with a finding (REQ-003-PRS-F002)."""
     chosen: dict[str, T] = {}
     for candidate, amount in candidates:
         if amount.value is None:
             continue
         currency = amount.attribute("currencyID") or currency_code
-        if currency is not None and currency == currency_code:
-            term = "BT-110"
-        elif currency is not None and currency == tax_currency_code:
-            term = "BT-111"
-        else:
+        terms = [
+            term
+            for term, code in (("BT-110", currency_code), ("BT-111", tax_currency_code))
+            if currency is not None and currency == code
+        ]
+        if not terms:
             amount.drop(
                 f"BT-110 or BT-111: a VAT total in {currency or 'no currency'}, neither the"
                 f" invoice currency ({currency_code or 'none'}) nor the VAT accounting currency"
                 f" ({tax_currency_code or 'none'}), is left out: {amount.value!r}"
             )
             continue
-        if term in chosen:
-            amount.drop(f"{term} appears more than once; this one is left out: {amount.value!r}")
+        free = [term for term in terms if term not in chosen]
+        if free:
+            chosen[free[0]] = candidate
         else:
-            chosen[term] = candidate
+            amount.drop(
+                f"{terms[-1]} appears more than once; this one is left out: {amount.value!r}"
+            )
     return chosen.get("BT-110"), chosen.get("BT-111")
 
 
@@ -108,17 +112,34 @@ class Node:
         self.path = path
 
     def find(self, path: str) -> Node | None:
-        element = self.element.find(path, self.reading.namespaces)
-        return None if element is None else Node(self.reading, element, f"{self.path}/{path}")
+        nodes = self.findall(path)
+        return nodes[0] if nodes else None
 
     def findall(self, path: str) -> list[Node]:
-        elements = self.element.findall(path, self.reading.namespaces)
-        if len(elements) == 1:
-            return [Node(self.reading, elements[0], f"{self.path}/{path}")]
-        return [
-            Node(self.reading, element, f"{self.path}/{path}[{index}]")
-            for index, element in enumerate(elements, start=1)
-        ]
+        """The elements at `path`, in document order. A location indexes each step at which a
+        parent has more than one match, so that it is an XPath to that element."""
+        found = [(self.element, self.path)]
+        for step in path.split("/"):
+            following: list[tuple[Element, str]] = []
+            for parent, location in found:
+                children = parent.findall(step, self.reading.namespaces)
+                for index, child in enumerate(children, start=1):
+                    suffix = f"[{index}]" if len(children) > 1 else ""
+                    following.append((child, f"{location}/{step}{suffix}"))
+            found = following
+        return [Node(self.reading, element, location) for element, location in found]
+
+    def holds_value(self) -> bool:
+        """Whether the element or one below it holds text."""
+        return any(_stripped(element.text) is not None for element in self.element.iter())
+
+    def group(self, path: str, group: str) -> Node | None:
+        """The first element at `path` that holds a value, for a group the model holds once; each
+        further one holding a value is left out with a finding."""
+        nodes = [node for node in self.findall(path) if node.holds_value()]
+        for node in nodes[1:]:
+            node.drop(f"{group} appears more than once; this one is left out")
+        return nodes[0] if nodes else None
 
     def attribute(self, name: str) -> str | None:
         return _stripped(self.element.get(name))
@@ -180,5 +201,5 @@ class Node:
 
 
 def _stripped(text: str | None) -> str | None:
-    text = (text or "").strip(_XML_WHITESPACE)
+    text = (text or "").strip(XML_WHITESPACE)
     return text or None

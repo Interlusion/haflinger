@@ -59,11 +59,11 @@ def embed(pdf: bytes, xml: bytes) -> bytes:
             f"embed writes only CII invoices with BT-24 {', '.join(_EMBED_LEVELS)};"
             f" this is {opened.document} with BT-24 {opened.specification_id!r}"
         )
-    write.refuse_if_invalid(write.check_written(xml), xml)
     if not _declares_pdfa(pdf):
         raise InvoiceWriteError(
             "the PDF declares no PDF/A conformance in its XMP metadata; the input must be PDF/A"
         )
+    write.refuse_if_invalid(write.check_written(xml, opened.specification_id), xml)
     try:
         return facturx.generate_from_binary(
             pdf, xml, flavor="factur-x", level=level, check_xsd=False
@@ -85,18 +85,18 @@ def _declares_pdfa(pdf: bytes) -> bool:
 
 def _extract(reader: PdfReader, max_size: int) -> bytes:
     files = _embedded_files(reader)
-    invoices = {name: spec for name, spec in files.items() if name in INVOICE_NAMES}
+    invoices = [(name, spec) for name, spec in files if name in INVOICE_NAMES]
     if not invoices:
-        found = ", ".join(sorted(files)) or "none"
+        found = ", ".join(sorted(name for name, _ in files)) or "none"
         raise InvoiceReadError(
             f"the PDF holds no invoice under the names {', '.join(sorted(INVOICE_NAMES))};"
             f" its embedded files: {found}"
         )
     if len(invoices) > 1:
         raise InvoiceReadError(
-            f"the PDF holds more than one invoice: {', '.join(sorted(invoices))}"
+            f"the PDF holds more than one invoice: {', '.join(sorted(n for n, _ in invoices))}"
         )
-    ((name, spec),) = invoices.items()
+    ((name, spec),) = invoices
     return _inflate(name, _stream(name, spec), max_size)
 
 
@@ -107,11 +107,11 @@ def _dictionary(value: object) -> DictionaryObject | None:
     return resolved if isinstance(resolved, DictionaryObject) else None
 
 
-def _embedded_files(reader: PdfReader) -> dict[str, DictionaryObject]:
-    """The file specifications of the document's embedded files, by file name."""
+def _embedded_files(reader: PdfReader) -> list[tuple[str, DictionaryObject]]:
+    """The document's embedded files, each with its name; a name can occur more than once."""
     root = _dictionary(reader.trailer.get("/Root"))
     names = None if root is None else _dictionary(root.get("/Names"))
-    files: dict[str, DictionaryObject] = {}
+    files: list[tuple[str, DictionaryObject]] = []
     seen: set[int] = set()
     pending = [] if names is None else [(names.get("/EmbeddedFiles"), 0)]
     while pending:
@@ -129,8 +129,9 @@ def _embedded_files(reader: PdfReader) -> dict[str, DictionaryObject]:
         if isinstance(entries, ArrayObject):
             for key, value in zip(entries[::2], entries[1::2], strict=False):
                 spec = _dictionary(value)
-                if spec is not None:
-                    files[str(spec.get("/UF") or spec.get("/F") or key)] = spec
+                if spec is not None and id(spec) not in seen:
+                    seen.add(id(spec))
+                    files.append((str(spec.get("/UF") or spec.get("/F") or key), spec))
     return files
 
 

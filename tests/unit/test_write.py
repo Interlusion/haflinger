@@ -1,5 +1,6 @@
 """Writing CII (REQ-004), on the model of KoSIT case 01.01a written as plain EN 16931."""
 
+import contextlib
 import re
 from dataclasses import replace
 from datetime import date, datetime
@@ -9,7 +10,7 @@ from typing import Any
 
 import pytest
 
-from haflinger import InvoiceWriteError, Note, read_invoice, write_cii
+from haflinger import InvoiceReadError, InvoiceWriteError, Note, read_invoice, write_cii
 from haflinger._xsd import check_cii
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -182,13 +183,15 @@ def test_dates_before_1000() -> None:
 
 
 def test_a_schema_violation_is_hafl_xsd() -> None:
-    """ExchangedDocument needs its ID (BT-1)."""
+    """ExchangedDocument needs its ID (BT-1), in both XML Schemas of the EN 16931 profile."""
     with pytest.raises(InvoiceWriteError) as refusal:
         write_cii(replace(INVOICE, number=None))
-    (finding,) = [f for f in refusal.value.findings if f.rule == "HAFL-XSD"]
-    assert finding.flag == "fatal"
-    assert finding.text.startswith("CII D16B XML Schema: ")
-    assert "ID" in finding.text
+    findings = [f for f in refusal.value.findings if f.rule == "HAFL-XSD"]
+    assert [f.text.split(":")[0] for f in findings] == [
+        "CII D16B XML Schema",
+        "Factur-X EN 16931 XML Schema",
+    ]
+    assert all(f.flag == "fatal" and "ID" in f.text for f in findings)
 
 
 def test_the_schema_check_reports_each_violation() -> None:
@@ -196,3 +199,62 @@ def test_the_schema_check_reports_each_violation() -> None:
     findings = check_cii(document)
     assert [finding.rule for finding in findings] == ["HAFL-XSD"]
     assert findings[0].location.startswith("/")
+
+
+def test_a_huge_text_is_checked_not_crashed_on() -> None:
+    """A text over libxml2's default limit of 10 MB: a result or InvoiceWriteError, nothing else."""
+    with contextlib.suppress(InvoiceWriteError):
+        write_cii(replace(INVOICE, notes=(Note(text="A" * 11_000_000),)))
+
+
+def test_a_document_validation_refuses_is_refused_after_writing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Validation's own refusals, such as the size limit, become InvoiceWriteError with the
+    document."""
+
+    def refuse(data: bytes) -> list[object]:
+        raise InvoiceReadError("the input is larger than max_size")
+
+    monkeypatch.setattr("haflinger.write.validate", refuse)
+    with pytest.raises(InvoiceWriteError, match="larger than max_size") as refusal:
+        write_cii(INVOICE)
+    assert refusal.value.document is not None
+
+
+def test_bt_111_in_the_invoice_currency_reads_back() -> None:
+    invoice = replace(
+        INVOICE,
+        tax_currency_code="EUR",
+        totals=replace(TOTALS, vat_total_in_tax_currency=TOTALS.vat_total),
+    )
+    assert read_invoice(written(invoice)).invoice == invoice
+
+
+# REQ-004-PRS-F004: Factur-X's XML Schema of the EN 16931 profile
+
+
+def test_en16931_is_checked_against_factur_xs_schema_too() -> None:
+    """ExchangedDocument may hold a name in CII D16B, not in Factur-X's EN 16931 profile."""
+    document = write_cii(INVOICE).replace(
+        b"<ram:ID>123456XX</ram:ID>", b"<ram:ID>123456XX</ram:ID><ram:Name>Rechnung</ram:Name>", 1
+    )
+    assert check_cii(document) == []
+    findings = check_cii(document, factur_x_en16931=True)
+    assert [finding.rule for finding in findings] == ["HAFL-XSD"]
+    assert findings[0].text.startswith("Factur-X EN 16931 XML Schema: ")
+
+
+def test_xrechnung_isnt_checked_against_factur_xs_schema(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[bool] = []
+
+    def check(document: bytes, *, factur_x_en16931: bool = False) -> list[object]:
+        calls.append(factur_x_en16931)
+        return []
+
+    monkeypatch.setattr("haflinger._xsd.check_cii", check)
+    with contextlib.suppress(InvoiceWriteError):
+        write_cii(replace(INVOICE, specification_id=XRECHNUNG))
+    with contextlib.suppress(InvoiceWriteError):
+        write_cii(INVOICE)
+    assert calls == [False, True]

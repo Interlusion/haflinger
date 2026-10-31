@@ -4,7 +4,7 @@
 import re
 from datetime import date
 
-from haflinger._xml import Node, choose_vat_totals
+from haflinger._xml import XML_WHITESPACE, Node, choose_vat_totals
 from haflinger.model import Invoice, InvoiceLine, Note, Party, Totals, VatBreakdown
 
 INVOICE = "urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"
@@ -29,13 +29,15 @@ def specification(root: Node) -> Node | None:
 def read(root: Node, specification_id: str | None, *, credit_note: bool) -> Invoice:
     currency_code = root.text("cbc:DocumentCurrencyCode", "BT-5")
     tax_currency_code = root.text("cbc:TaxCurrencyCode", "BT-6")
-    tax_totals = [
-        (tax_total, amount)
-        for tax_total in root.findall("cac:TaxTotal")
-        if (amount := tax_total.find("cbc:TaxAmount")) is not None
-    ]
+    tax_totals = root.findall("cac:TaxTotal")
     vat_total, vat_total_in_tax_currency = choose_vat_totals(
-        tax_totals, currency_code, tax_currency_code
+        [
+            (tax_total, amount)
+            for tax_total in tax_totals
+            if (amount := tax_total.find("cbc:TaxAmount")) is not None
+        ],
+        currency_code,
+        tax_currency_code,
     )
     line, quantity = (
         ("cac:CreditNoteLine", "cbc:CreditedQuantity")
@@ -59,24 +61,37 @@ def read(root: Node, specification_id: str | None, *, credit_note: bool) -> Invo
         specification_id=specification_id,
         notes=tuple(note for node in root.findall("cbc:Note") if (note := _note(node)) is not None),
         seller=_party(
-            root.find("cac:AccountingSupplierParty/cac:Party"),
+            root.group("cac:AccountingSupplierParty/cac:Party", "BG-4"),
             ("BT-27", "BT-28", "BT-30", "BT-31", "BT-40"),
         ),
         buyer=_party(
-            root.find("cac:AccountingCustomerParty/cac:Party"),
+            root.group("cac:AccountingCustomerParty/cac:Party", "BG-7"),
             ("BT-44", "BT-45", "BT-47", "BT-48", "BT-55"),
         ),
         totals=_totals(
-            root.find("cac:LegalMonetaryTotal"),
+            root.group("cac:LegalMonetaryTotal", "BG-22"),
             vat_total.find("cbc:TaxAmount") if vat_total else None,
             vat_total_in_tax_currency.find("cbc:TaxAmount") if vat_total_in_tax_currency else None,
         ),
-        vat_breakdown=tuple(
-            _vat_breakdown(subtotal)
-            for subtotal in (vat_total.findall("cac:TaxSubtotal") if vat_total else [])
-        ),
+        vat_breakdown=tuple(_vat_breakdown(node) for node in _subtotals(tax_totals, vat_total)),
         lines=tuple(_line(node, quantity) for node in root.findall(line)),
     )
+
+
+def _subtotals(tax_totals: list[Node], vat_total: Node | None) -> list[Node]:
+    """The VAT breakdown: the subtotals of the `cac:TaxTotal` that gives BT-110 or, without one,
+    of the first holding any; those of every other `cac:TaxTotal` are left out with a finding."""
+    source = vat_total or next((t for t in tax_totals if t.find("cac:TaxSubtotal")), None)
+    for tax_total in tax_totals:
+        if source is not None and tax_total.element is source.element:
+            continue
+        for subtotal in tax_total.findall("cac:TaxSubtotal"):
+            if subtotal.holds_value():
+                subtotal.drop(
+                    "BG-23 of a cac:TaxTotal other than the one giving the VAT breakdown"
+                    " is left out"
+                )
+    return [] if source is None else source.findall("cac:TaxSubtotal")
 
 
 def _date(parent: Node, path: str, term: str) -> date | None:
@@ -91,7 +106,7 @@ def _note(node: Node) -> Note | None:
     match = _SUBJECT_CODE.fullmatch(value)
     if match is None:
         return Note(text=value)
-    return Note(subject_code=match[1], text=match[2].strip(" \t\r\n") or None)
+    return Note(subject_code=match[1], text=match[2].strip(XML_WHITESPACE) or None)
 
 
 def _party(party: Node | None, terms: tuple[str, str, str, str, str]) -> Party | None:

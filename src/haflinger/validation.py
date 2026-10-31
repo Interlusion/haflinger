@@ -1,7 +1,8 @@
 """Validation with the official rules, run unchanged with Saxon (REQ-002, ADR-006).
 
-The rule sets and their levels are those of KoSIT's validator configuration: its scenario file
-names the stylesheets for each profile and lowers or raises the levels of some rules.
+The rule sets of EN 16931 and XRechnung, with their levels, are those of KoSIT's validator
+configuration: its scenario file names the stylesheets for each profile and lowers or raises the
+levels of some rules. The Factur-X profiles have FeRD's Schematron, compiled with SchXslt.
 """
 
 from dataclasses import dataclass
@@ -37,6 +38,42 @@ _RULE_SETS: dict[tuple[Document, str], str] = {
     ("ubl-credit-note", _XRECHNUNG): "EN16931 XRechnung (UBL CreditNote)",
     ("ubl-credit-note", _CVD): "EN16931 XRechnung CVD (UBL CreditNote)",
 }
+# REQ-002-PRS-F003: the Factur-X profiles, in CII only, by each BT-24 that names them (the
+# alternative spellings included), with FeRD's Schematron for the profile.
+_FERD = "ferd-zugferd/Schema"
+_FACTUR_X: dict[str, tuple[str, tuple[str, ...]]] = {
+    "Factur-X MINIMUM": (
+        f"{_FERD}/0_Factur-X_1.09.2_MINIMUM/FACTUR-X_MINIMUM.sch",
+        ("urn:factur-x.eu:1p0:minimum", "urn:zugferd.de:2p0:minimum"),
+    ),
+    "Factur-X BASIC WL": (
+        f"{_FERD}/1_Factur-X_1.09.2_BASICWL/FACTUR-X_BASIC-WL.sch",
+        ("urn:factur-x.eu:1p0:basicwl", "urn:zugferd.de:2p0:basicwl"),
+    ),
+    "Factur-X BASIC": (
+        f"{_FERD}/2_Factur-X_1.09.2_BASIC/FACTUR-X_BASIC.sch",
+        (
+            f"{_EN16931}#compliant#urn:factur-x.eu:1p0:basic",
+            f"{_EN16931}#compliant#urn:zugferd.de:2p0:basic",
+            f"{_EN16931}:compliant:factur-x.eu:1p0:basic",
+        ),
+    ),
+    "Factur-X EXTENDED": (
+        f"{_FERD}/4_Factur-X_1.09.2_EXTENDED/FACTUR-X_EXTENDED.sch",
+        (
+            f"{_EN16931}#conformant#urn:factur-x.eu:1p0:extended",
+            f"{_EN16931}#conformant#urn:zugferd.de:2p0:extended",
+            f"{_EN16931}:compliant:factur-x.eu:1p0:extended",
+        ),
+    ),
+}
+_RULE_SETS.update(
+    {
+        ("cii", specification_id): name
+        for name, (_, spellings) in _FACTUR_X.items()
+        for specification_id in spellings
+    }
+)
 _DOCUMENTS: dict[Document, str] = {
     "cii": "a CII invoice",
     "ubl-invoice": "a UBL invoice",
@@ -65,15 +102,26 @@ def validate(data: bytes, *, max_size: int = MAX_SIZE) -> list[Finding]:
         max_size,
         pdf="the input is a PDF; validate the XML that haflinger.pdf.extract_xml gives",
     )
-    findings: list[Finding] = []
-    name = _RULE_SETS.get((opened.document, opened.specification_id or ""))
-    if name is None:
-        name = _RULE_SETS[opened.document, _EN16931]
-        findings.append(_no_profile(opened))
+    name, no_profile = rule_set(opened)
+    findings = [] if no_profile is None else [no_profile]
     scenario = _scenarios()[name]
     for report in _saxon.transform(data, *scenario.stylesheets):
         findings.extend(_findings(parse(report), scenario.levels))
     return findings
+
+
+def rule_set(opened: Opened) -> tuple[str, Finding | None]:
+    """The name of KoSIT's scenario for the invoice (REQ-002-PRS-F003) and, where its profile has
+    none, CEN's rules with the `HAFL-PROFILE` finding (REQ-002-PRS-F004)."""
+    name = _RULE_SETS.get((opened.document, _as_written(opened)))
+    if name is None:
+        return _RULE_SETS[opened.document, _EN16931], _no_profile(opened)
+    return name, None
+
+
+def _as_written(opened: Opened) -> str:
+    """BT-24 exactly as written, as KoSIT's scenarios match it (REQ-002-PRS-F003)."""
+    return "" if opened.specification is None else opened.specification.element.text or ""
 
 
 def _no_profile(opened: Opened) -> Finding:
@@ -85,8 +133,7 @@ def _no_profile(opened: Opened) -> Finding:
     else:
         location = opened.specification.path
         text = (
-            f"BT-24 {opened.specification_id!r} names no profile Haflinger has rules for in"
-            f" {document}"
+            f"BT-24 {_as_written(opened)!r} names no profile Haflinger has rules for in {document}"
         )
     return Finding(
         rule="HAFL-PROFILE",
@@ -118,10 +165,15 @@ def _findings(report: Element, levels: dict[str, Flag]) -> list[Finding]:
 
 @cache
 def _scenarios() -> dict[str, _Scenario]:
-    """KoSIT's scenarios by name: their stylesheets and levels."""
+    """The rule sets by name: KoSIT's scenarios with their stylesheets and levels, and the
+    Factur-X profiles with FeRD's Schematron."""
     n = _SCENARIOS_NAMESPACE
     root = parse((_saxon.ARTEFACTS / _CONFIGURATION / "scenarios.xml").read_bytes())
-    return {
+    factur_x = {
+        name: _Scenario(stylesheets=(schematron,), levels={})
+        for name, (schematron, _) in _FACTUR_X.items()
+    }
+    return factur_x | {
         scenario.findtext(f"{n}name", ""): _Scenario(
             stylesheets=tuple(
                 f"{_CONFIGURATION}/{location.text}"

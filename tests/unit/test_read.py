@@ -422,3 +422,120 @@ def test_a_malformed_due_date_names_bt_9() -> None:
     [finding] = read_invoice(due_dates("2018-11-20")).findings
     assert finding.rule == "HAFL-VALUE"
     assert "BT-9" in finding.text
+
+
+# REQ-003-PRS-F002: the choices the review of 2026-10-31 found open
+
+CII_02 = (STANDARD / "02.01a-INVOICE_uncefact.xml").read_bytes()
+UBL_02 = (STANDARD / "02.01a-INVOICE_ubl.xml").read_bytes()
+SELLER = b"<ram:SellerTradeParty>"
+SUMMATION = b"<ram:SpecifiedTradeSettlementHeaderMonetarySummation>"
+UBL_SUPPLIER = b"<cac:AccountingSupplierParty>"
+
+
+def test_cii_vat_totals_in_one_currency_when_bt_6_equals_bt_5() -> None:
+    data = edit(CII_02, b"<ram:TaxCurrencyCode>GBP<", b"<ram:TaxCurrencyCode>EUR<")
+    data = edit(
+        data,
+        b'<ram:TaxTotalAmount currencyID="GBP">2048.44<',
+        b'<ram:TaxTotalAmount currencyID="EUR">2048.45<',
+    )
+    result = read_invoice(data)
+    assert result.invoice.totals is not None
+    assert result.invoice.totals.vat_total == Decimal("2048.44")
+    assert result.invoice.totals.vat_total_in_tax_currency == Decimal("2048.45")
+    assert result.findings == ()
+
+
+def test_ubl_vat_totals_in_one_currency_when_bt_6_equals_bt_5() -> None:
+    data = edit(UBL_02, b"<cbc:TaxCurrencyCode>GBP<", b"<cbc:TaxCurrencyCode>EUR<")
+    data = edit(
+        data,
+        b'<cbc:TaxAmount currencyID="GBP">2048.44<',
+        b'<cbc:TaxAmount currencyID="EUR">2048.45<',
+    )
+    result = read_invoice(data)
+    assert result.invoice.totals is not None
+    assert result.invoice.totals.vat_total == Decimal("2048.44")
+    assert result.invoice.totals.vat_total_in_tax_currency == Decimal("2048.45")
+    assert len(result.invoice.vat_breakdown) == 2
+    assert result.findings == ()
+
+
+def test_a_group_is_read_from_the_first_element_holding_a_value() -> None:
+    cii = read_invoice(
+        edit(CII, SELLER, b"<ram:SellerTradeParty> </ram:SellerTradeParty>" + SELLER)
+    )
+    empty_ubl = UBL_SUPPLIER + b"<cac:Party/></cac:AccountingSupplierParty>"
+    ubl = read_invoice(edit(UBL, UBL_SUPPLIER, empty_ubl + UBL_SUPPLIER))
+    for result in (cii, ubl):
+        assert result.invoice.seller is not None
+        assert result.invoice.seller.name == "[Seller name]"
+        assert result.findings == ()
+
+
+def test_a_second_group_holding_values_is_dropped_with_a_finding() -> None:
+    second = b"<ram:SellerTradeParty><ram:Name>Example GmbH</ram:Name></ram:SellerTradeParty>"
+    data = edit(CII, b"<ram:BuyerTradeParty>", second + b"<ram:BuyerTradeParty>")
+    data = edit(
+        data,
+        SUMMATION,
+        SUMMATION + b"<ram:GrandTotalAmount>1</ram:GrandTotalAmount>"
+        b"</ram:SpecifiedTradeSettlementHeaderMonetarySummation>" + SUMMATION,
+    )
+    result = read_invoice(data)
+    assert result.invoice.seller is not None
+    assert result.invoice.seller.name == "[Seller name]"
+    assert result.invoice.totals is not None
+    assert result.invoice.totals.total_with_vat == Decimal(1)
+    assert [(f.rule, f.text.split()[0], f.location.rsplit("/", 1)[1]) for f in result.findings] == [
+        ("HAFL-DROPPED", "BG-4", "ram:SellerTradeParty[2]"),
+        ("HAFL-DROPPED", "BG-22", "ram:SpecifiedTradeSettlementHeaderMonetarySummation[2]"),
+    ]
+
+
+def test_ubl_breakdown_without_a_vat_total() -> None:
+    # The total's TaxAmount comes first; its subtotal repeats it.
+    data = UBL.replace(UBL_TAX_AMOUNT, b'<cbc:TaxAmount currencyID="EUR"> </cbc:TaxAmount>', 1)
+    result = read_invoice(data)
+    assert result.invoice.totals is not None
+    assert result.invoice.totals.vat_total is None
+    assert [vat.category_code for vat in result.invoice.vat_breakdown] == ["S"]
+    assert result.findings == ()
+
+
+def test_ubl_breakdown_of_another_tax_total_is_dropped_with_a_finding() -> None:
+    other = (
+        b'<cac:TaxTotal><cbc:TaxAmount currencyID="GBP">1</cbc:TaxAmount><cac:TaxSubtotal>'
+        b'<cbc:TaxableAmount currencyID="GBP">1</cbc:TaxableAmount>'
+        b'<cbc:TaxAmount currencyID="GBP">1</cbc:TaxAmount>'
+        b"<cac:TaxCategory><cbc:ID>S</cbc:ID></cac:TaxCategory>"
+        b"</cac:TaxSubtotal></cac:TaxTotal>"
+    )
+    result = read_invoice(edit(UBL, b"</cac:TaxTotal>", b"</cac:TaxTotal>" + other))
+    assert len(result.invoice.vat_breakdown) == 1
+    assert [(f.rule, f.text.split()[0], f.location.rsplit("/", 1)[1]) for f in result.findings] == [
+        ("HAFL-DROPPED", "BT-110", "cbc:TaxAmount"),
+        ("HAFL-DROPPED", "BG-23", "cac:TaxSubtotal"),
+    ]
+
+
+def test_a_location_indexes_the_step_that_repeats() -> None:
+    registration = (
+        b'<ram:SpecifiedTaxRegistration><ram:ID schemeID="VA">DE 987654321</ram:ID>'
+        b"</ram:SpecifiedTaxRegistration>"
+    )
+    data = edit(
+        CII,
+        b"</ram:SpecifiedTaxRegistration>\r\n            </ram:SellerTradeParty>",
+        b"</ram:SpecifiedTaxRegistration>" + registration + b"</ram:SellerTradeParty>",
+    )
+    [finding] = read_invoice(data).findings
+    assert finding.location.endswith("ram:SellerTradeParty/ram:SpecifiedTaxRegistration[2]/ram:ID")
+
+
+def test_pdf_header_in_xml_text_is_not_a_pdf() -> None:
+    data = edit(
+        CII, b"<rsm:ExchangedDocumentContext>", b"<!-- %PDF-1.7 --><rsm:ExchangedDocumentContext>"
+    )
+    assert read_invoice(data).invoice.number == "123456XX"

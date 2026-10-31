@@ -20,7 +20,7 @@ Vendor the official material beyond KoSIT's test suite that the specs' Definitio
 | [`ZUGFeRD/corpus`](https://github.com/ZUGFeRD/corpus) | 240 files (151 PDFs) from many producers, with `fail/` folders | REQ-002-PRS-F003, REQ-002-PRS-F007, REQ-003-PRS-F003, REQ-003-PRS-F005, REQ-003-PRS-F007, REQ-003-PRS-NF003 | Apache-2.0 |
 | KoSIT [`xrechnung-testsuite`](https://github.com/itplr-kosit/xrechnung-testsuite) | 6 extension cases; technical cases (comprehensive, minimal, CVD) | REQ-002-PRS-F003 (extension); more coverage of REQ-003 | Apache-2.0 |
 | OpenPeppol [`peppol-bis-invoice-3`](https://github.com/OpenPEPPOL/peppol-bis-invoice-3) | Unit tests (`unit-UBL-PEPPOL` 63, `unit-CII-PEPPOL` 47, national rules), examples including credit notes | REQ-003-PRS-F001 (credit note) | to check |
-| FeRD's [ZUGFeRD package](https://www.ferd-net.de/en/downloads/publications) (2.5.2, technically identical to Factur-X 1.09.2, 2026-08-04) | Official samples per profile; the Factur-X rules and XML Schemas per profile | REQ-002-PRS-F003, REQ-004-PRS-F004 | Schemas and Schematron Apache-2.0 by FeRD's [rights of use](https://www.ferd-net.de/en/ueber-uns/ressourcen-1/veroeffentlichungen/disclaimer-and-rights-of-use-zugferd); XSLT and samples not named (REQ-002 open question) |
+| FeRD's [ZUGFeRD package](https://www.ferd-net.de/en/downloads/publications) (2.5.2, technically identical to Factur-X 1.09.2, 2026-08-04) | Official samples per profile; the Factur-X rules and XML Schemas per profile | REQ-002-PRS-F003, REQ-004-PRS-F004 | Schemas and Schematron Apache-2.0 by FeRD's [rights of use](https://www.ferd-net.de/en/ueber-uns/ressourcen-1/veroeffentlichungen/disclaimer-and-rights-of-use-zugferd), vendored since 2026-10-31 (the Schematron compiled by Haflinger); XSLT and samples not named |
 
 **CEN's unit tests** are in VEFA `testSet` format: each `<test>` holds an `<assert>` with the rule IDs expected to succeed (`<success>`) or fail (`<error>`, `<warning>`), and an invoice fragment. A test is met when every expected failure fires and no expected success does. On 2026-10-30, with CEN's stylesheet of the tests' own commit (`b17b269`, rules 1.3.17), all 1,131 were met; the tests of tag `validation-1.3.16` against the 1.3.16 rules bundled in KoSIT's configuration, all 1,131 too; the 1.3.17 tests against the 1.3.16 rules, 1,066 (the misses all in BR-IG and BR-IP, changed in 1.3.17). The tests must therefore come from the release of the rules in use. The runner is now `tests/conformance/test_validate_official.py`: it serialises each fragment with ElementTree and validates it; fragments are constructed test input, so the original-bytes rule ([REQ-002-PRS-F006](../specs/req-002-conformance.md#req-002-prs-f006-the-document-as-received)) doesn't apply to them.
 
@@ -40,7 +40,7 @@ The KoSIT suite's CII and UBL pairs aren't independent (made with phax's convert
 
 ## Open Questions
 
-- The licences of Peppol's test files and FeRD's samples.
+- The licences of Peppol's test files and FeRD's samples. Until FeRD's samples may be vendored, their tests read the maintainer's copy of the package (`HAFLINGER_FERD_PACKAGE`, [development guide](../guides/development.md#tests)).
 - FeRD's package is downloaded through a form (name, e-mail, consent to the rights of use): the maintainer downloads it; the provenance README records the version and the archive's SHA-256.
 - Does the selection of the corpus need its own README per subfolder, or one with a table of the chosen files?
 
