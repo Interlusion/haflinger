@@ -34,7 +34,7 @@ Vendor the official material beyond KoSIT's test suite that the specs' Definitio
 
 The two large Peppol invoices (25.7 MB, 61.1 MB) stay out; the benchmarks use a local clone.
 
-**A PDF/A test file** for REQ-004-PRS-F007, with a licence that allows vendoring; none is chosen yet.
+**A PDF/A test file** for REQ-004-PRS-F007: since 2026-10-31, a one-page PDF/A-2b file of veraPDF's test corpus (CC BY 4.0), in `tests/data/verapdf-corpus/`.
 
 The KoSIT suite's CII and UBL pairs aren't independent (made with phax's converter, aligned by hand), which is one more reason for material from other producers.
 
