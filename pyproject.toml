@@ -12,8 +12,15 @@ dependencies = [
     "saxonche>=13.1.1",
 ]
 
+[project.optional-dependencies]
+pdf = [
+    "factur-x>=7.9",
+    "pypdf>=6.21.4",
+]
+
 [dependency-groups]
 test = [
+    "haflinger[pdf]",
     "pytest>=9.1.1",
 ]
 dev = [
