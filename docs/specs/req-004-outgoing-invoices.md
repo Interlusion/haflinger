@@ -112,7 +112,7 @@ The personas are [REQ-001's](req-001-core.md#personas).
 - **Missing terms** (`None`, empty tuple) are left out, with any element that would hold nothing but them.
 - **VAT totals**: BT-110 as `ram:TaxTotalAmount` with `currencyID` BT-5; BT-111 as a second `ram:TaxTotalAmount` with `currencyID` BT-6.
 - **Numbers** in plain notation with the digits the model holds: `Decimal("10.50")` stays `10.50`; `Decimal("1E+2")` is written `100` (the exception of [REQ-001-URS-NF001](req-001-core.md#req-001-urs-nf001-values-exactly-as-they-are)).
-- `ram:ApplicableHeaderTradeDelivery` is written even when empty, as the XML Schema requires it.
+- The elements the XML Schema requires and that need no content (`ram:ApplicableHeaderTradeAgreement`, `ram:ApplicableHeaderTradeDelivery` and `ram:ApplicableHeaderTradeSettlement`; in a line, `ram:AssociatedDocumentLineDocument` and `ram:SpecifiedLineTradeSettlement`) are written even when empty.
 
 **Related URS**: REQ-004-URS-F001
 

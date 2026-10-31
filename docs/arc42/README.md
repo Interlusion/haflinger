@@ -127,12 +127,12 @@ flowchart TB
 
 | Block | Responsibility | State |
 | :- | :- | :- |
-| entry points (`read_invoice`, `write_cii`, `validate`) | Check size and safety, detect the syntax from the root element, dispatch, hand back a model with findings, a document, findings, or a refusal | `read_invoice` and `validate` built (XML; PDFs later); `write_cii` spike |
+| entry points (`read_invoice`, `write_cii`, `validate`) | Check size and safety, detect the syntax from the root element, dispatch, hand back a model with findings, a document, findings, or a refusal | Built (XML; PDFs later) |
 | `model` | The business terms as frozen dataclasses with `Decimal` and `date`, each field mapped to its BT or BG ID by REQ-001; equal invoices compare equal whatever their syntax | Built, 45 terms in 6 groups |
 | `_xml` | Parse outside XML with `defusedxml`; read elements by path, with `HAFL-VALUE` and `HAFL-DROPPED` findings that name the business term | Built |
-| `cii`, `ubl` | The syntax bindings: each business term read from the element EN 16931-3-3 (CII) or -3-2 (UBL) assigns it, CII also written | Reading built; writing spike |
+| `cii`, `ubl` | The syntax bindings: each business term read from the element EN 16931-3-3 (CII) or -3-2 (UBL) assigns it, CII also written | Built |
 | `validate` | Choose the rule set, run it, turn the SVRL report into findings (rule, flag, location, text) | Built: KoSIT's scenarios with their levels (EN 16931, XRechnung 3.0, its extension, CVD); the Factur-X rules wait for FeRD's licence answer |
-| XSD check | Check a written invoice against the CII and Factur-X XML Schemas | Planned; library open ([ADR-006](adr/ADR-006-validation-with-official-rules.md)) |
+| XSD check | Check a written invoice against the CII and Factur-X XML Schemas | Built for CII D16B, with lxml ([ADR-006](adr/ADR-006-validation-with-official-rules.md)); Factur-X's schemas wait for FeRD's licence answer |
 | `kosit` | Read through KoSIT's stylesheet into the same model; the tests' independent second reader | Built; agrees with `read_invoice` on the KoSIT suite and CEN's UBL credit note |
 | `_saxon` | Compile each stylesheet once per process, run it on the original bytes | Built; imports `saxonche` on first use |
 | `artefacts` | KoSIT's visualisation stylesheets (the reading stylesheet) and validator stylesheets, unchanged, with provenance READMEs | Vendored: KoSIT's visualisation and validator configuration; the Factur-X rules and XML Schemas to come |
@@ -302,9 +302,8 @@ Speed serves conformance: every invoice, received or sent, is validated.
 | -- | :- | :- | :- |
 | 1 | Is Saxon's size acceptable in a bench, and does any target lack a wheel ([ADR-006](adr/ADR-006-validation-with-official-rules.md))? | Maintainer, [backlog](../backlog/backlog.md) | §2, §7 |
 | 2 | Saxon's licence for SaxonC-HE | Saxonica's licence terms, [backlog](../backlog/backlog.md) | [ADR-009](adr/ADR-009-licences-and-name.md) |
-| 3 | The XSD library: lxml or `xmlschema`? | [ADR-006](adr/ADR-006-validation-with-official-rules.md), when REQ-004-PRS-F004 is built | §5 |
-| 4 | Outdated versions and moved code lists | [REQ-002's open questions](../specs/req-002-conformance.md#open-questions) | §8 |
-| 5 | The Python version of Frappe/ERPNext v16 benches against `requires-python >= 3.14` | [backlog](../backlog/backlog.md), [ADR-002](adr/ADR-002-toolchain.md) trigger 2 | §2 |
+| 3 | Outdated versions and moved code lists | [REQ-002's open questions](../specs/req-002-conformance.md#open-questions) | §8 |
+| 4 | The Python version of Frappe/ERPNext v16 benches against `requires-python >= 3.14` | [backlog](../backlog/backlog.md), [ADR-002](adr/ADR-002-toolchain.md) trigger 2 | §2 |
 
 ## 12. Glossary
 

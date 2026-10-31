@@ -19,9 +19,10 @@ Every runtime dependency has to coexist with the versions its host pins; in a Fr
 - **Runtime dependencies, each for one job**:
   - `defusedxml` with the standard library's `ElementTree`, for parsing outside XML and for writing CII;
   - `saxonche`, for the official stylesheets ([ADR-006](ADR-006-validation-with-official-rules.md));
+  - `lxml`, only for checking written invoices against their XML Schema ([ADR-006](ADR-006-validation-with-official-rules.md)); outside XML stays with `defusedxml`;
   - in the optional extra `pdf`: `factur-x`, for ZUGFeRD PDFs ([ADR-001](ADR-001-library-and-app.md)).
 - **The model as frozen dataclasses** with `Decimal` and `date`, not pydantic.
-- **Test-only tools stay in the test group**, for example `lxml` for the XML Schema checks until the XSD library is chosen; [ADR-006](ADR-006-validation-with-official-rules.md) owns that choice.
+- **Test-only tools stay in the test group**.
 - **No container image**: the library is published as a package.
 - Official artefacts and test files: [ADR-008](ADR-008-vendoring-official-files.md).
 
@@ -29,7 +30,7 @@ Every runtime dependency has to coexist with the versions its host pins; in a Fr
 
 ### Alternative 1: lxml for all XML
 
-**Rejected because**: a compiled library with its own parser settings to get right for hostile input, where `defusedxml` gives safe defaults. lxml comes in with the `pdf` extra and may come for the XSD check; even then, outside XML is parsed with `defusedxml` first.
+**Rejected because**: a compiled library with its own parser settings to get right for hostile input, where `defusedxml` gives safe defaults. lxml came for the XSD check, and comes with the `pdf` extra too; outside XML is still parsed with `defusedxml`.
 
 ### Alternative 2: pydantic models
 
@@ -48,19 +49,19 @@ Every runtime dependency has to coexist with the versions its host pins; in a Fr
 ### Positive
 
 - One set of commands and checks, for people, agents and CI.
-- The plain library has two runtime dependencies.
+- The plain library has three runtime dependencies.
 
 ### Negative
 
 - Saxon is large and native ([ADR-006](ADR-006-validation-with-official-rules.md)).
 - Hand-written XML access instead of generated bindings.
-- Two XML stacks once lxml is needed beside ElementTree.
+- Two XML stacks: lxml checks written invoices against the XML Schema, beside ElementTree for everything else. Weighed when lxml arrived (2026-10-31): kept, because lxml there only reads documents Haflinger wrote itself.
 
 ## Reconsideration Triggers
 
 1. A dependency's version range clashes with what Frappe/ERPNext v16 pins.
 2. The Python version of Frappe/ERPNext v16 benches is below the lower bound.
-3. lxml becomes a runtime dependency of the plain library; then weigh one XML stack.
+3. lxml is needed for more than the XML Schema check of written invoices; then weigh one XML stack.
 
 ## Compliance
 

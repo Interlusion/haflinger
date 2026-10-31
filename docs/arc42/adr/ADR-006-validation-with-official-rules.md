@@ -29,7 +29,7 @@ Written invoices also need their XML Schema checked; the rules assume a schema-v
 - **Saxon gets the original bytes**, after `defusedxml` has rejected DTDs and entities in them; never a re-serialised tree.
 - **Findings** carry rule ID, flag, location and text; `fatal` and `error` make an invoice invalid.
 - **Each stylesheet is compiled once per process** and reused.
-- **The XML Schema check** runs before the rules for invoices Haflinger writes. This ADR owns the choice of its library, still open: `lxml` (a compiled library, already a dependency of the `pdf` extra) or `xmlschema` (pure Python). The tests use `lxml`; the choice is made when REQ-004-PRS-F004 is built, and recorded here.
+- **The XML Schema check** runs beside the rules for invoices Haflinger writes, with `lxml` (decided 2026-10-31, when REQ-004-PRS-F004 was built). Checking the 25.7 MB Peppol invoice written as CII took 0.13 s with `lxml` 6.1.3 and 10 s with `xmlschema` (pure Python); `lxml` is BSD-3-Clause, has wheels for every platform `saxonche` has and for musl, and comes with the `pdf` extra anyway. It reads only documents Haflinger wrote.
 
 ## Alternatives Considered
 
