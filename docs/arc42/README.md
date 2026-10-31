@@ -133,9 +133,9 @@ flowchart TB
 | `cii`, `ubl` | The syntax bindings: each business term read from the element EN 16931-3-3 (CII) or -3-2 (UBL) assigns it, CII also written | Reading built; writing spike |
 | `validate` | Choose the rule set, run it, turn the SVRL report into findings (rule, flag, location, text) | Spike: EN 16931 and XRechnung rules only; no Factur-X rules, no KoSIT levels |
 | XSD check | Check a written invoice against the CII and Factur-X XML Schemas | Planned; library open ([ADR-006](adr/ADR-006-validation-with-official-rules.md)) |
-| `kosit` | Read through KoSIT's stylesheet into the same model; the tests' independent second reader | Spike |
-| `_saxon` | Compile each stylesheet once per process, run it on the original bytes | Spike |
-| `artefacts` | KoSIT's visualisation stylesheets (the reading stylesheet) and validator stylesheets, unchanged, with provenance READMEs | Spike; KoSIT's scenario file and the Factur-X rules and XML Schemas to come |
+| `kosit` | Read through KoSIT's stylesheet into the same model; the tests' independent second reader | Built; agrees with `read_invoice` on the KoSIT suite and CEN's UBL credit note |
+| `_saxon` | Compile each stylesheet once per process, run it on the original bytes | Built for `kosit` |
+| `artefacts` | KoSIT's visualisation stylesheets (the reading stylesheet) and validator stylesheets, unchanged, with provenance READMEs | Vendored: KoSIT's visualisation and validator configuration; the Factur-X rules and XML Schemas to come |
 | `pdf` | Extract the XML from a ZUGFeRD PDF without parsing it; embed checked XML into a PDF/A file the caller rendered (PDF/A-3, XMP), via `factur-x` | Planned, extra `pdf` |
 
 Which spec owns which block: the placement map in the [specs index](../specs/README.md).
