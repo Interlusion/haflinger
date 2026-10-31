@@ -7,6 +7,7 @@ model from that XML by business term ID alone; it knows nothing of CII or UBL.
 """
 
 import re
+from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 
@@ -39,6 +40,29 @@ def read_invoice(data: bytes) -> ReadResult:
     (semantic,) = _saxon.transform(data, stylesheet)
     reading = Reading(parse(semantic), {"xr": XR}, "xr:invoice")
     return ReadResult(invoice=_invoice(reading.root, syntax), findings=reading.findings())
+
+
+# REQ-003-PRS-F005: the limits of KoSIT's stylesheet, to apply to its model before comparing it
+# with Haflinger's.
+#
+# UBL has no element for the note's subject code (BT-21). KoSIT's stylesheet leaves the `#XXX#`
+# that XRechnung and Peppol put at the start of the note's text (BT-22) in the text, while
+# REQ-003-PRS-F002 reads it as BT-21. No report needed: the prefix is a convention, not part of
+# EN 16931-3-2.
+_SUBJECT_CODE = re.compile(r"#([A-Z]{3})#(.*)", re.DOTALL)
+
+
+def with_subject_codes(invoice: Invoice) -> Invoice:
+    """The model KoSIT's stylesheet gives, with each UBL note's `#XXX#` read as BT-21."""
+    if invoice.syntax != "ubl":
+        return invoice
+    notes: list[Note] = []
+    for note in invoice.notes:
+        match = _SUBJECT_CODE.fullmatch(note.text or "")
+        if note.subject_code is None and match is not None:
+            note = Note(subject_code=match[1], text=match[2].strip(" \t\r\n") or None)
+        notes.append(note)
+    return replace(invoice, notes=tuple(notes))
 
 
 def _term(*terms: str) -> str:
