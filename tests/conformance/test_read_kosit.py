@@ -46,6 +46,29 @@ KNOWN_DIFFERENCES: dict[str, dict[str, tuple[str, str, str]]] = {
     "standard/03.01a-INVOICE": {
         "buyer.trading_name": ("BT-45", "only the UBL file has one", NOT_YET_REPORTED),
     },
+    **{
+        f"technical-cases/cius/01.0{n}_comprehensive_test": {
+            "buyer.name": (
+                "BT-44",
+                "the UBL file has the trading name's placeholder as the name",
+                NOT_YET_REPORTED,
+            ),
+            "buyer.trading_name": (
+                "BT-45",
+                "the UBL file has the name's placeholder as the trading name",
+                NOT_YET_REPORTED,
+            ),
+        }
+        for n in range(1, 5)
+    },
+    "technical-cases/cius/01.05_minimal_test": {
+        "totals.vat_total": (
+            "BT-110",
+            "absent in CII, 0 in UBL",
+            "none: the term is optional, and UBL's cac:TaxTotal needs an amount where CII may"
+            " leave it out",
+        ),
+    },
 }
 
 # An optional sum one file gives as zero and the other leaves out counts as agreeing.
