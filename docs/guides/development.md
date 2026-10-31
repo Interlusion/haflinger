@@ -24,6 +24,7 @@ docs/                     specs, architecture, ADRs, guides, backlog
 AGENTS.md                 rules for coding agents; CLAUDE.md imports it
 pyproject.toml, uv.lock, .python-version
 .gitattributes            keeps the vendored files byte for byte
+.github/                  CI checks and Dependabot
 ```
 
 Why this toolchain: [ADR-002](../arc42/adr/ADR-002-toolchain.md).
@@ -39,6 +40,8 @@ uv run ruff check && uv run ruff format --check
 uv run basedpyright
 uv run mdformat --check .           # Markdown; without --check it formats
 ```
+
+CI runs the same checks on every pull request and on `main` (`.github/workflows/checks.yml`), with its Actions pinned to a commit; Dependabot proposes updates to them and to `uv.lock` weekly.
 
 ## Tests
 

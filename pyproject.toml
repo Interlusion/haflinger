@@ -1,7 +1,7 @@
 [project]
 name = "haflinger"
 version = "0.0.0"
-description = "E-invoicing for ERPNext: ZUGFeRD, XRechnung and Peppol on one EN 16931 model"
+description = "E-invoicing in Python: ZUGFeRD, XRechnung and Peppol on one model of the EN 16931 business terms"
 readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
