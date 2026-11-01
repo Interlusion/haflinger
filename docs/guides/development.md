@@ -2,7 +2,7 @@
 
 | Meta | Value |
 | :- | :- |
-| **Date** | 2026-10-31 |
+| **Date** | 2026-11-01 |
 | **Author** | loxy (drafted with Claude) |
 | **Status** | Current |
 
@@ -43,7 +43,7 @@ uv run basedpyright
 uv run mdformat --check .           # Markdown; without --check it formats
 ```
 
-CI runs the same checks on every pull request and on `main` (`.github/workflows/checks.yml`), and the tests once more with the versions of shared dependencies that Frappe/ERPNext v16 pin (for now `pypdf==6.19.0`), so that Haflinger stays installable into a bench ([ADR-002](../arc42/adr/ADR-002-toolchain.md)); its Actions are pinned to a commit; Dependabot proposes updates to them and to `uv.lock` weekly, once a new version is 14 days old (Actions) or 7 days old (Python packages); security updates come at once (`.github/dependabot.yml`).
+CI runs the same checks on every pull request and on `main` (`.github/workflows/checks.yml`), and the tests once more with the versions of shared dependencies that Frappe/ERPNext v16 pin (for now `pypdf==6.19.0` and `requests~=2.33.0`, which `factur-x` imports), so that Haflinger stays installable into a bench ([ADR-002](../arc42/adr/ADR-002-toolchain.md)); its Actions are pinned to a commit; Dependabot proposes updates to them and to `uv.lock` weekly, once a new version is 14 days old (Actions) or 7 days old (Python packages); security updates come at once (`.github/dependabot.yml`).
 
 ## Tests
 
@@ -52,7 +52,7 @@ CI runs the same checks on every pull request and on `main` (`.github/workflows/
 
 Tests come before code where a spec's Definition of Done describes the behaviour ([AGENTS.md](../../AGENTS.md)).
 
-**FeRD's samples** aren't vendored, as no terms name them ([ITEM-002](../backlog/item-002-official-test-material.md)). Their tests (`tests/conformance/test_ferd_samples.py`) read the unpacked ZUGFeRD package from the path in `HAFLINGER_FERD_PACKAGE`, and are skipped without it.
+**FeRD's samples** aren't vendored, as no terms name them ([ITEM-002](../backlog/item-002-official-test-material.md)). Their tests (`tests/conformance/test_ferd_samples.py`) read the unpacked ZUGFeRD package from the path in `HAFLINGER_FERD_PACKAGE`, and are skipped without it. The package's XRechnung samples (`Examples/5. XRECHNUNG`) aren't among them: each fails `CII-SR-465`, which KoSIT's scenarios raise to error, so by the official verdict they are invalid.
 
 **veraPDF**, the reference PDF/A validator, checks the PDFs `embed` writes where it is installed ([REQ-004-PRS-F007](../specs/req-004-outgoing-invoices.md#req-004-prs-f007-zugferd-pdf)); otherwise its test is skipped. Install it from [verapdf.org](https://verapdf.org/software/) (it needs Java) and put `verapdf` on the `PATH`, or name the program in `HAFLINGER_VERAPDF`.
 
@@ -73,7 +73,7 @@ Where the official files come from, where their releases appear, and where to re
 
 | Source | What Haflinger takes | New releases | Licence |
 | :- | :- | :- | :- |
-| KoSIT [`validator-configuration-xrechnung`](https://github.com/itplr-kosit/validator-configuration-xrechnung) | The scenario file, KoSIT's XRechnung rules with CEN's EN 16931 rules, the CII D16B XML Schema | [releases.atom](https://github.com/itplr-kosit/validator-configuration-xrechnung/releases.atom) | Apache-2.0; CEN's rules EUPL-1.2; the schema © UN/CEFACT, unchanged with its notice |
+| KoSIT [`validator-configuration-xrechnung`](https://github.com/itplr-kosit/validator-configuration-xrechnung) | The scenario file, KoSIT's XRechnung rules with CEN's EN 16931 rules, the CII D16B and UBL 2.1 XML Schemas | [releases.atom](https://github.com/itplr-kosit/validator-configuration-xrechnung/releases.atom) | Apache-2.0; CEN's rules EUPL-1.2; the CII schema © UN/CEFACT, unchanged with its notice; the UBL schemas © OASIS, W3C and UN/CEFACT, unchanged with their notices, two XAdES schemas without one ([README](../../src/haflinger/artefacts/kosit-validator-xrechnung/README.md)) |
 | KoSIT [`xrechnung-visualization`](https://github.com/itplr-kosit/xrechnung-visualization) | The reading stylesheets | [releases.atom](https://github.com/itplr-kosit/xrechnung-visualization/releases.atom) | Apache-2.0 |
 | KoSIT [`xrechnung-testsuite`](https://github.com/itplr-kosit/xrechnung-testsuite) | The business cases, CII and UBL | [releases.atom](https://github.com/itplr-kosit/xrechnung-testsuite/releases.atom) | Apache-2.0 |
 | CEN [`eInvoicing-EN16931`](https://github.com/ConnectingEurope/eInvoicing-EN16931) | The unit tests of the EN 16931 rules (the rules themselves through KoSIT) | [releases.atom](https://github.com/ConnectingEurope/eInvoicing-EN16931/releases.atom) | EUPL-1.2 |

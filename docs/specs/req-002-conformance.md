@@ -3,7 +3,7 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Draft |
-| **Version** | 0.3 |
+| **Version** | 0.4 |
 | **Date** | 2026-11-01 |
 | **Author** | loxy (drafted with Claude) |
 
@@ -83,7 +83,8 @@ The personas are [REQ-001's](req-001-core.md#personas).
 
 **Description**: `haflinger.validate(data: bytes, *, max_size: int = …) -> list[Finding]` SHALL validate a CII or UBL invoice with the rule set of REQ-002-PRS-F003 and return its findings. It SHALL raise `haflinger.InvoiceReadError`, and no other exception, with a reason that names the problem, when the input:
 
-- is not well-formed XML; for a PDF the reason says to extract its XML first (REQ-003-PRS-F007);
+- isn't `bytes` (the reason names its type);
+- is not well-formed XML, which includes a byte order mark that contradicts the encoding declaration; for a PDF the reason says to extract its XML first (REQ-003-PRS-F007);
 - contains a document type or entity declaration (REQ-001-PRS-NF001);
 - has a root element that is neither a CII invoice nor a UBL invoice or credit note;
 - follows an edition other than 2017 (REQ-002-PRS-F009);
@@ -92,11 +93,11 @@ The personas are [REQ-001's](req-001-core.md#personas).
 - holds a number of more than 1,000 digits, whose arithmetic in the rules grows with the square of its length (minutes for one of a megabyte); real amounts have fewer than 20;
 - holds a telephone number (`ram:CompleteNumber`, `cbc:Telephone`) of more than 100 characters: XRechnung's `BR-DE-27` checks it with a pattern whose time grows with the square of the length (36 s for 8,000 characters); real numbers have fewer than 40.
 
-A value the rules find wrong is a finding, not a refusal.
+A value the rules find wrong is a finding, not a refusal, and so is a failure of the rules themselves on an invoice that passed the XML Schema (`HAFL-RULES`, REQ-002-PRS-F010).
 
 **Related URS**: REQ-002-URS-F001
 
-**Definition of Done**: a test validates a CII and a UBL file of the KoSIT suite; one test per refusal, those for empty elements, digits and telephone numbers also showing that the limit itself is validated and that far beyond it is refused within a second; the rest is covered by REQ-002-PRS-F006.
+**Definition of Done**: a test validates a CII and a UBL file of the KoSIT suite; one test per refusal (a `str` and a `memoryview` for the type, a UTF-8 byte order mark with `encoding="ISO-8859-1"`), those for empty elements, digits and telephone numbers also showing that the limit itself is validated and that far beyond it is refused within a second; the rest is covered by REQ-002-PRS-F006.
 
 #### REQ-002-PRS-F002: Findings
 
@@ -177,14 +178,6 @@ A value the rules find wrong is a finding, not a refusal.
 
 **Definition of Done**: a CII and a UBL file with BT-24 `urn:cen.eu:en16931:2026` are refused by `validate`, naming 2026; the refusals of reading and writing are tested in REQ-003 and REQ-004.
 
-#### REQ-002-PRS-F011: XML Schema first
-
-**Description**: `validate` SHALL check the invoice against the XML Schema of its rule set before the rules, as KoSIT's validator does: for KoSIT's scenarios the schema the scenario names (CII D16B, UBL 2.1 Invoice or CreditNote), for a Factur-X profile FeRD's XML Schema of the profile. Each violation SHALL be a `HAFL-XSD` finding (REQ-002-PRS-F010), and the rules SHALL run only on an invoice that passes the schema.
-
-**Related URS**: REQ-002-URS-F001 | **Rationale**: The rules assume a schema-valid document: on one that isn't, a stylesheet can fail (an amount written `1,00`) or miss what the schema would report (an unknown element, a date that doesn't exist).
-
-**Definition of Done**: a CII and a UBL file of the KoSIT suite with an unknown element, and one with an amount written `1,00`, each get `HAFL-XSD` findings and no finding of a rule; a Factur-X copy that violates its profile's schema gets `HAFL-XSD` (tests).
-
 #### REQ-002-PRS-F010: Haflinger's own findings
 
 **Description**: Besides the findings of the official rules, Haflinger SHALL report only these findings of its own, each a `Finding` (REQ-002-PRS-F002) whose rule ID starts with `HAFL-`:
@@ -193,12 +186,21 @@ A value the rules find wrong is a finding, not a refusal.
 | :- | :- | :- | :- | :- |
 | `HAFL-PROFILE` | `warning` | `validate` | BT-24 names no profile for the invoice's syntax, or is missing (REQ-002-PRS-F004) | BT-24's element, or the root; the text names the BT-24 value and says that the profile's own rules weren't run |
 | `HAFL-XSD` | `fatal` | `validate`, `write_cii`, `haflinger.pdf.embed` | the document violates an XML Schema it must pass, or can't be parsed for the check (REQ-002-PRS-F011, REQ-004-PRS-F004) | as the schema check reports it; the text names the schema |
+| `HAFL-RULES` | `fatal` | `validate`, `write_cii`, `haflinger.pdf.embed` | the official rules fail on an invoice that passed the XML Schema, as when a value a stylesheet expects once occurs twice; KoSIT's validator reports this as a processing error and rejects the invoice (REQ-002-PRS-F001) | the root element; the text names the rule set and the processor's message |
 | `HAFL-VALUE` | `error` | `read_invoice` | a value isn't written as its business term requires, and is read as missing (REQ-003-PRS-F002) | the element; the text names the business term and the value |
 | `HAFL-DROPPED` | `warning` | `read_invoice` | a value the model has no place for: a repeat of a term the model holds once, a VAT total in a third currency (REQ-003-PRS-F002) | the element left out; the text names the business term |
 
 **Related URS**: REQ-002-URS-F001, REQ-002-URS-F003
 
 **Definition of Done**: each finding is tested in the requirement the table names; inspection that no other `HAFL-` rule exists.
+
+#### REQ-002-PRS-F011: XML Schema first
+
+**Description**: `validate` SHALL check the invoice against the XML Schema of its rule set before the rules, as KoSIT's validator does: for KoSIT's scenarios the schema the scenario names (CII D16B, UBL 2.1 Invoice or CreditNote), for a Factur-X profile FeRD's XML Schema of the profile. The check SHALL read the text Saxon gets, decoded once by the byte order mark or the declared encoding, so that the schema, the rules and the reader see the same characters. Each violation SHALL be a `HAFL-XSD` finding (REQ-002-PRS-F010), and the rules SHALL run only on an invoice that passes the schema.
+
+**Related URS**: REQ-002-URS-F001 | **Rationale**: The rules assume a schema-valid document: on one that isn't, a stylesheet can fail (an amount written `1,00`) or miss what the schema would report (an unknown element, a date that doesn't exist).
+
+**Definition of Done**: a CII and a UBL file of the KoSIT suite with an unknown element, and one with an amount written `1,00`, each get `HAFL-XSD` findings and no finding of a rule; a Factur-X copy that violates its profile's schema gets `HAFL-XSD`; a copy of a KoSIT file declaring an encoding that Python knows and libxml2 doesn't (`mac-roman`) gets no `HAFL-XSD`; a copy nested 50,000 elements deep gets `HAFL-XSD`, not a crash (tests).
 
 ## PRS — Non-Functional
 
@@ -233,7 +235,7 @@ A value the rules find wrong is a finding, not a refusal.
 - Each profile of the rule-set table runs its own rules, under each of its spellings; other profiles get the EN 16931 rules and a `HAFL-PROFILE` warning.
 - KoSIT's rule levels apply; the rules judge the document as received.
 - Only EN 16931-1:2017 is handled; other editions are refused.
-- Haflinger's own findings are the four of REQ-002-PRS-F010.
+- Haflinger's own findings are the five of REQ-002-PRS-F010.
 - Validation works offline and within the speed limits.
 - Every artefact and test file set carries its provenance.
 
@@ -242,7 +244,7 @@ A value the rules find wrong is a finding, not a refusal.
 - XRechnung 3.0 is the only XRechnung version the authorities accept today; earlier versions need no rules of their own.
 - The Factur-X rules and XML Schemas for MINIMUM, BASIC WL, BASIC, EN 16931 and EXTENDED come from FeRD's ZUGFeRD package, whose rights of use put the schemas and Schematron under Apache-2.0, so that Haflinger can vendor them under [ADR-008](../arc42/adr/ADR-008-vendoring-official-files.md) ([ITEM-002](../backlog/item-002-official-test-material.md)). The rights of use don't name the XSLT the package also holds; Haflinger compiles the Schematron itself ([ADR-006](../arc42/adr/ADR-006-validation-with-official-rules.md)).
 - KoSIT's scenario file, which sets the rule levels of REQ-002-PRS-F005, is vendored with KoSIT's stylesheets.
-- The library doesn't bound the time validation takes. The official rules compute the location of each finding in a way that grows with the square of the number of sibling elements: a crafted invoice of a few hundred kB can take minutes, and Saxon holds the Python process meanwhile. `validate` refuses the cheapest such invoice, one of thousands of empty elements (REQ-002-PRS-F001); and two others as cheap: a number of hundreds of thousands of digits, and a telephone number of thousands of characters. What remains is thousands of invoice lines that each fail a rule (15 s for 10,000 lines in 3.2 MB), which looks like a large real invoice. A caller that validates invoices from outside runs `validate` where a time limit applies, such as a background job with a timeout ([ITEM-003](../backlog/item-003-erpnext-app.md)); a time limit inside the library is [ITEM-007](../backlog/item-007-validation-time-limit.md).
+- The library doesn't bound the time validation takes, and on hostile input it can take minutes. Some official rules grow with the square of what they count: the location of each finding is computed by counting its preceding siblings, and CEN's `UBL-SR-44` compares every `cbc:PaymentID` with every one before it. Saxon holds the Python process while it runs. `validate` refuses the cheapest shapes before the rules (REQ-002-PRS-F001): thousands of empty elements, a number of hundreds of thousands of digits, a telephone number of thousands of characters. Others remain, and they needn't look like real invoices: 64,000 distinct `cbc:PaymentID` in 2 MB take 87 s, 32,000 notes that each fail `BR-CL-08` in 2 MB take 22 s, and 10,000 invoice lines that each fail a rule in 3.2 MB take 15 s. No list of refusals can be complete. A caller that validates invoices from outside runs `validate` where a time limit applies, such as a background job with a timeout ([ITEM-003](../backlog/item-003-erpnext-app.md)); a time limit inside the library is [ITEM-007](../backlog/item-007-validation-time-limit.md).
 
 ## Open Questions
 

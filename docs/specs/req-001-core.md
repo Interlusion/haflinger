@@ -3,7 +3,7 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Draft |
-| **Version** | 0.4 |
+| **Version** | 0.5 |
 | **Date** | 2026-11-01 |
 | **Author** | loxy (drafted with Claude) |
 
@@ -107,6 +107,7 @@ General vocabulary (CIUS, Leitweg-ID, Peppol …): the [E-Invoicing 101 glossary
 
 - **Surrounding whitespace on reading** (REQ-003): whitespace around a value is removed, and an element empty after that counts as missing.
 - **Exponent notation on writing** (REQ-004): a `Decimal` in exponent notation, which only a model built in code can hold, is written in plain notation with the same value.
+- **Notation of numbers on reading** (REQ-003): a number keeps its value and its decimal places, not the characters that carry neither: a `+` sign, leading zeros, a decimal point without digits after it, a missing zero before it. `+0336.90` reads as `336.90`, `336.` as `336` and `.5` as `0.5`.
 
 #### REQ-001-URS-NF002: Refuse or report, never guess
 
@@ -204,11 +205,11 @@ General vocabulary (CIUS, Leitweg-ID, Peppol …): the [E-Invoicing 101 glossary
 
 #### REQ-001-PRS-F004: Exact values
 
-**Description**: Amounts, quantities, prices and rates SHALL be finite `decimal.Decimal` values with the digits as written; dates SHALL be `datetime.date`. A number SHALL be taken from the XML only when it is written as the term Value as written defines.
+**Description**: Amounts, quantities, prices and rates SHALL be finite `decimal.Decimal` values with the digits as written, apart from the notation REQ-001-URS-NF001 excepts; dates SHALL be `datetime.date`. A number SHALL be taken from the XML only when it is written as the term Value as written defines.
 
 **Related URS**: REQ-001-URS-NF001
 
-**Definition of Done**: an amount written with more decimal places than its currency has reads with the same digits (compared as strings, not by equality) and is written back with them (tests, REQ-003 and REQ-004); `1_000`, `1E+2`, `١٢` and `1 000` aren't taken as numbers (test, REQ-003).
+**Definition of Done**: an amount written with more decimal places than its currency has reads with the same digits (compared as strings, not by equality) and is written back with them (tests, REQ-003 and REQ-004); `1_000`, `1E+2`, `١٢` and `1 000` aren't taken as numbers, and `+0336.90` reads as `336.90` (tests, REQ-003).
 
 #### REQ-001-PRS-F005: Refusals and findings name their subject
 

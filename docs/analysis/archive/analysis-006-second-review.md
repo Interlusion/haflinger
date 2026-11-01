@@ -4,7 +4,7 @@
 | :- | :- |
 | **Date** | 2026-11-01 |
 | **Author** | loxy (drafted with Claude) |
-| **Status** | Draft: most findings fixed on branch `fix/review-2`; the open ones are listed at the end |
+| **Status** | Done: its fixes merged with PR #18; its open items moved to the backlog; archived on 2026-11-01 |
 | **Audience** | Maintainer |
 | **Purpose** | What a deep review of the rebuilt library found, how sure each finding is, and where each one went |
 | **Branch** | `main` at `107927c` (reviewed); `fix/review-2` (fixes) |

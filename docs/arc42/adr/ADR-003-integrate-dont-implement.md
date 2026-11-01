@@ -3,7 +3,7 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Proposed |
-| **Date** | 2026-10-30 |
+| **Date** | 2026-11-01 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Context

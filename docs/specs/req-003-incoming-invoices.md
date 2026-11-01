@@ -3,7 +3,7 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Draft |
-| **Version** | 0.3 |
+| **Version** | 0.4 |
 | **Date** | 2026-11-01 |
 | **Author** | loxy (drafted with Claude) |
 
@@ -112,15 +112,16 @@ The personas are [REQ-001's](req-001-core.md#personas).
 
 - **Notes (BG-1)**: in UBL, a `cbc:Note` starting with `#XXX#` carries the subject code `XXX` (the convention of XRechnung and Peppol), the rest is the text.
 - **VAT totals (BT-110, BT-111)**: chosen by currency. In CII, the `TaxTotalAmount` in the invoice currency (BT-5) is BT-110 and the one in the VAT accounting currency (BT-6) is BT-111; one without `currencyID` is BT-110. In UBL, the `cac:TaxTotal` whose `cbc:TaxAmount` is in the invoice currency gives BT-110 and the VAT breakdown, the one in the VAT accounting currency gives BT-111; when no `cac:TaxTotal` gives BT-110, the first one holding a `cac:TaxSubtotal` gives the VAT breakdown, and the subtotals of every other `cac:TaxTotal` are left out with a `HAFL-DROPPED` finding. Where BT-6 equals BT-5, the first total in that currency is BT-110 and the second BT-111. A VAT total in another currency is left out with a `HAFL-DROPPED` finding.
+- **Taxes other than VAT**: in CII, only an `ram:ApplicableTradeTax` whose `ram:TypeCode` is `VAT`, or that has no type code, gives the VAT breakdown (BG-23) and a line's VAT information (BG-30). Another tax, which Factur-X EXTENDED allows, is left out with a `HAFL-DROPPED` finding.
 - **Repeated values**: where the invoice holds a term more often than the model does (two due dates, BT-9, in an EXTENDED invoice; two VAT totals in one currency), the first that holds a value is read and each further one that holds a value is left out with a `HAFL-DROPPED` finding. The same holds for the groups the model holds once and for the elements within a party or a line that hold several of its terms (the postal address, the legal organisation or entity, the line's VAT information BG-30, its price BG-29, its item BG-31): the first element that holds any value is read, all of its terms from it, and each further one holding a value is left out with a `HAFL-DROPPED` finding, so that no group mixes the terms of two. The VAT totals (BT-110, BT-111) are read also where the document totals (BG-22) are missing, and the unit of measure (BT-130) also where its quantity element is empty.
-- **Whitespace**: whitespace around a value is removed, and an element empty after that counts as missing (the exception of [REQ-001-URS-NF001](req-001-core.md#req-001-urs-nf001-values-exactly-as-they-are)).
-- **Malformed values**: a number not written as `xs:decimal` (REQ-001's term Value as written), a CII date not written as `YYYYMMDD` with `format="102"`, or a UBL date not written as `YYYY-MM-DD`, and a value whose element holds elements instead of only text, is read as missing, with a `HAFL-VALUE` finding.
+- **Whitespace**: XML whitespace (space, tab, carriage return, line feed) around a value is removed, and an element empty after that counts as missing (the exception of [REQ-001-URS-NF001](req-001-core.md#req-001-urs-nf001-values-exactly-as-they-are)); other whitespace, such as a no-break space, is kept. An invoice line (BG-25) or a VAT breakdown (BG-23) whose element holds no value counts as missing too.
+- **Malformed values**: a number not written as `xs:decimal` (REQ-001's term Value as written), a CII date not written as `YYYYMMDD` with `format="102"`, or a UBL date not written as `YYYY-MM-DD`, and a value whose element holds elements instead of only text, whichever term it gives, is read as missing, with a `HAFL-VALUE` finding. A number keeps its value and decimal places, not its notation (the exception of [REQ-001-URS-NF001](req-001-core.md#req-001-urs-nf001-values-exactly-as-they-are)).
 
 The findings are those of [REQ-002-PRS-F010](req-002-conformance.md#req-002-prs-f010-haflingers-own-findings).
 
 **Related URS**: REQ-003-URS-F001, REQ-003-URS-F006
 
-**Definition of Done**: one test per choice: a UBL note with `#AAI#`; a KoSIT case with BT-6 for both VAT totals; a CII `TaxTotalAmount` without `currencyID`; a VAT total in a third currency; an invoice with two due dates (first read, one `HAFL-DROPPED`; constructed, and FeRD's EXTENDED sample X07 where the maintainer's copy of the package is present); an element holding only whitespace; `1E+2` as BT-112 and `2026-10-30` as a CII date (missing, one `HAFL-VALUE` each).
+**Definition of Done**: one test per choice: a UBL note with `#AAI#`; a KoSIT case with BT-6 for both VAT totals; a CII `TaxTotalAmount` without `currencyID`; a VAT total in a third currency; an invoice with two due dates (first read, one `HAFL-DROPPED`; constructed, and FeRD's EXTENDED sample X07 where the maintainer's copy of the package is present); an element holding only whitespace, and a no-break space kept; `1E+2` as BT-112 and `2026-10-30` as a CII date (missing, one `HAFL-VALUE` each), and `+0336.90` as BT-112 (`336.90`); a constructed EXTENDED line with another tax before its VAT; BT-110, BT-31 and a UBL note whose element holds an element (missing, one `HAFL-VALUE` each); a multi-line UBL note with `#AAI#`; for each group read from one element (postal address, legal organisation or entity, BG-29, BG-30, BG-31) and for the VAT identifier, in both syntaxes, a second one dropped with a finding naming its term; a UBL `cac:TaxTotal` in the VAT accounting currency before the one in the invoice currency; an empty invoice line.
 
 #### REQ-003-PRS-F003: Missing terms
 
@@ -150,7 +151,8 @@ The findings are those of [REQ-002-PRS-F010](req-002-conformance.md#req-002-prs-
 
 **Description**: `read_invoice` SHALL raise `haflinger.InvoiceReadError`, and no other exception, with a reason that names the problem, when the input:
 
-- is not well-formed XML, or has the PDF header `%PDF-` within its first 1,024 bytes, before any `<`, but isn't a readable PDF;
+- isn't `bytes` (the reason names its type);
+- is not well-formed XML, which includes a byte order mark that contradicts the encoding declaration, or has the PDF header `%PDF-` within its first 1,024 bytes, before any `<`, but isn't a readable PDF;
 - contains a document type or entity declaration (REQ-001-PRS-NF001);
 - has a root element that is neither a CII invoice nor a UBL invoice or credit note; for a ZUGFeRD 1.0 invoice (`CrossIndustryDocument`) and an Italian FatturaPA invoice the reason names the format, also when it is embedded in a PDF;
 - follows an edition other than 2017 ([REQ-002-PRS-F009](req-002-conformance.md#req-002-prs-f009-editions-supported));
@@ -163,7 +165,7 @@ The findings are those of [REQ-002-PRS-F010](req-002-conformance.md#req-002-prs-
 
 #### REQ-003-PRS-F007: ZUGFeRD PDFs
 
-**Description**: With the extra `pdf` installed, `read_invoice` SHALL read a PDF through its embedded invoice, and `haflinger.pdf.extract_xml(data: bytes, *, max_size: int = …) -> bytes` SHALL return the embedded invoice byte for byte, without parsing it. The embedded invoice is the embedded file named `factur-x.xml`, `zugferd-invoice.xml`, `xrechnung.xml` or, for ZUGFeRD 1.0, `ZUGFeRD-invoice.xml`; it is read whatever its syntax. `extract_xml` SHALL raise `InvoiceReadError` when the input isn't a readable PDF, holds none of these files, holds more than one of them (two files of the same name included), or the file exceeds `max_size`. Importing `haflinger.pdf` without the extra SHALL raise `ImportError` naming the extra.
+**Description**: With the extra `pdf` installed, `read_invoice` SHALL read a PDF through its embedded invoice, and `haflinger.pdf.extract_xml(data: bytes, *, max_size: int = …) -> bytes` SHALL return the embedded invoice byte for byte, without parsing it. The embedded invoice is the embedded file named `factur-x.xml`, `zugferd-invoice.xml`, `xrechnung.xml` or, for ZUGFeRD 1.0, `ZUGFeRD-invoice.xml`; it is read whatever its syntax. `extract_xml` SHALL raise `InvoiceReadError` when the input isn't a readable PDF, holds none of these files, holds more than one of them (two files of the same name included), or the file exceeds `max_size`. It SHALL also raise it when looking for the invoice would take more than these limits allow, which no ZUGFeRD PDF seen comes near: a tree of embedded files of more than 100 entries; a stream on the way to the invoice (an object or cross-reference stream) that decodes to more than 2 MB; more than 3 s spent looking for the invoice. A ZUGFeRD PDF takes milliseconds; no limit on sizes or counts bounds the time every malformed PDF keeps the parser busy. Importing `haflinger.pdf` without the extra SHALL raise `ImportError` naming the extra.
 
 **Related URS**: REQ-003-URS-F002
 
@@ -201,7 +203,7 @@ The findings are those of [REQ-002-PRS-F010](req-002-conformance.md#req-002-prs-
 
 **Related URS**: REQ-003-URS-NF003
 
-**Definition of Done**: tests with the ZUGFeRD corpus's broken PDFs kept with the tests, a truncated PDF and a PDF whose embedded file is not XML; a PDF with deeply nested objects, and one whose tree of embedded files has thousands of entries, get `InvoiceReadError` within 5 s and 200 MB; a fuzz test over mutated copies of the test PDFs gets only `InvoiceReadError` or a result, each within 5 s. A loop or crash found in a dependency is recorded in the test and reported upstream.
+**Definition of Done**: tests with the ZUGFeRD corpus's broken PDFs kept with the tests, a truncated PDF and a PDF whose embedded file is not XML; a PDF with deeply nested objects, and one whose tree of embedded files has thousands of entries, and one whose tree leads through object streams each just under the limits of REQ-003-PRS-F007, get `InvoiceReadError` within 5 s and 200 MB; a fuzz test over mutated copies of the test PDFs gets only `InvoiceReadError` or a result, each within 5 s. A loop or crash found in a dependency is recorded in the test and reported upstream.
 
 ## Acceptance Criteria
 
@@ -216,7 +218,7 @@ The findings are those of [REQ-002-PRS-F010](req-002-conformance.md#req-002-prs-
 
 - The Mustang project's PDFs of the ZUGFeRD corpus (Apache-2.0), valid and broken, are vendored with the tests ([ADR-008](../arc42/adr/ADR-008-vendoring-official-files.md)); FeRD's and FNFE-MPE's samples aren't, as no terms name them ([ITEM-002](../backlog/item-002-official-test-material.md)).
 - The official test files include a UBL credit note (Peppol BIS or CEN examples).
-- The library doesn't bound the CPU time of reading: Python can't safely stop a running PDF parser from within its own thread. A caller that reads PDFs from outside runs them where a time limit applies, such as a background job with a timeout ([ITEM-003](../backlog/item-003-erpnext-app.md)).
+- The library bounds the time of looking for the invoice in a PDF, not the time of reading the XML, which grows with its size (REQ-003-PRS-NF002). The bound on PDFs works within the thread: pypdf is pure Python, and a profile function that Python calls on every function call raises once the time is up. A caller that reads outside input still runs it where a time limit applies, such as a background job with a timeout ([ITEM-003](../backlog/item-003-erpnext-app.md)); validation has no time bound ([REQ-002](req-002-conformance.md#assumptions)).
 
 ## Open Questions
 
