@@ -12,11 +12,12 @@ The files of KoSIT's validator configuration that Haflinger uses, unchanged and 
 
 | File | Used for |
 | :- | :- |
-| `scenarios.xml` | The rule sets of XRechnung 3.0, its extension and plain EN 16931, and KoSIT's rule levels (`customLevel`) |
+| `scenarios.xml` | The rule sets of XRechnung 3.0, its extension, CVD and plain EN 16931, with the XML Schema each checks first, and KoSIT's rule levels (`customLevel`) |
 | `resources/cii/16b/xsl/EN16931-CII-validation.xsl`, `resources/ubl/2.1/xsl/EN16931-UBL-validation.xsl` | CEN's EN 16931 rules, compiled by KoSIT with SchXslt 1.10.1; they differ from the XSLT in CEN's own release, which is compiled with the ISO skeleton |
 | `resources/xrechnung/3.0.2/xsl/XRechnung-CII-validation.xsl`, `resources/xrechnung/3.0.2/xsl/XRechnung-UBL-validation.xsl` | KoSIT's XRechnung rules |
-| `resources/cii/16b/xsd/*.xsd` | The CII D16B XML Schema for written invoices; the entry point is `CrossIndustryInvoice_100pD16B.xsd`. The files keep their CRLF line endings. |
+| `resources/cii/16b/xsd/*.xsd` | The CII D16B XML Schema, for incoming and written invoices; the entry point is `CrossIndustryInvoice_100pD16B.xsd`. The files keep their CRLF line endings. |
+| `resources/ubl/2.1/xsd/maindoc/UBL-Invoice-2.1.xsd`, `resources/ubl/2.1/xsd/maindoc/UBL-CreditNote-2.1.xsd`, `resources/ubl/2.1/xsd/common/*.xsd` | The UBL 2.1 XML Schema of invoices and credit notes, for incoming invoices |
 
-Not included: the UBL XML Schemas, which Haflinger doesn't check (it writes no UBL); the report stylesheets; the copies of the CEN rules at the top level of the ZIP, which are identical to those under `resources/`; the changelog and usage notes.
+Not included: the UBL 2.1 XML Schemas of the other document types; the report stylesheets; the copies of the CEN rules at the top level of the ZIP, which are identical to those under `resources/`; the changelog and usage notes.
 
 To update: [development guide](../../../../docs/guides/development.md#updating-official-files).
