@@ -7,6 +7,7 @@ def generate_from_file(
     flavor: str,
     level: str,
     check_xsd: bool,
+    check_schematron: bool,
     pdf_metadata: dict[str, str],
     output_pdf_file: str,
     afrelationship: str,

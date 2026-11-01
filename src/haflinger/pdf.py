@@ -169,6 +169,7 @@ def _embed(pdf: bytes, xml: bytes, level: str, metadata: dict[str, str]) -> byte
                 flavor="factur-x",
                 level=level,
                 check_xsd=False,
+                check_schematron=False,  # never a request to a Saxon server (REQ-001-PRS-NF001)
                 pdf_metadata=metadata,
                 output_pdf_file=str(target),
                 afrelationship="alternative",  # REQ-004-PRS-F007
