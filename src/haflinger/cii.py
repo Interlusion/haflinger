@@ -62,10 +62,12 @@ def read(root: Node, specification_id: str | None) -> Invoice:
         seller=_party(
             root.group(f"{_AGREEMENT}/ram:SellerTradeParty", "BG-4"),
             ("BT-27", "BT-28", "BT-30", "BT-31", "BT-40"),
+            "BG-5",
         ),
         buyer=_party(
             root.group(f"{_AGREEMENT}/ram:BuyerTradeParty", "BG-7"),
             ("BT-44", "BT-45", "BT-47", "BT-48", "BT-55"),
+            "BG-8",
         ),
         totals=_totals(
             root.group(
@@ -103,10 +105,18 @@ def _note(node: Node) -> Note | None:
     return None if note == Note() else note
 
 
-def _party(party: Node | None, terms: tuple[str, str, str, str, str]) -> Party | None:
+def _party(
+    party: Node | None, terms: tuple[str, str, str, str, str], address_group: str
+) -> Party | None:
     if party is None:
         return None
     name, trading_name, registration, vat, country = terms
+    # The terms of one legal organisation and one address come from one element each.
+    organization = party.group(
+        "ram:SpecifiedLegalOrganization",
+        f"{registration}, {trading_name} (ram:SpecifiedLegalOrganization)",
+    )
+    address = party.group("ram:PostalTradeAddress", address_group)
     vat_ids = [
         node
         for node in party.findall("ram:SpecifiedTaxRegistration/ram:ID")
@@ -116,12 +126,10 @@ def _party(party: Node | None, terms: tuple[str, str, str, str, str]) -> Party |
         node.drop(f"{vat} appears more than once; this one is left out: {node.value!r}")
     return Party(
         name=party.text("ram:Name", name),
-        trading_name=party.text(
-            "ram:SpecifiedLegalOrganization/ram:TradingBusinessName", trading_name
-        ),
-        legal_registration_id=party.text("ram:SpecifiedLegalOrganization/ram:ID", registration),
+        trading_name=_text(organization, "ram:TradingBusinessName", trading_name),
+        legal_registration_id=_text(organization, "ram:ID", registration),
         vat_id=vat_ids[0].value if vat_ids else None,
-        country_code=party.text("ram:PostalTradeAddress/ram:CountryID", country),
+        country_code=_text(address, "ram:CountryID", country),
     )
 
 
@@ -164,12 +172,16 @@ def _vat_breakdown(tax: Node) -> VatBreakdown:
 
 
 def _line(line: Node) -> InvoiceLine:
-    quantity = line.first("ram:SpecifiedLineTradeDelivery/ram:BilledQuantity", "BT-129")
+    quantity_path = "ram:SpecifiedLineTradeDelivery/ram:BilledQuantity"
+    quantity = line.first(quantity_path, "BT-129")
+    # BT-130 is an attribute: read also where the quantity's element is empty.
+    unit = quantity or line.find(quantity_path)
     settlement = "ram:SpecifiedLineTradeSettlement"
+    tax = line.group(f"{settlement}/ram:ApplicableTradeTax", "BG-30")
     return InvoiceLine(
         id=line.text("ram:AssociatedDocumentLineDocument/ram:LineID", "BT-126"),
         quantity=None if quantity is None else quantity.as_decimal("BT-129"),
-        unit_code=None if quantity is None else quantity.attribute("unitCode"),
+        unit_code=None if unit is None else unit.attribute("unitCode"),
         net_amount=line.decimal(
             f"{settlement}/ram:SpecifiedTradeSettlementLineMonetarySummation/ram:LineTotalAmount",
             "BT-131",
@@ -178,14 +190,14 @@ def _line(line: Node) -> InvoiceLine:
             "ram:SpecifiedLineTradeAgreement/ram:NetPriceProductTradePrice/ram:ChargeAmount",
             "BT-146",
         ),
-        vat_category_code=line.text(
-            f"{settlement}/ram:ApplicableTradeTax/ram:CategoryCode", "BT-151"
-        ),
-        vat_rate=line.decimal(
-            f"{settlement}/ram:ApplicableTradeTax/ram:RateApplicablePercent", "BT-152"
-        ),
+        vat_category_code=_text(tax, "ram:CategoryCode", "BT-151"),
+        vat_rate=None if tax is None else tax.decimal("ram:RateApplicablePercent", "BT-152"),
         item_name=line.text("ram:SpecifiedTradeProduct/ram:Name", "BT-153"),
     )
+
+
+def _text(node: Node | None, path: str, term: str) -> str | None:
+    return None if node is None else node.text(path, term)
 
 
 # Writing (REQ-004-PRS-F003). Each value is checked as it is written, and refused naming its
@@ -201,6 +213,8 @@ _REQUIRED = frozenset(
         "ram:SpecifiedLineTradeSettlement",
     }
 )
+# The longest number written, in digits of plain notation (REQ-004-PRS-F001).
+_MAX_DIGITS = 1000
 # The characters XML 1.0 allows.
 _NOT_XML = re.compile("[^\t\n\r\x20-\ud7ff\ue000-\ufffd\U00010000-\U0010ffff]")
 
@@ -227,6 +241,8 @@ def write(invoice: Invoice) -> bytes:
     _put_text(document, "ram:TypeCode", invoice.type_code, "BT-3")
     _put_date(document, "ram:IssueDateTime", invoice.issue_date, "BT-2")
     for note in _group(invoice.notes, Note, "BG-1"):
+        if note.text is None and note.subject_code is None:
+            raise InvoiceWriteError("BG-1 holds a note with neither subject code nor text")
         included = SubElement(document, "ram:IncludedNote")
         _put_text(included, "ram:Content", note.text, "BT-22")
         _put_text(included, "ram:SubjectCode", note.subject_code, "BT-21")
@@ -408,6 +424,11 @@ def _put_amount(
         return
     if not isinstance(value, Decimal) or not value.is_finite():
         raise InvoiceWriteError(f"{term} is not a finite Decimal: {value!r}")
+    digits, exponent = len(value.as_tuple().digits), int(value.as_tuple().exponent)
+    if max(digits + exponent, digits, -exponent) > _MAX_DIGITS:
+        raise InvoiceWriteError(
+            f"{term} has more than {_MAX_DIGITS:,} digits in plain notation: {value!r}"
+        )
     _leaf(parent, path, format(value, "f"), attributes)
 
 

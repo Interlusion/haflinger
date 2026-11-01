@@ -14,7 +14,7 @@ from typing import Literal
 type Syntax = Literal["cii", "ubl"]
 
 # A BT-24 of this form names the year as its edition (REQ-001, term Edition).
-_EN16931 = re.compile(r"urn:cen\.eu:en16931:([0-9]{4})(?:[#:].*)?", re.DOTALL)
+_EN16931 = re.compile(r"urn:cen\.eu:en16931:([0-9]{4})(?![0-9])")
 # The profiles of REQ-002-PRS-F003 whose BT-24 doesn't start with `urn:cen.eu:en16931:`.
 _NAMES_2017 = frozenset(
     {
@@ -119,5 +119,5 @@ class Invoice:
             return None
         if self.specification_id in _NAMES_2017:
             return "2017"
-        match = _EN16931.fullmatch(self.specification_id)
+        match = _EN16931.match(self.specification_id)
         return match.group(1) if match else None

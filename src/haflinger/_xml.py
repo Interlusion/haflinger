@@ -54,12 +54,15 @@ def choose_vat_totals[T](
     for candidate, amount in candidates:
         if amount.value is None:
             continue
-        currency = amount.attribute("currencyID") or currency_code
+        declared = amount.attribute("currencyID")
+        currency = declared or currency_code
         terms = [
             term
             for term, code in (("BT-110", currency_code), ("BT-111", tax_currency_code))
             if currency is not None and currency == code
         ]
+        if declared is None and not terms:
+            terms = ["BT-110"]  # without `currencyID` it is BT-110, also without BT-5
         if not terms:
             amount.drop(
                 f"BT-110 or BT-111: a VAT total in {currency or 'no currency'}, neither the"
@@ -152,7 +155,13 @@ class Node:
     def first(self, path: str, term: str) -> Node | None:
         """The first element at `path` that holds a value; each further one is left out with a
         finding, since the model holds the term once."""
-        nodes = [node for node in self.findall(path) if node.value is not None]
+        nodes: list[Node] = []
+        for node in self.findall(path):
+            if len(node.element):
+                text = "".join(node.element.itertext()).strip(XML_WHITESPACE)
+                node.malformed(term, "text alone, without elements", text)
+            elif node.value is not None:
+                nodes.append(node)
         for node in nodes[1:]:
             node.drop(f"{term} appears more than once; this one is left out: {node.value!r}")
         return nodes[0] if nodes else None

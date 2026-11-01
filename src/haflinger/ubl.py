@@ -63,10 +63,12 @@ def read(root: Node, specification_id: str | None, *, credit_note: bool) -> Invo
         seller=_party(
             root.group("cac:AccountingSupplierParty/cac:Party", "BG-4"),
             ("BT-27", "BT-28", "BT-30", "BT-31", "BT-40"),
+            "BG-5",
         ),
         buyer=_party(
             root.group("cac:AccountingCustomerParty/cac:Party", "BG-7"),
             ("BT-44", "BT-45", "BT-47", "BT-48", "BT-55"),
+            "BG-8",
         ),
         totals=_totals(
             root.group("cac:LegalMonetaryTotal", "BG-22"),
@@ -109,10 +111,15 @@ def _note(node: Node) -> Note | None:
     return Note(subject_code=match[1], text=match[2].strip(XML_WHITESPACE) or None)
 
 
-def _party(party: Node | None, terms: tuple[str, str, str, str, str]) -> Party | None:
+def _party(
+    party: Node | None, terms: tuple[str, str, str, str, str], address_group: str
+) -> Party | None:
     if party is None:
         return None
     name, trading_name, registration, vat, country = terms
+    # The terms of one legal entity and one address come from one element each.
+    entity = party.group("cac:PartyLegalEntity", f"{name}, {registration} (cac:PartyLegalEntity)")
+    address = party.group("cac:PostalAddress", address_group)
     vat_ids = [
         node
         for scheme in party.findall("cac:PartyTaxScheme")
@@ -124,11 +131,11 @@ def _party(party: Node | None, terms: tuple[str, str, str, str, str]) -> Party |
     for node in vat_ids[1:]:
         node.drop(f"{vat} appears more than once; this one is left out: {node.value!r}")
     return Party(
-        name=party.text("cac:PartyLegalEntity/cbc:RegistrationName", name),
+        name=_text(entity, "cbc:RegistrationName", name),
         trading_name=party.text("cac:PartyName/cbc:Name", trading_name),
-        legal_registration_id=party.text("cac:PartyLegalEntity/cbc:CompanyID", registration),
+        legal_registration_id=_text(entity, "cbc:CompanyID", registration),
         vat_id=vat_ids[0].value if vat_ids else None,
-        country_code=party.text("cac:PostalAddress/cac:Country/cbc:IdentificationCode", country),
+        country_code=_text(address, "cac:Country/cbc:IdentificationCode", country),
     )
 
 
@@ -136,7 +143,17 @@ def _totals(
     total: Node | None, vat_total: Node | None, vat_total_in_tax_currency: Node | None
 ) -> Totals | None:
     if total is None:
-        return None
+        if vat_total is None and vat_total_in_tax_currency is None:
+            return None
+        # BT-110 and BT-111 lie outside cac:LegalMonetaryTotal: read them without it.
+        return Totals(
+            vat_total=None if vat_total is None else vat_total.as_decimal("BT-110"),
+            vat_total_in_tax_currency=(
+                None
+                if vat_total_in_tax_currency is None
+                else vat_total_in_tax_currency.as_decimal("BT-111")
+            ),
+        )
     return Totals(
         line_net_total=total.decimal("cbc:LineExtensionAmount", "BT-106"),
         allowance_total=total.decimal("cbc:AllowanceTotalAmount", "BT-107"),
@@ -156,25 +173,34 @@ def _totals(
 
 
 def _vat_breakdown(subtotal: Node) -> VatBreakdown:
+    category = subtotal.group("cac:TaxCategory", "BT-118 to BT-121 (cac:TaxCategory)")
     return VatBreakdown(
         taxable_amount=subtotal.decimal("cbc:TaxableAmount", "BT-116"),
         tax_amount=subtotal.decimal("cbc:TaxAmount", "BT-117"),
-        category_code=subtotal.text("cac:TaxCategory/cbc:ID", "BT-118"),
-        rate=subtotal.decimal("cac:TaxCategory/cbc:Percent", "BT-119"),
-        exemption_reason=subtotal.text("cac:TaxCategory/cbc:TaxExemptionReason", "BT-120"),
-        exemption_reason_code=subtotal.text("cac:TaxCategory/cbc:TaxExemptionReasonCode", "BT-121"),
+        category_code=_text(category, "cbc:ID", "BT-118"),
+        rate=None if category is None else category.decimal("cbc:Percent", "BT-119"),
+        exemption_reason=_text(category, "cbc:TaxExemptionReason", "BT-120"),
+        exemption_reason_code=_text(category, "cbc:TaxExemptionReasonCode", "BT-121"),
     )
 
 
 def _line(line: Node, quantity_path: str) -> InvoiceLine:
     quantity = line.first(quantity_path, "BT-129")
+    # BT-130 is an attribute: read also where the quantity's element is empty.
+    unit = quantity or line.find(quantity_path)
+    item = line.group("cac:Item", "BG-31")
+    tax = None if item is None else item.group("cac:ClassifiedTaxCategory", "BG-30")
     return InvoiceLine(
         id=line.text("cbc:ID", "BT-126"),
         quantity=None if quantity is None else quantity.as_decimal("BT-129"),
-        unit_code=None if quantity is None else quantity.attribute("unitCode"),
+        unit_code=None if unit is None else unit.attribute("unitCode"),
         net_amount=line.decimal("cbc:LineExtensionAmount", "BT-131"),
         net_price=line.decimal("cac:Price/cbc:PriceAmount", "BT-146"),
-        vat_category_code=line.text("cac:Item/cac:ClassifiedTaxCategory/cbc:ID", "BT-151"),
-        vat_rate=line.decimal("cac:Item/cac:ClassifiedTaxCategory/cbc:Percent", "BT-152"),
-        item_name=line.text("cac:Item/cbc:Name", "BT-153"),
+        vat_category_code=_text(tax, "cbc:ID", "BT-151"),
+        vat_rate=None if tax is None else tax.decimal("cbc:Percent", "BT-152"),
+        item_name=_text(item, "cbc:Name", "BT-153"),
     )
+
+
+def _text(node: Node | None, path: str, term: str) -> str | None:
+    return None if node is None else node.text(path, term)

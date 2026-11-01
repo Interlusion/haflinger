@@ -4,7 +4,7 @@ version = "0.0.0"
 description = "E-invoicing in Python: ZUGFeRD, XRechnung and Peppol on one model of the EN 16931 business terms"
 readme = "README.md"
 license = "Apache-2.0"
-license-files = ["LICENSE"]
+license-files = ["LICENSE", "src/haflinger/artefacts/*/LICENSE*"]
 requires-python = ">=3.14"
 dependencies = [
     "defusedxml>=0.7.1",
