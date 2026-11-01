@@ -34,7 +34,7 @@ def read(root: Node, specification_id: str | None, *, credit_note: bool) -> Invo
         [
             (tax_total, amount)
             for tax_total in tax_totals
-            if (amount := tax_total.find("cbc:TaxAmount")) is not None
+            if (amount := tax_total.first("cbc:TaxAmount", "BT-110 or BT-111")) is not None
         ],
         currency_code,
         tax_currency_code,
@@ -72,12 +72,19 @@ def read(root: Node, specification_id: str | None, *, credit_note: bool) -> Invo
         ),
         totals=_totals(
             root.group("cac:LegalMonetaryTotal", "BG-22"),
-            vat_total.find("cbc:TaxAmount") if vat_total else None,
-            vat_total_in_tax_currency.find("cbc:TaxAmount") if vat_total_in_tax_currency else None,
+            _tax_amount(vat_total),
+            _tax_amount(vat_total_in_tax_currency),
         ),
         vat_breakdown=tuple(_vat_breakdown(node) for node in _subtotals(tax_totals, vat_total)),
-        lines=tuple(_line(node, quantity) for node in root.findall(line)),
+        lines=tuple(_line(node, quantity) for node in root.findall(line) if node.holds_value()),
     )
+
+
+def _tax_amount(tax_total: Node | None) -> Node | None:
+    """The first `cbc:TaxAmount` holding a value, which `choose_vat_totals` chose by."""
+    if tax_total is None:
+        return None
+    return next((a for a in tax_total.findall("cbc:TaxAmount") if a.value is not None), None)
 
 
 def _subtotals(tax_totals: list[Node], vat_total: Node | None) -> list[Node]:
@@ -93,7 +100,9 @@ def _subtotals(tax_totals: list[Node], vat_total: Node | None) -> list[Node]:
                     "BG-23 of a cac:TaxTotal other than the one giving the VAT breakdown"
                     " is left out"
                 )
-    return [] if source is None else source.findall("cac:TaxSubtotal")
+    return (
+        [] if source is None else [s for s in source.findall("cac:TaxSubtotal") if s.holds_value()]
+    )
 
 
 def _date(parent: Node, path: str, term: str) -> date | None:
@@ -102,7 +111,7 @@ def _date(parent: Node, path: str, term: str) -> date | None:
 
 
 def _note(node: Node) -> Note | None:
-    value = node.value
+    value = node.plain("BT-22")
     if value is None:
         return None
     match = _SUBJECT_CODE.fullmatch(value)
@@ -123,10 +132,8 @@ def _party(
     vat_ids = [
         node
         for scheme in party.findall("cac:PartyTaxScheme")
-        if (scheme_id := scheme.find("cac:TaxScheme/cbc:ID")) is not None
-        and scheme_id.value == "VAT"
-        and (node := scheme.find("cbc:CompanyID")) is not None
-        and node.value is not None
+        if scheme.text("cac:TaxScheme/cbc:ID", f"{vat} (cac:TaxScheme)") == "VAT"
+        and (node := scheme.first("cbc:CompanyID", vat)) is not None
     ]
     for node in vat_ids[1:]:
         node.drop(f"{vat} appears more than once; this one is left out: {node.value!r}")

@@ -3,28 +3,33 @@ REQ-004-PRS-F007). Needs the extra `pdf`.
 
 A PDF is outside input. pypdf parses it; any failure of pypdf on a malformed PDF becomes an
 `InvoiceReadError`, and the embedded file is inflated here, against `max_size`, never by pypdf
-(REQ-003-PRS-NF001, REQ-003-PRS-NF003).
+(REQ-003-PRS-NF001, REQ-003-PRS-NF003). Looking for the invoice stops after `_TIME_LIMIT`.
 """
 
 import dataclasses
 import io
-import re
+import sys
 import tempfile
+import time
 import zlib
+from collections.abc import Generator
+from contextlib import contextmanager
 from pathlib import Path
+from types import FrameType
 from typing import Any, cast
 
 try:
     import facturx
     from pypdf import Configuration, PdfReader, apply_configuration
-    from pypdf.generic import ArrayObject, DictionaryObject, NullObject, StreamObject
+    from pypdf.generic import ArrayObject, DictionaryObject, NullObject, NumberObject, StreamObject
 except ImportError as error:
     raise ImportError("haflinger.pdf needs the extra 'pdf': install haflinger[pdf]") from error
 
-from haflinger import write
+from haflinger import cii, write
 from haflinger._input import open_invoice
-from haflinger._xml import MAX_SIZE, check_size
+from haflinger._xml import MAX_SIZE, check_size, parse
 from haflinger.errors import InvoiceReadError, InvoiceWriteError
+from haflinger.model import Invoice
 
 # The names of the embedded invoice (REQ-003-PRS-F007).
 INVOICE_NAMES = frozenset(
@@ -32,7 +37,8 @@ INVOICE_NAMES = frozenset(
 )
 # REQ-004-PRS-F007: the target profile embed writes, with its Factur-X level.
 _EMBED_LEVELS = {"urn:cen.eu:en16931:2017": "en16931"}
-_PDFA_PART = re.compile(rb"pdfaid:part(?:>|=[\"'])\s*[1-3](?![0-9])")
+_PDFA_ID = "http://www.aiim.org/pdfa/ns/id/"
+_RDF = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
 _MAX_DEPTH = 32  # of the name tree of embedded files
 _MAX_ENTRIES = 100  # nodes and files of that tree read, at most (REQ-003-PRS-NF003)
 # Bytes, for each stream pypdf decodes while the invoice is looked for: for every filter whose
@@ -42,6 +48,16 @@ _PYPDF_LIMITS: dict[str, Any] = {
     for field in dataclasses.fields(Configuration)
     if field.name.endswith("_maximum_output_length")
 }
+# Seconds pypdf may spend while the invoice is looked for: no ZUGFeRD PDF needs a fraction of
+# it, and no limit on sizes or counts bounds every shape that keeps pypdf busy (REQ-003-PRS-NF003).
+_TIME_LIMIT = 3.0
+# The names `factur-x` gives the type of document in the PDF's metadata.
+_DOCUMENT_TYPES = {"380": "Invoice", "381": "Refund"}
+
+
+class _OutOfTime(BaseException):
+    """Raised inside pypdf when the time is up; a `BaseException`, so that pypdf's handlers of
+    `Exception`, which recover from malformed input, don't take it for one."""
 
 
 def extract_xml(data: bytes, *, max_size: int = MAX_SIZE) -> bytes:
@@ -54,12 +70,41 @@ def extract_xml(data: bytes, *, max_size: int = MAX_SIZE) -> bytes:
     try:
         # pypdf's own decoding (object and cross-reference streams) stays small: none of what
         # leads to the invoice needs more, and the decoded data is kept while the PDF is read.
-        with apply_configuration(**_PYPDF_LIMITS):
+        with apply_configuration(**_PYPDF_LIMITS), _deadline(_TIME_LIMIT):
             return _extract(PdfReader(io.BytesIO(data)), max_size)
+    except _OutOfTime:
+        raise InvoiceReadError(
+            f"the PDF takes more than {_TIME_LIMIT:g} s to look for the invoice in; a ZUGFeRD PDF"
+            " takes milliseconds"
+        ) from None
     except InvoiceReadError:
         raise
     except Exception as error:  # noqa: BLE001 - pypdf raises many kinds on malformed input
         raise InvoiceReadError(f"the input isn't a readable PDF: {error!r}") from None
+
+
+@contextmanager
+def _deadline(seconds: float) -> Generator[None]:
+    """Raise `_OutOfTime` in this thread's Python code once `seconds` have passed, by a profile
+    function, which Python calls on every call and return, of C functions too. It raises again a
+    quarter of a second later if the first was caught, so that cleanup on the way out runs. A
+    profiler the caller had set is paused meanwhile."""
+    end = time.monotonic() + seconds
+    raised = 0.0
+
+    def check(frame: FrameType, event: str, arg: object) -> None:
+        nonlocal raised
+        now = time.monotonic()
+        if now > end and now > raised + 0.25:
+            raised = now
+            raise _OutOfTime
+
+    previous = sys.getprofile()
+    sys.setprofile(check)
+    try:
+        yield
+    finally:
+        sys.setprofile(previous)
 
 
 def embed(pdf: bytes, xml: bytes) -> bytes:
@@ -73,27 +118,45 @@ def embed(pdf: bytes, xml: bytes) -> bytes:
         opened = open_invoice(xml, MAX_SIZE, pdf="the XML is a PDF")
     except InvoiceReadError as error:
         raise InvoiceWriteError(f"the XML can't be read: {error}") from None
-    level = _EMBED_LEVELS.get(opened.specification_id or "")
+    # BT-24 exactly as written, as a recipient's validator matches it (REQ-004-PRS-F007).
+    specification_id = None if opened.specification is None else opened.specification.element.text
+    level = _EMBED_LEVELS.get(specification_id or "")
     if opened.document != "cii" or level is None:
         raise InvoiceWriteError(
             f"embed writes only CII invoices with BT-24 {', '.join(_EMBED_LEVELS)};"
-            f" this is {opened.document} with BT-24 {opened.specification_id!r}"
+            f" this is {opened.document} with BT-24 {specification_id!r}"
         )
     _check_pdf(pdf)
-    write.refuse_if_invalid(write.check_written(xml, opened.specification_id), xml)
-    result = _embed(pdf, xml, level)
+    write.refuse_if_invalid(write.check_written(xml, specification_id), xml)
+    invoice = cii.read(opened.reading.root, specification_id)
+    result = _embed(pdf, xml, level, _metadata(invoice))
     try:
         reader = PdfReader(io.BytesIO(result), strict=True)
         embedded = list(reader.attachments)
         extracted = extract_xml(result)
     except Exception as error:  # noqa: BLE001 - checking factur-x's result
         raise InvoiceWriteError(f"the written PDF can't be read back: {error!r}") from None
-    if result.count(b"%PDF-") != 1 or embedded != ["factur-x.xml"] or extracted != xml:
+    if not result.startswith(b"%PDF-") or embedded != ["factur-x.xml"] or extracted != xml:
         raise InvoiceWriteError("the written PDF doesn't carry the invoice as given")
     return result
 
 
-def _embed(pdf: bytes, xml: bytes, level: str) -> bytes:
+def _metadata(invoice: Invoice) -> dict[str, str]:
+    """The PDF's metadata as `factur-x` would take it from the XML, which it then doesn't parse:
+    its parser stops at texts over 10 MB, such as a large attachment (BG-24)."""
+    kind = _DOCUMENT_TYPES.get(invoice.type_code or "", "Invoice")
+    number = invoice.number or ""
+    seller = "" if invoice.seller is None else invoice.seller.name or ""
+    issued = "" if invoice.issue_date is None else f" dated {invoice.issue_date.isoformat()}"
+    return {
+        "author": seller,
+        "keywords": f"{kind}, Factur-X",
+        "title": f"{seller}: {kind} {number}",
+        "subject": f"{kind} {number}{issued} issued by {seller}",
+    }
+
+
+def _embed(pdf: bytes, xml: bytes, level: str, metadata: dict[str, str]) -> bytes:
     """`factur-x`'s embedding, into a new file: writing back into its input leaves the end of a
     longer input in place. The input is the caller's own PDF (REQ-001-PRS-NF001)."""
     try:
@@ -106,7 +169,9 @@ def _embed(pdf: bytes, xml: bytes, level: str) -> bytes:
                 flavor="factur-x",
                 level=level,
                 check_xsd=False,
+                pdf_metadata=metadata,
                 output_pdf_file=str(target),
+                afrelationship="alternative",  # REQ-004-PRS-F007
             )
             return target.read_bytes()
     except Exception as error:  # noqa: BLE001 - factur-x and pypdf raise many kinds
@@ -114,35 +179,41 @@ def _embed(pdf: bytes, xml: bytes, level: str) -> bytes:
 
 
 def _check_pdf(pdf: bytes) -> None:
-    """A PDF/A-1, -2 or -3 file holding nothing that embedding would drop."""
+    """A PDF/A-1, -2 or -3 file holding nothing that embedding would drop: `factur-x` writes a
+    `/Names` of its own, holding only the invoice, and an `/AF` of its own."""
     try:
         root = _dictionary(PdfReader(io.BytesIO(pdf)).trailer.get("/Root"))
         metadata = None if root is None else root.get("/Metadata")
         stream = None if metadata is None else metadata.get_object()
         xmp = stream.get_data() if isinstance(stream, StreamObject) else b""
         names = None if root is None else _dictionary(root.get("/Names"))
-        dropped = [
-            key
-            for key, value in (
-                ("/Names /EmbeddedFiles", None if names is None else names.get("/EmbeddedFiles")),
-                ("/Names /Dests", None if names is None else names.get("/Dests")),
-                ("/Dests", None if root is None else root.get("/Dests")),
-                ("/AF", None if root is None else root.get("/AF")),
-            )
-            if value is not None
-        ]
+        dropped = [f"/Names {key}" for key in cast(dict[str, object], names or {})]
+        if root is not None and root.get("/AF") is not None:
+            dropped.append("/AF")
     except Exception as error:  # noqa: BLE001 - pypdf raises many kinds on malformed input
         raise InvoiceWriteError(f"the PDF isn't readable: {error!r}") from None
-    if _PDFA_PART.search(xmp) is None:
+    if _pdfa_part(xmp) not in ("1", "2", "3"):
         raise InvoiceWriteError(
             "the PDF declares no conformance to PDF/A-1, -2 or -3 in its XMP metadata; the input"
             " must be PDF/A"
         )
     if dropped:
-        raise InvoiceWriteError(
-            f"the PDF holds embedded files or named destinations ({', '.join(dropped)}), which"
-            " embedding would drop"
-        )
+        raise InvoiceWriteError(f"the PDF holds {', '.join(dropped)}, which embedding would drop")
+
+
+def _pdfa_part(xmp: bytes) -> str | None:
+    """The part of PDF/A the XMP metadata declares, as an element or an attribute in PDF/A's
+    identification namespace, whatever its prefix."""
+    try:
+        root = parse(xmp)
+    except InvoiceReadError:
+        return None
+    part = f"{{{_PDFA_ID}}}part"
+    for description in root.iter(f"{{{_RDF}}}Description"):
+        value = description.get(part) or description.findtext(part)
+        if value is not None:
+            return value.strip()
+    return None
 
 
 def _extract(reader: PdfReader, max_size: int) -> bytes:
@@ -215,9 +286,19 @@ def _stream(name: str, spec: DictionaryObject) -> StreamObject:
 
 
 def _no_parameters(value: object) -> bool:
-    """No decode parameters: none, null, or an empty dictionary."""
+    """Decode parameters that change nothing: none, null, an empty dictionary, a predictor of 1
+    (none), or an array of one of these, as for a filter given as an array."""
+    if isinstance(value, ArrayObject):
+        return len(value) == 1 and _no_parameters(value[0])
     resolved = _dictionary(value)
-    return value is None or isinstance(value, NullObject) or (resolved is not None and not resolved)
+    if value is None or isinstance(value, NullObject):
+        return True
+    if resolved is None:
+        return False
+    return all(
+        key == "/Predictor" and isinstance(entry, NumberObject) and int(entry) == 1
+        for key, entry in resolved.items()
+    )
 
 
 def _inflate(name: str, stream: StreamObject, max_size: int) -> bytes:

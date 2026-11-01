@@ -1,6 +1,7 @@
 """XML Schema checks with lxml, of written invoices (REQ-004-PRS-F004) and of incoming ones before
 the rules (REQ-002-PRS-F011); ADR-006."""
 
+import re
 import threading
 from functools import cache
 from pathlib import Path
@@ -37,6 +38,8 @@ FACTUR_X_EN16931 = f"{_FERD}/3_Factur-X_1.09.2_EN16931/Factur-X_1.09.2_EN16931.x
 # the network stay off, and libxml2's limits on the size of a text don't apply (an embedded
 # attachment can be larger than 10 MB).
 _PARSER = etree.XMLParser(resolve_entities=False, no_network=True, load_dtd=False, huge_tree=True)
+# An XML declaration, which lxml refuses in a text it gets already decoded.
+_DECLARATION = re.compile(r"<\?xml[^>]*\?>")
 # A schema's error log belongs to the last validation, whichever thread ran it.
 _LOCK = threading.Lock()
 
@@ -46,9 +49,16 @@ def _schema(path: str) -> etree.XMLSchema:
     return etree.XMLSchema(etree.parse(_ARTEFACTS / path, _PARSER))
 
 
-def check(document: bytes, *schemas: str) -> list[Finding]:
+def check(document: bytes | str, *schemas: str) -> list[Finding]:
     """`HAFL-XSD` findings for each violation of each schema, by its path below `artefacts/`, or
-    for a document the check can't parse."""
+    for a document the check can't parse. A written invoice comes as bytes, which libxml2 decodes
+    as a recipient's parser would; an incoming one as the text Saxon gets (REQ-002-PRS-F011).
+    libxml2 stops at a depth of its own (2,048 elements), also with `huge_tree`: a deeper
+    document is a finding, not a crash."""
+    if isinstance(document, str):
+        document = (
+            _DECLARATION.sub("", document, count=1) if document.startswith("<?xml") else document
+        )
     try:
         tree = etree.fromstring(document, _PARSER)
     except etree.XMLSyntaxError as error:

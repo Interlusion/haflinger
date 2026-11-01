@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from haflinger import cii, ubl
-from haflinger._xml import Node, Reading, check_size, local_name, parse
+from haflinger._xml import Node, Reading, check_bytes, check_size, local_name, parse
 from haflinger.errors import InvoiceReadError
 from haflinger.model import Invoice
 
@@ -41,6 +41,7 @@ def is_pdf(data: bytes) -> bool:
 
 def open_invoice(data: bytes, max_size: int, *, pdf: str) -> Opened:
     """Check and parse `data`; `pdf` is the reason given for a PDF."""
+    check_bytes(data)
     check_size(data, max_size)
     if is_pdf(data):
         raise InvoiceReadError(pdf)

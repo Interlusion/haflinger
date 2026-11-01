@@ -6,7 +6,7 @@ from haflinger import _xsd, cii
 from haflinger.errors import InvoiceReadError, InvoiceWriteError
 from haflinger.findings import Finding
 from haflinger.model import Invoice
-from haflinger.validation import check_rules
+from haflinger.validation import FACTUR_X_EN16931, check_rules
 
 # REQ-004-PRS-F002, by BT-24 exactly as given.
 TARGET_PROFILES = (
@@ -34,13 +34,14 @@ def write_cii(invoice: Invoice) -> bytes:
 
 def check_written(document: bytes, specification_id: str | None) -> tuple[Finding, ...]:
     """The findings of the XML Schemas and the official rules for a CII invoice of the target
-    profile `specification_id` to hand out (REQ-004-PRS-F004, REQ-004-PRS-F005)."""
-    factur_x = specification_id == TARGET_PROFILES[0]  # Factur-X's EN 16931 profile
+    profile `specification_id` to hand out (REQ-004-PRS-F004, REQ-004-PRS-F005): for EN 16931,
+    which a ZUGFeRD PDF labels Factur-X EN 16931, FeRD's schema and rules of that profile too."""
+    factur_x = specification_id == TARGET_PROFILES[0]
     findings = tuple(_xsd.check_cii(document, factur_x_en16931=factur_x))
     if findings:
         return findings  # the rules run only on a schema-valid invoice (REQ-002-PRS-F011)
     try:
-        return tuple(check_rules(document))
+        return tuple(check_rules(document, *([FACTUR_X_EN16931] if factur_x else [])))
     except InvoiceReadError as error:
         raise InvoiceWriteError(
             f"the invoice can't be validated: {error}", findings=findings, document=document

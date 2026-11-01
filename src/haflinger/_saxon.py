@@ -1,13 +1,12 @@
 """Running official stylesheets with Saxon, unchanged (ADR-006). `saxonche` is imported on first
 use, so that importing Haflinger and reading invoices don't load it (ADR-005)."""
 
-import codecs
-import re
 import threading
 from functools import cache
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from haflinger._xml import decode
 from haflinger.errors import InvoiceReadError
 
 if TYPE_CHECKING:
@@ -52,6 +51,10 @@ def _executable(stylesheet: str) -> PyXsltExecutable:
     return compiler.compile_stylesheet(stylesheet_text=text)
 
 
+class TransformError(InvoiceReadError):
+    """Saxon failed on the document or in a stylesheet."""
+
+
 def transform(data: bytes, *stylesheets: str) -> list[bytes]:
     """Apply each stylesheet to XML that `_xml.parse` has accepted, so that it holds no DTD and
     no entity. Saxon gets the document as received, decoded in memory by the encoding the XML
@@ -60,14 +63,14 @@ def transform(data: bytes, *stylesheets: str) -> list[bytes]:
     input on disk (REQ-001-PRS-NF001)."""
     from saxonche import PySaxonApiError
 
-    text = decoded(data)
+    text = decode(data)
     with _LOCK:
         executables = [_executable(stylesheet) for stylesheet in stylesheets]
         try:
             node = _processor().parse_xml(xml_text=text)
             results = [executable.transform_to_string(xdm_node=node) for executable in executables]
         except PySaxonApiError as error:
-            raise InvoiceReadError(f"Saxon can't process the input: {error}") from None
+            raise TransformError(f"Saxon can't process the input: {error}") from None
     return [(result or "").encode() for result in results]
 
 
@@ -75,34 +78,3 @@ def clear_caches() -> None:
     """Forget the compiled stylesheets, so that the next use compiles them again."""
     with _LOCK:
         _executable.cache_clear()
-
-
-_BOMS = (
-    (codecs.BOM_UTF32_LE, "utf-32-le"),
-    (codecs.BOM_UTF32_BE, "utf-32-be"),
-    (codecs.BOM_UTF8, "utf-8"),
-    (codecs.BOM_UTF16_LE, "utf-16-le"),
-    (codecs.BOM_UTF16_BE, "utf-16-be"),
-)
-_DECLARED = re.compile(rb"""<\?xml[^>]*?encoding\s*=\s*["']([A-Za-z][A-Za-z0-9._-]*)["']""")
-
-
-def decoded(data: bytes) -> str:
-    """The text of an XML document, as the XML parser reads it: by its byte order mark, else by
-    the encoding its declaration names, else UTF-8 (UTF-16 recognised by its first bytes)."""
-    for bom, encoding in _BOMS:
-        if data.startswith(bom):
-            return _decode(data[len(bom) :], encoding)
-    if data.startswith(b"<\x00?\x00"):
-        return _decode(data, "utf-16-le")
-    if data.startswith(b"\x00<\x00?"):
-        return _decode(data, "utf-16-be")
-    declared = _DECLARED.match(data)
-    return _decode(data, declared[1].decode("ascii") if declared else "utf-8")
-
-
-def _decode(data: bytes, encoding: str) -> str:
-    try:
-        return data.decode(encoding)
-    except (LookupError, UnicodeDecodeError) as error:
-        raise InvoiceReadError(f"the input can't be decoded as {encoding}: {error}") from None

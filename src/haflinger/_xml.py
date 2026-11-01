@@ -5,6 +5,7 @@ further value of a term the model holds once is left out, with a `HAFL-DROPPED` 
 (REQ-003-PRS-F002).
 """
 
+import codecs
 import re
 from datetime import date
 from decimal import Decimal
@@ -23,6 +24,12 @@ _DECIMAL = re.compile(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)")
 XML_WHITESPACE = " \t\r\n"
 
 
+def check_bytes(data: object) -> None:
+    """Outside input comes as `bytes` (REQ-002-PRS-F001, REQ-003-PRS-F006)."""
+    if not isinstance(data, bytes):
+        raise InvoiceReadError(f"the input is not bytes but {type(data).__name__}")
+
+
 def check_size(data: bytes, max_size: int) -> None:
     if len(data) > max_size:
         raise InvoiceReadError(
@@ -32,6 +39,7 @@ def check_size(data: bytes, max_size: int) -> None:
 
 def parse(data: bytes) -> Element:
     """Parse XML from outside: no DTDs, no entities, nothing fetched (REQ-001-PRS-NF001)."""
+    _check_byte_order_mark(data)
     try:
         return defusedxml.ElementTree.fromstring(data, forbid_dtd=True)
     except DefusedXmlException:
@@ -43,6 +51,61 @@ def parse(data: bytes) -> Element:
         raise InvoiceReadError(f"the input is not well-formed XML: {error}") from None
 
 
+_BOMS = (
+    (codecs.BOM_UTF32_LE, "utf-32-le", {"utf-32", "utf-32-le"}),
+    (codecs.BOM_UTF32_BE, "utf-32-be", {"utf-32", "utf-32-be"}),
+    (codecs.BOM_UTF8, "utf-8", {"utf-8"}),
+    (codecs.BOM_UTF16_LE, "utf-16-le", {"utf-16", "utf-16-le"}),
+    (codecs.BOM_UTF16_BE, "utf-16-be", {"utf-16", "utf-16-be"}),
+)
+_DECLARED = re.compile(rb"""<\?xml[^>]*?encoding\s*=\s*["']([A-Za-z][A-Za-z0-9._-]*)["']""")
+
+
+def decode(data: bytes) -> str:
+    """The text of an XML document, as the XML parser reads it: by its byte order mark, else by
+    the encoding its declaration names, else UTF-8 (UTF-16 recognised by its first bytes). Saxon
+    and the XML Schema check of `validate` get this text, so that they see the characters the
+    reader sees (REQ-002-PRS-F011)."""
+    for bom, encoding, _ in _BOMS:
+        if data.startswith(bom):
+            return _decode(data[len(bom) :], encoding)
+    if data.startswith(b"<\x00?\x00"):
+        return _decode(data, "utf-16-le")
+    if data.startswith(b"\x00<\x00?"):
+        return _decode(data, "utf-16-be")
+    declared = _DECLARED.match(data)
+    return _decode(data, declared[1].decode("ascii") if declared else "utf-8")
+
+
+def _decode(data: bytes, encoding: str) -> str:
+    try:
+        return data.decode(encoding)
+    except (LookupError, UnicodeDecodeError) as error:
+        raise InvoiceReadError(f"the input can't be decoded as {encoding}: {error}") from None
+
+
+def _check_byte_order_mark(data: bytes) -> None:
+    """Refuse a byte order mark that contradicts the declared encoding, which XML 1.0 makes a
+    fatal error: the parser would read by one and Saxon by the other."""
+    for bom, encoding, agreeing in _BOMS:
+        if not data.startswith(bom):
+            continue
+        declared = _DECLARED.match(data, len(bom))
+        if declared is None:
+            return
+        name = declared[1].decode("ascii")
+        try:
+            agrees = codecs.lookup(name).name in agreeing
+        except LookupError:
+            agrees = False
+        if not agrees:
+            raise InvoiceReadError(
+                f"the input's byte order mark ({encoding}) contradicts its encoding declaration"
+                f" ({name})"
+            )
+        return
+
+
 def choose_vat_totals[T](
     candidates: list[tuple[T, Node]], currency_code: str | None, tax_currency_code: str | None
 ) -> tuple[T | None, T | None]:
@@ -52,7 +115,7 @@ def choose_vat_totals[T](
     the invoice currency. Every other amount is left out with a finding (REQ-003-PRS-F002)."""
     chosen: dict[str, T] = {}
     for candidate, amount in candidates:
-        if amount.value is None:
+        if amount.plain("BT-110 or BT-111") is None:
             continue
         declared = amount.attribute("currencyID")
         currency = declared or currency_code
@@ -149,19 +212,23 @@ class Node:
 
     @property
     def value(self) -> str | None:
-        """The text without surrounding whitespace; `None` when nothing is left."""
+        """The text without surrounding whitespace; `None` when nothing is left. Read a term's
+        value with `plain`, which checks that the element holds only text."""
         return _stripped(self.element.text)
+
+    def plain(self, term: str) -> str | None:
+        """The value of `term`; missing, with a finding, when the element holds elements
+        (REQ-003-PRS-F002)."""
+        if len(self.element):
+            text = "".join(self.element.itertext()).strip(XML_WHITESPACE)
+            self.malformed(term, "text alone, without elements", text)
+            return None
+        return self.value
 
     def first(self, path: str, term: str) -> Node | None:
         """The first element at `path` that holds a value; each further one is left out with a
         finding, since the model holds the term once."""
-        nodes: list[Node] = []
-        for node in self.findall(path):
-            if len(node.element):
-                text = "".join(node.element.itertext()).strip(XML_WHITESPACE)
-                node.malformed(term, "text alone, without elements", text)
-            elif node.value is not None:
-                nodes.append(node)
+        nodes = [node for node in self.findall(path) if node.plain(term) is not None]
         for node in nodes[1:]:
             node.drop(f"{term} appears more than once; this one is left out: {node.value!r}")
         return nodes[0] if nodes else None

@@ -77,11 +77,13 @@ def read(root: Node, specification_id: str | None) -> Invoice:
             tax_currency_code,
         ),
         vat_breakdown=tuple(
-            _vat_breakdown(node) for node in root.findall(f"{_SETTLEMENT}/ram:ApplicableTradeTax")
+            _vat_breakdown(node)
+            for node in _vat_taxes(root, f"{_SETTLEMENT}/ram:ApplicableTradeTax", "BG-23")
         ),
         lines=tuple(
             _line(node)
             for node in root.findall(f"{_TRANSACTION}/ram:IncludedSupplyChainTradeLineItem")
+            if node.holds_value()
         ),
     )
 
@@ -120,7 +122,7 @@ def _party(
     vat_ids = [
         node
         for node in party.findall("ram:SpecifiedTaxRegistration/ram:ID")
-        if node.attribute("schemeID") == "VA" and node.value is not None
+        if node.attribute("schemeID") == "VA" and node.plain(vat) is not None
     ]
     for node in vat_ids[1:]:
         node.drop(f"{vat} appears more than once; this one is left out: {node.value!r}")
@@ -177,7 +179,10 @@ def _line(line: Node) -> InvoiceLine:
     # BT-130 is an attribute: read also where the quantity's element is empty.
     unit = quantity or line.find(quantity_path)
     settlement = "ram:SpecifiedLineTradeSettlement"
-    tax = line.group(f"{settlement}/ram:ApplicableTradeTax", "BG-30")
+    taxes = _vat_taxes(line, f"{settlement}/ram:ApplicableTradeTax", "BG-30")
+    for node in taxes[1:]:
+        node.drop("BG-30 appears more than once; this one is left out")
+    tax = taxes[0] if taxes else None
     return InvoiceLine(
         id=line.text("ram:AssociatedDocumentLineDocument/ram:LineID", "BT-126"),
         quantity=None if quantity is None else quantity.as_decimal("BT-129"),
@@ -194,6 +199,22 @@ def _line(line: Node) -> InvoiceLine:
         vat_rate=None if tax is None else tax.decimal("ram:RateApplicablePercent", "BT-152"),
         item_name=line.text("ram:SpecifiedTradeProduct/ram:Name", "BT-153"),
     )
+
+
+def _vat_taxes(parent: Node, path: str, group: str) -> list[Node]:
+    """The elements at `path` holding a value that are VAT: of type code `VAT`, or of none. Another
+    tax, which Factur-X EXTENDED allows, is left out with a finding (REQ-003-PRS-F002)."""
+    taxes: list[Node] = []
+    for node in parent.findall(path):
+        if not node.holds_value():
+            continue
+        type_code = node.find("ram:TypeCode")
+        kind = None if type_code is None else type_code.value
+        if kind in (None, "VAT"):
+            taxes.append(node)
+        else:
+            node.drop(f"{group} of a tax other than VAT ({kind}) is left out")
+    return taxes
 
 
 def _text(node: Node | None, path: str, term: str) -> str | None:
@@ -425,6 +446,8 @@ def _put_amount(
     if not isinstance(value, Decimal) or not value.is_finite():
         raise InvoiceWriteError(f"{term} is not a finite Decimal: {value!r}")
     digits, exponent = len(value.as_tuple().digits), int(value.as_tuple().exponent)
+    if value.is_zero():
+        digits, exponent = 1, min(exponent, 0)  # 0E+2000 is written 0
     if max(digits + exponent, digits, -exponent) > _MAX_DIGITS:
         raise InvoiceWriteError(
             f"{term} has more than {_MAX_DIGITS:,} digits in plain notation: {value!r}"
