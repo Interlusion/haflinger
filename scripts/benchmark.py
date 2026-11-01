@@ -8,22 +8,28 @@ guide); without it, their rows are skipped.
 
 import os
 import platform
+import re
 import statistics
 import subprocess
 import sys
+import tempfile
 import time
 from collections.abc import Callable
+from dataclasses import replace
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
-from haflinger import cii, read_invoice, validate
+from haflinger import Totals, cii, read_invoice, validate
 from haflinger._input import open_invoice
 from haflinger._xml import MAX_SIZE
+from haflinger.validation import _RULE_SETS as RULE_SETS  # pyright: ignore[reportPrivateUsage]
 from haflinger.validation import rule_set
 
 ROOT = Path(__file__).resolve().parents[1]
 SUITE = sorted((ROOT / "tests/data/kosit-testsuite/instances").rglob("*.xml"))
 CREDIT_NOTE = ROOT / "tests/data/cen-en16931/ubl/examples/ubl-tc434-creditnote1.xml"
+SUITE_CII = ROOT / "tests/data/kosit-testsuite/instances/standard/01.01a-INVOICE_uncefact.xml"
+SUITE_UBL = ROOT / "tests/data/kosit-testsuite/instances/standard/01.01a-INVOICE_ubl.xml"
 LARGE_1 = "PEPPOL/Valid/Qvalia/Large_Invoice_sample1.xml"  # 25.7 MB
 LARGE_2 = "PEPPOL/Valid/Qvalia/Large_Invoice_sample2.xml"  # 61.1 MB
 
@@ -97,13 +103,59 @@ def processor() -> str:
     return f"{model}, {os.cpu_count()} logical cores"
 
 
-def rule_set_samples() -> dict[str, Path]:
-    """One file per rule set the official files exercise, by the rule set's name."""
+def rule_set_samples(directory: Path) -> dict[str, Path]:
+    """One file per rule set, by the rule set's name: an official file where one is vendored,
+    otherwise one written into `directory` that passes the rule set's XML Schema, so that its
+    rules run: a copy with BT-24 changed, for Factur-X KoSIT case 01.01a's model written as CII
+    and reduced to what MINIMUM and BASIC WL hold."""
     samples: dict[str, Path] = {}
     for path in [*SUITE, CREDIT_NOTE]:
         name, _ = rule_set(open_invoice(path.read_bytes(), MAX_SIZE, pdf="a PDF"))
         samples.setdefault(name, path)
+    bases = {
+        "cii": SUITE_CII.read_bytes(),
+        "ubl-invoice": SUITE_UBL.read_bytes(),
+        "ubl-credit-note": CREDIT_NOTE.read_bytes(),
+    }
+    for (document, specification_id), name in RULE_SETS.items():
+        if name in samples:
+            continue
+        if name.startswith("Factur-X"):
+            data = factur_x(specification_id)
+        else:
+            base = bases[document]
+            current = re.search(rb"(?:CustomizationID|ram:ID)>(urn:cen\.eu:[^<]*)<", base)
+            if current is None:
+                raise SystemExit(f"no BT-24 to change in the sample for {name}")
+            data = base.replace(current[1], specification_id.encode(), 1)
+        samples[name] = directory / f"{len(samples)}.xml"
+        samples[name].write_bytes(data)
     return samples
+
+
+def factur_x(specification_id: str) -> bytes:
+    model = read_invoice(SUITE_CII.read_bytes()).invoice
+    totals, seller, buyer = model.totals, model.seller, model.buyer
+    if totals is None or seller is None or buyer is None:
+        raise SystemExit("KoSIT case 01.01a has changed")
+    if "minimum" in specification_id or "basicwl" in specification_id:
+        model = replace(
+            model,
+            notes=(),
+            lines=(),
+            buyer_reference=None,
+            seller=replace(seller, trading_name=None),
+            totals=Totals(
+                line_net_total=None if "minimum" in specification_id else totals.line_net_total,
+                total_without_vat=totals.total_without_vat,
+                vat_total=totals.vat_total,
+                total_with_vat=totals.total_with_vat,
+                amount_due=totals.amount_due,
+            ),
+        )
+    if "minimum" in specification_id:
+        model = replace(model, vat_breakdown=(), buyer=replace(buyer, country_code=None))
+    return cii.write(replace(model, specification_id=specification_id))
 
 
 def installed(name: str) -> str:
@@ -114,7 +166,11 @@ def installed(name: str) -> str:
 
 
 def main(arguments: list[str]) -> int:
-    corpus = Path(arguments[0]) if arguments else None
+    with tempfile.TemporaryDirectory(prefix="haflinger-benchmark-") as directory:
+        return measure(Path(arguments[0]) if arguments else None, Path(directory))
+
+
+def measure(corpus: Path | None, scratch: Path) -> int:
     rows: list[tuple[str, str, str, str]] = []
 
     models = [read_invoice(path.read_bytes()).invoice for path in SUITE]
@@ -130,7 +186,7 @@ def main(arguments: list[str]) -> int:
             ms(write_times),
         )
     )
-    for name, path in rule_set_samples().items():
+    for name, path in rule_set_samples(scratch).items():
         measured = fresh("validate-first", path)
         rows.append(
             (
@@ -146,6 +202,7 @@ def main(arguments: list[str]) -> int:
     )
 
     large = [
+        ("REQ-003-PRS-NF002", "read", LARGE_1, "Read the 25.7 MB Peppol invoice", "-"),
         ("REQ-003-PRS-NF002", "read", LARGE_2, "Read the 61.1 MB Peppol invoice", "10 s"),
         ("REQ-002-PRS-NF002", "validate", LARGE_1, "Validate the 25.7 MB Peppol invoice", "30 s"),
         (
@@ -153,7 +210,7 @@ def main(arguments: list[str]) -> int:
             "validate",
             LARGE_2,
             "Validate the 61.1 MB Peppol invoice",
-            "to be set",
+            "60 s",
         ),
         (
             "REQ-004-PRS-NF001",

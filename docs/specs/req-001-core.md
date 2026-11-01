@@ -3,8 +3,8 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Draft |
-| **Version** | 0.3 |
-| **Date** | 2026-10-30 |
+| **Version** | 0.4 |
+| **Date** | 2026-11-01 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Intended Use
@@ -222,11 +222,11 @@ General vocabulary (CIUS, Leitweg-ID, Peppol …): the [E-Invoicing 101 glossary
 
 #### REQ-001-PRS-NF001: Outside input
 
-**Description**: XML that contains a document type declaration or an entity declaration SHALL be refused before any reader, stylesheet or rule processes it; XML embedded in a PDF SHALL be parsed by nothing else before this check. Nothing referenced in outside input, in XML or in a PDF (external file specifications, URLs, actions), SHALL be fetched, opened or run. The library SHALL write nothing to the file system and SHALL use no value from an input as a path, URL or command; values such as file names are handed back as data.
+**Description**: XML that contains a document type declaration or an entity declaration SHALL be refused before any reader, stylesheet or rule processes it; XML embedded in a PDF SHALL be parsed by nothing else before this check. Nothing referenced in outside input, in XML or in a PDF (external file specifications, URLs, actions), SHALL be fetched, opened or run. Reading and validation SHALL write nothing to the file system; `haflinger.pdf.embed`, whose input is the caller's own PDF, hands it to `factur-x` through a private temporary directory that is removed afterwards. The library SHALL use no value from an input as a path, URL or command; values such as file names are handed back as data.
 
 **Related URS**: REQ-001-URS-NF003
 
-**Definition of Done**: tests with an internal DTD, an entity expansion and an external entity each get a refusal, from reading and from validation; a PDF whose embedded XML declares an external entity gets a refusal from reading; a PDF whose file specification points to a file outside it reads without that file being opened (tests); no reference in an input is fetched, nothing is written to the file system, and no input value reaches a path, URL or command (inspection).
+**Definition of Done**: tests with an internal DTD, an entity expansion and an external entity each get a refusal, from reading and from validation; a PDF whose embedded XML declares an external entity gets a refusal from reading; a PDF whose file specification points to a file outside it reads without that file being opened (tests); no reference in an input is fetched, reading and validation write nothing to the file system, and no input value reaches a path, URL or command (inspection).
 
 #### REQ-001-PRS-NF002: No Frappe
 

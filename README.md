@@ -25,14 +25,24 @@ from pathlib import Path
 
 from haflinger import read_invoice, validate, write_cii
 
-data = Path("invoice.xml").read_bytes()  # CII or UBL; a ZUGFeRD PDF with the extra "pdf"
+data = Path("invoice.xml").read_bytes()  # CII or UBL
 result = read_invoice(data)  # the model, and what reading couldn't take in
-findings = validate(data)  # the official rules' verdict
+findings = validate(data)  # the XML Schema's and the official rules' verdict
 invoice = result.invoice
 print(invoice.number, invoice.totals and invoice.totals.amount_due, len(findings))
 
 # CII, handed out only when it passes the XML Schema and the official rules
 xml = write_cii(replace(invoice, specification_id="urn:cen.eu:en16931:2017"))
+```
+
+A ZUGFeRD PDF, with the extra `pdf`: `read_invoice` reads it directly; validate the invoice embedded in it.
+
+```python
+from haflinger.pdf import embed, extract_xml
+
+pdf = Path("invoice.pdf").read_bytes()
+findings = validate(extract_xml(pdf))
+zugferd = embed(Path("rendered-pdfa.pdf").read_bytes(), xml)  # PDF/A in, PDF/A-3 out
 ```
 
 ## Development

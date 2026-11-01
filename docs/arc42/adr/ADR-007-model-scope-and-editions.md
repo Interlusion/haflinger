@@ -3,7 +3,7 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Proposed |
-| **Date** | 2026-10-30 |
+| **Date** | 2026-11-01 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Context
@@ -11,7 +11,7 @@
 EN 16931-1:2017 defines 196 business terms and groups. Haflinger's first model holds 51 of them: 45 terms in 6 groups (REQ-001-PRS-F001).
 
 - **Reading a subset is harmless**: the original stays the invoice, and what the model lacks is still in it.
-- **Writing a subset isn't.** Writing the 66 KoSIT files from the model broke 14 rules, each for missing terms: allowances and charges (BG-20, BG-21), whose sums (BT-107, BT-108) the model holds without the items; and for XRechnung payment instructions (BG-16), seller contact (BG-6), city and post code (BT-37, BT-38, BT-52, BT-53), electronic addresses (BT-34, BT-49). German VAT law needs more than any of those rules forced: the seller's tax number (BT-32) when no VAT identifier (BT-31) is given, and the delivery date (BT-72) or invoicing period (BG-14).
+- **Writing a subset isn't.** Writing the 66 KoSIT files from the model broke 14 rules (16 over the 86 files of the suite as vendored), each for missing terms: allowances and charges (BG-20, BG-21), whose sums (BT-107, BT-108) the model holds without the items; and for XRechnung payment instructions (BG-16), seller contact (BG-6), city and post code (BT-37, BT-38, BT-52, BT-53), electronic addresses (BT-34, BT-49). German VAT law needs more than any of those rules forced: the seller's tax number (BT-32) when no VAT identifier (BT-31) is given, and the delivery date (BT-72) or invoicing period (BG-14).
 - **EN 16931-1:2026** was ratified in February 2026: 52 new business terms and 7 groups, bound to UBL 2.5 and CII D25A once the bindings are published. XRechnung 4.0 follows (final expected 2027); both editions run in parallel until March 2029. An invoice shows its edition only in BT-24.
 - **Beyond EN 16931**, ZUGFeRD EXTENDED and XRechnung's extension carry content no edition defines.
 
@@ -21,7 +21,7 @@ EN 16931-1:2017 defines 196 business terms and groups. Haflinger's first model h
 - **The model is edition-aware from the start.** It records the edition read from BT-24. Terms of the 2026 edition are added as optional fields once its bindings are published. An invoice of an edition Haflinger doesn't support is never read as another edition; REQ-002 says which editions are supported, and the others are refused.
 - **One model for both editions**, as long as 2026 only adds terms or lets a term repeat. A term that becomes repeatable takes the wider form (a tuple) for both editions; a 2017 invoice then holds at most one entry.
 - **Extensions beyond EN 16931 are not modelled.** They stay in the original, which is the invoice that is archived.
-- **A profile is written only when the model holds every term its rules require.** Until then the writer's tests list the rules it can't yet meet, so that the list shrinks as the model grows.
+- **An invoice is handed out only when it passes the rules of its profile.** A profile may be a write target before the model holds every term its rules require (amended on 2026-11-01, for XRechnung 3.0): the rules then refuse each such invoice and their findings name what is missing. The writer's tests list the rules it can't yet meet, so that the list shrinks as the model grows.
 
 ## Alternatives Considered
 
@@ -59,7 +59,7 @@ EN 16931-1:2017 defines 196 business terms and groups. Haflinger's first model h
 
 - No business-term field SHALL enter the model without its entry, with its BT or BG ID, in REQ-001.
 - A term's ID, name and meaning SHALL be taken from EN 16931-1 as published, not invented.
-- Haflinger SHALL NOT write a profile whose required terms the model doesn't hold.
+- Haflinger SHALL NOT hand out an invoice that fails the rules of its profile; a profile whose required terms the model doesn't hold is refused by those rules, naming the missing terms.
 
 ## References
 

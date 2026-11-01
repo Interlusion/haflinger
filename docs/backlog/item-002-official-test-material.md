@@ -16,7 +16,7 @@ Vendor the official material beyond KoSIT's test suite that the specs' Definitio
 
 | Source | Content | Needed by | Licence |
 | :- | :- | :- | :- |
-| CEN [`eInvoicing-EN16931`](https://github.com/ConnectingEurope/eInvoicing-EN16931) | 206 UBL invoice and 71 UBL credit note unit tests, a few for CII; 19 UBL and 15 CII examples | REQ-002-PRS-F007 | EUPL-1.2 |
+| CEN [`eInvoicing-EN16931`](https://github.com/ConnectingEurope/eInvoicing-EN16931) | 206 UBL invoice and 71 UBL credit note unit test files (1,131 tests), 2 for CII (9 tests); 19 UBL and 15 CII examples | REQ-002-PRS-F007 | EUPL-1.2 |
 | [`ZUGFeRD/corpus`](https://github.com/ZUGFeRD/corpus) | 240 files (151 PDFs) from many producers, with `fail/` folders | REQ-002-PRS-F003, REQ-002-PRS-F007, REQ-003-PRS-F003, REQ-003-PRS-F005, REQ-003-PRS-F007, REQ-003-PRS-NF003 | Apache-2.0 |
 | KoSIT [`xrechnung-testsuite`](https://github.com/itplr-kosit/xrechnung-testsuite) | 6 extension cases; technical cases (comprehensive, minimal, CVD) | REQ-002-PRS-F003 (extension); more coverage of REQ-003 | Apache-2.0 |
 | OpenPeppol [`peppol-bis-invoice-3`](https://github.com/OpenPEPPOL/peppol-bis-invoice-3) | Unit tests (`unit-UBL-PEPPOL` 63, `unit-CII-PEPPOL` 47, national rules), examples including credit notes | REQ-003-PRS-F001 (credit note) | to check |

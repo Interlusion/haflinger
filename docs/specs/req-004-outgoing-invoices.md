@@ -3,8 +3,8 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Draft |
-| **Version** | 0.3 |
-| **Date** | 2026-10-30 |
+| **Version** | 0.4 |
+| **Date** | 2026-11-01 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Intended Use
@@ -17,7 +17,7 @@ Out of scope: writing UBL; sending by e-mail, portal or Peppol (the caller, prov
 
 Read [REQ-001](req-001-core.md) first: it holds the personas, stories and terms, and the rules every spec follows.
 
-Key constraints: a profile is written only when the model holds every term its rules require ([ADR-007](../arc42/adr/ADR-007-model-scope-and-editions.md)); ZUGFeRD PDF handling is in the library, in the optional extra `pdf` ([ADR-001](../arc42/adr/ADR-001-library-and-app.md)).
+Key constraints: an invoice is handed out only when it passes the rules of its profile, which refuse it, naming what is missing, while the model lacks terms the profile requires ([ADR-007](../arc42/adr/ADR-007-model-scope-and-editions.md)); ZUGFeRD PDF handling is in the library, in the optional extra `pdf` ([ADR-001](../arc42/adr/ADR-001-library-and-app.md)).
 
 ## User Stories
 
@@ -85,7 +85,7 @@ The personas are [REQ-001's](req-001-core.md#personas).
 
 **Description**: `haflinger.write_cii(invoice: Invoice) -> bytes` SHALL return a CII D16B document, UTF-8 with an XML declaration, when it passes REQ-004-PRS-F004 and REQ-004-PRS-F005. Otherwise it SHALL raise `haflinger.InvoiceWriteError`, and no other exception, with a reason that names the business term where there is one ([REQ-001-PRS-F005](req-001-core.md#req-001-prs-f005-refusals-and-findings-name-their-subject)). `InvoiceWriteError` SHALL carry `findings` and `document`:
 
-- **Before writing**, with no findings and no document, when the model's BT-24 is no supported target profile (REQ-004-PRS-F002); a value has the wrong type (an amount, quantity, price or rate that isn't a finite `Decimal`, a date that isn't a `date`, a text that isn't a `str`); a text is empty, has surrounding whitespace, or holds a character XML 1.0 doesn't allow; or the model holds a term without one it needs to be written (BT-111 without BT-6).
+- **Before writing**, with no findings and no document, when the argument isn't an `Invoice`; the model's BT-24 is no supported target profile (REQ-004-PRS-F002); a value has the wrong type (an amount, quantity, price or rate that isn't a finite `Decimal`, a date that isn't a `date`, a text that isn't a `str`, a group that isn't of its class or a tuple of it); a number has more than 1,000 digits in plain notation; a text is empty, has surrounding whitespace, or holds a character XML 1.0 doesn't allow; a note (BG-1) holds neither subject code nor text; or the model holds a term without one it needs to be written (BT-111 without BT-6, BT-130 without BT-129).
 - **After writing**, with the findings and the written document, when it fails REQ-004-PRS-F004 or REQ-004-PRS-F005, or can't be checked by them (for example, larger than the size limit validation accepts).
 
 **Related URS**: REQ-004-URS-F001, REQ-004-URS-F002
@@ -146,13 +146,13 @@ The personas are [REQ-001's](req-001-core.md#personas).
 
 **Description**: With the extra `pdf` installed, `haflinger.pdf.embed(pdf: bytes, xml: bytes) -> bytes` SHALL return the given PDF as PDF/A-3 with the XML embedded as `factur-x.xml`, with the relationship and the XMP metadata (profile, version) that ZUGFeRD and Factur-X require, and the pages unchanged. It SHALL raise `InvoiceWriteError`, and no other exception, when:
 
-- the PDF isn't readable, or its XMP metadata declares no PDF/A conformance (the reason says that the input must be PDF/A);
+- either argument isn't `bytes`; the PDF isn't readable, or its XMP metadata declares no conformance to PDF/A-1, -2 or -3 (the reason says that the input must be PDF/A); or the PDF holds embedded files or named destinations, which embedding would drop;
 - the XML isn't a CII invoice whose BT-24 is `urn:cen.eu:en16931:2017`, the ZUGFeRD / Factur-X EN 16931 profile; XRechnung, the other target profile of REQ-004-PRS-F002, is sent as XML;
 - the XML fails REQ-004-PRS-F004 or REQ-004-PRS-F005, with the findings.
 
 **Related URS**: REQ-004-URS-F002, REQ-004-URS-F004 | **Rationale**: ZUGFeRD PDFs go to businesses, XRechnung to public authorities as XML (Intended Use). ZUGFeRD's XRECHNUNG profile in a PDF (`xrechnung.xml`) is an open question; `factur-x` doesn't write it.
 
-**Definition of Done**: for a CII invoice of the EN 16931 profile and a PDF/A test file, `haflinger.pdf.extract_xml` on the result returns the XML byte for byte, the result reads with `read_invoice` to the invoice's model, the XMP names the invoice's profile, the page content equals the input's, and veraPDF, the reference PDF/A validator, finds the result conformant to PDF/A-3 (tests; veraPDF runs where it is installed, as an oracle); one test per refusal.
+**Definition of Done**: for a CII invoice of the EN 16931 profile and a PDF/A test file, and for the same file after incremental updates, the result is one PDF that a strict reader reads, `haflinger.pdf.extract_xml` on the result returns the XML byte for byte, the result reads with `read_invoice` to the invoice's model, the XMP names the invoice's profile, the page content equals the input's, and veraPDF, the reference PDF/A validator, finds the result conformant to PDF/A-3 (tests; veraPDF runs where it is installed, as an oracle); one test per refusal.
 
 ## PRS — Non-Functional
 
@@ -173,7 +173,7 @@ The personas are [REQ-001's](req-001-core.md#personas).
 
 ## Assumptions
 
-- Until the model holds the terms of [ADR-007](../arc42/adr/ADR-007-model-scope-and-editions.md)'s first step, `write_cii` refuses XRechnung and most ZUGFeRD invoices, with the findings that say which terms are missing.
+- Until the model holds the terms of [ADR-007](../arc42/adr/ADR-007-model-scope-and-editions.md)'s first step, `write_cii` refuses every XRechnung invoice and the EN 16931 invoices that need terms the model lacks (as EN 16931, 60 of the 86 KoSIT models are handed out), with the findings that say which terms are missing.
 - Factur-X's XML Schemas are vendored under [ADR-008](../arc42/adr/ADR-008-vendoring-official-files.md) ([ITEM-002](../backlog/item-002-official-test-material.md)).
 - `factur-x` produces PDF/A-3 when its input is PDF/A, as its changelog states (tested there with veraPDF); it doesn't convert other PDFs to PDF/A.
 

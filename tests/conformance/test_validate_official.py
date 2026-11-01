@@ -7,6 +7,7 @@ import defusedxml.ElementTree
 import pytest
 
 from haflinger import validate
+from haflinger.validation import check_rules
 
 ROOT = Path(__file__).resolve().parents[2]
 SUITE = ROOT / "tests/data/kosit-testsuite/instances"
@@ -41,12 +42,13 @@ def test_cens_tests_are_there() -> None:
 def test_cens_expectations_are_met(test: Element) -> None:
     """Each rule an `<error>` or `<warning>` names fails, as often as its `number` says (once at
     least) and with that seriousness; each rule a `<success>` names doesn't fail. The fragment is
-    written out by ElementTree; CEN's rules test no prefixes. Fragments without BT-24 get CEN's
-    rules and `HAFL-PROFILE`."""
+    written out by ElementTree; CEN's rules test no prefixes. The fragments aren't whole invoices,
+    so, as in CEN's own tests, they get the rules without the XML Schema check first; without
+    BT-24 they get CEN's rules and `HAFL-PROFILE`."""
     expectations = test.find(f"{VEFA}assert")
     assert expectations is not None
     (fragment,) = [child for child in test if child.tag != f"{VEFA}assert"]
-    findings = validate(tostring(fragment))
+    findings = check_rules(tostring(fragment))
     checked = 0
     for expectation in expectations:
         kind, rule = expectation.tag.removeprefix(VEFA), (expectation.text or "").strip()

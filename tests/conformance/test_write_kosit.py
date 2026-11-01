@@ -33,8 +33,12 @@ MISSING_TERMS = {
     "BR-S-08": "BG-20 and BG-21, which enter the taxable amount (BT-116)",
     "BR-E-01": "BG-20 and BG-21, whose VAT category (BT-95, BT-102) the rule counts",
     "BR-CO-16": "BG-DEX-09 third party payments of the XRechnung extension, which the extension"
-    " allows into BT-115 (case 05.01a)",
+    " allows into BT-115; outside the model by ADR-007, so the entry stays while the extension"
+    " case is written as XRechnung",
 }
+# Rules listed above that may fail only on these files.
+ONLY_ON = {"BR-CO-16": {"05.01a-INVOICE_ubl.xml"}}
+EN16931 = "urn:cen.eu:en16931:2017"
 
 
 @cache
@@ -79,9 +83,25 @@ def test_fails_only_rules_that_need_missing_terms(path: Path) -> None:
     """The document is schema-valid (no `HAFL-XSD`), and every rule it fails is listed."""
     _, _, findings = write(path)
     assert failed(findings) - set(MISSING_TERMS) == set()
+    for rule, files in ONLY_ON.items():
+        assert rule not in failed(findings) or path.name in files, rule
 
 
 def test_every_listed_rule_still_fails() -> None:
     """Once the model holds a rule's terms and no file fails it, its entry goes."""
     still = set[str]().union(*(failed(write(path)[2]) for path in FILES))
     assert set(MISSING_TERMS) - still == set()
+
+
+@pytest.mark.parametrize("path", FILES, ids=lambda path: path.name)
+def test_written_as_en16931_passes_both_schemas_and_reads_back(path: Path) -> None:
+    """REQ-004-PRS-F004: the EN 16931 target also passes Factur-X's XML Schema."""
+    invoice = replace(read_invoice(path.read_bytes()).invoice, specification_id=EN16931)
+    try:
+        document, findings = write_cii(invoice), ()
+    except InvoiceWriteError as error:
+        document, findings = error.document, error.findings
+    assert document is not None
+    assert "HAFL-XSD" not in {finding.rule for finding in findings}
+    assert read_invoice(document).invoice == invoice
+    assert kosit.read_invoice(document).invoice == invoice

@@ -3,8 +3,8 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Draft |
-| **Version** | 0.2 |
-| **Date** | 2026-10-30 |
+| **Version** | 0.3 |
+| **Date** | 2026-11-01 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Intended Use
@@ -87,13 +87,16 @@ The personas are [REQ-001's](req-001-core.md#personas).
 - contains a document type or entity declaration (REQ-001-PRS-NF001);
 - has a root element that is neither a CII invoice nor a UBL invoice or credit note;
 - follows an edition other than 2017 (REQ-002-PRS-F009);
-- is larger than `max_size` (REQ-001-PRS-NF003).
+- is larger than `max_size` (REQ-001-PRS-NF003);
+- holds more than 1,000 empty elements (no child element, no text but whitespace): every one fails `PEPPOL-EN16931-R008`, and the rules would take minutes over thousands of them (see the assumptions); real invoices hold none or a few;
+- holds a number of more than 1,000 digits, whose arithmetic in the rules grows with the square of its length (minutes for one of a megabyte); real amounts have fewer than 20;
+- holds a telephone number (`ram:CompleteNumber`, `cbc:Telephone`) of more than 100 characters: XRechnung's `BR-DE-27` checks it with a pattern whose time grows with the square of the length (36 s for 8,000 characters); real numbers have fewer than 40.
 
 A value the rules find wrong is a finding, not a refusal.
 
 **Related URS**: REQ-002-URS-F001
 
-**Definition of Done**: a test validates a CII and a UBL file of the KoSIT suite; one test per refusal; the rest is covered by REQ-002-PRS-F006.
+**Definition of Done**: a test validates a CII and a UBL file of the KoSIT suite; one test per refusal, those for empty elements, digits and telephone numbers also showing that the limit itself is validated and that far beyond it is refused within a second; the rest is covered by REQ-002-PRS-F006.
 
 #### REQ-002-PRS-F002: Findings
 
@@ -120,7 +123,7 @@ A value the rules find wrong is a finding, not a refusal.
 
 **Related URS**: REQ-002-URS-F002 | **Rationale**: ZUGFeRD 2.0's spellings get today's Factur-X rules, because Factur-X 1.0 continues the same profiles. The Factur-X rules are FeRD's, from its ZUGFeRD package, which is technically identical to FNFE-MPE's Factur-X package.
 
-**Definition of Done**: a test per row with an official test file of that profile checks that its rule set ran (by the rule IDs in its findings, or by a deliberately broken copy failing a rule of that set); a test per alternative spelling, with a test file that uses it where the official files have one, otherwise with a copy of the row's file with only BT-24 changed.
+**Definition of Done**: a test per row checks that its rule set ran (by the rule IDs in its findings, or by a deliberately broken copy failing a rule of that set), with an official test file of that profile where one is vendored, otherwise with a copy of a KoSIT file with BT-24 changed; a test per alternative spelling, with a test file that uses it where the vendored files have one, otherwise with such a copy.
 
 #### REQ-002-PRS-F004: Profiles not supported
 
@@ -156,11 +159,11 @@ A value the rules find wrong is a finding, not a refusal.
 
 - Every file of the KoSIT test suite is valid (no `fatal` or `error` finding).
 - Every expectation of CEN's per-rule unit tests, from the release of the EN 16931 rules in use, is met: each listed rule fails where the test expects an error and doesn't where it expects success.
-- One file per Factur-X profile of REQ-002-PRS-F003, chosen from the ZUGFeRD corpus's `correct` folders among files made for the Factur-X version of the rules in use, is valid.
+- Every sample of FeRD's ZUGFeRD package for the Factur-X profiles of REQ-002-PRS-F003 is valid. The samples aren't vendored, as no terms name them ([ITEM-002](../backlog/item-002-official-test-material.md)): the test reads the maintainer's copy of the package and is skipped where it isn't present.
 
 #### REQ-002-PRS-F008: Differences in the official files
 
-**Description**: Where official test files disagree with each other (the CII and UBL files of one KoSIT business case giving different values), the test SHALL record the case, the business term and the reason, and leave out only that term. Each record SHALL link the upstream issue that reports the difference, or say why there is none (for example, a difference the standard allows). A further test SHALL fail once a new release of the files removes a recorded difference.
+**Description**: Where official test files disagree with each other (the CII and UBL files of one KoSIT business case giving different values), the test SHALL record the case, the business term and the reason, and leave out only that term. Each record SHALL link the upstream issue that reports the difference, say why there is none (for example, a difference the standard allows), or, until the report is filed, name the backlog item that tracks it. A further test SHALL fail once a new release of the files removes a recorded difference.
 
 **Related URS**: REQ-002-URS-NF001 | **Rationale**: Haflinger never fixes an official file, so a fix can only come from upstream; the failing test then shows when it has arrived.
 
@@ -174,6 +177,14 @@ A value the rules find wrong is a finding, not a refusal.
 
 **Definition of Done**: a CII and a UBL file with BT-24 `urn:cen.eu:en16931:2026` are refused by `validate`, naming 2026; the refusals of reading and writing are tested in REQ-003 and REQ-004.
 
+#### REQ-002-PRS-F011: XML Schema first
+
+**Description**: `validate` SHALL check the invoice against the XML Schema of its rule set before the rules, as KoSIT's validator does: for KoSIT's scenarios the schema the scenario names (CII D16B, UBL 2.1 Invoice or CreditNote), for a Factur-X profile FeRD's XML Schema of the profile. Each violation SHALL be a `HAFL-XSD` finding (REQ-002-PRS-F010), and the rules SHALL run only on an invoice that passes the schema.
+
+**Related URS**: REQ-002-URS-F001 | **Rationale**: The rules assume a schema-valid document: on one that isn't, a stylesheet can fail (an amount written `1,00`) or miss what the schema would report (an unknown element, a date that doesn't exist).
+
+**Definition of Done**: a CII and a UBL file of the KoSIT suite with an unknown element, and one with an amount written `1,00`, each get `HAFL-XSD` findings and no finding of a rule; a Factur-X copy that violates its profile's schema gets `HAFL-XSD` (tests).
+
 #### REQ-002-PRS-F010: Haflinger's own findings
 
 **Description**: Besides the findings of the official rules, Haflinger SHALL report only these findings of its own, each a `Finding` (REQ-002-PRS-F002) whose rule ID starts with `HAFL-`:
@@ -181,7 +192,7 @@ A value the rules find wrong is a finding, not a refusal.
 | Rule | Flag | Reported by | When | Location and text |
 | :- | :- | :- | :- | :- |
 | `HAFL-PROFILE` | `warning` | `validate` | BT-24 names no profile for the invoice's syntax, or is missing (REQ-002-PRS-F004) | BT-24's element, or the root; the text names the BT-24 value and says that the profile's own rules weren't run |
-| `HAFL-XSD` | `fatal` | `write_cii`, `haflinger.pdf.embed` | the document violates an XML Schema it must pass (REQ-004-PRS-F004) | as the schema check reports it; the text names the schema |
+| `HAFL-XSD` | `fatal` | `validate`, `write_cii`, `haflinger.pdf.embed` | the document violates an XML Schema it must pass, or can't be parsed for the check (REQ-002-PRS-F011, REQ-004-PRS-F004) | as the schema check reports it; the text names the schema |
 | `HAFL-VALUE` | `error` | `read_invoice` | a value isn't written as its business term requires, and is read as missing (REQ-003-PRS-F002) | the element; the text names the business term and the value |
 | `HAFL-DROPPED` | `warning` | `read_invoice` | a value the model has no place for: a repeat of a term the model holds once, a VAT total in a third currency (REQ-003-PRS-F002) | the element left out; the text names the business term |
 
@@ -197,11 +208,11 @@ A value the rules find wrong is a finding, not a refusal.
 
 **Related URS**: REQ-002-URS-NF002
 
-**Definition of Done**: the validation tests pass with network access blocked (test); the package contains every artefact it uses (inspection).
+**Definition of Done**: no artefact or setting makes Saxon or lxml fetch anything beyond the vendored files, and the package contains every artefact it uses (inspection). A test that blocks the network can't reach Saxon, which runs native code; the tests and the corpus report run without network access.
 
 #### REQ-002-PRS-NF002: Speed
 
-**Description**: The first validation of a KoSIT test file with a rule set in a process, compiling that rule set included, SHALL take at most 2 s. After that, validating a file of the KoSIT test suite SHALL take at most 50 ms, and the 25.7 MB Peppol invoice of the ZUGFeRD corpus (`PEPPOL/Valid/Qvalia/Large_Invoice_sample1.xml`, 26,813 lines, at corpus commit `82e886f`) at most 30 s, on the reference machine. The time and peak memory of validating the 61.1 MB Peppol invoice (`PEPPOL/Valid/Qvalia/Large_Invoice_sample2.xml`) SHALL be measured; its limit is set once they are known.
+**Description**: The first validation of a KoSIT test file with a rule set in a process, compiling that rule set included, SHALL take at most 2 s. After that, validating a file of the KoSIT test suite SHALL take at most 50 ms, and the 25.7 MB Peppol invoice of the ZUGFeRD corpus (`PEPPOL/Valid/Qvalia/Large_Invoice_sample1.xml`, 26,813 lines, at corpus commit `82e886f`) at most 30 s, on the reference machine. Validating the 61.1 MB Peppol invoice (`PEPPOL/Valid/Qvalia/Large_Invoice_sample2.xml`) SHALL take at most 60 s, and its peak memory SHALL be measured.
 
 **Related URS**: REQ-002-URS-NF003
 
@@ -231,6 +242,7 @@ A value the rules find wrong is a finding, not a refusal.
 - XRechnung 3.0 is the only XRechnung version the authorities accept today; earlier versions need no rules of their own.
 - The Factur-X rules and XML Schemas for MINIMUM, BASIC WL, BASIC, EN 16931 and EXTENDED come from FeRD's ZUGFeRD package, whose rights of use put the schemas and Schematron under Apache-2.0, so that Haflinger can vendor them under [ADR-008](../arc42/adr/ADR-008-vendoring-official-files.md) ([ITEM-002](../backlog/item-002-official-test-material.md)). The rights of use don't name the XSLT the package also holds; Haflinger compiles the Schematron itself ([ADR-006](../arc42/adr/ADR-006-validation-with-official-rules.md)).
 - KoSIT's scenario file, which sets the rule levels of REQ-002-PRS-F005, is vendored with KoSIT's stylesheets.
+- The library doesn't bound the time validation takes. The official rules compute the location of each finding in a way that grows with the square of the number of sibling elements: a crafted invoice of a few hundred kB can take minutes, and Saxon holds the Python process meanwhile. `validate` refuses the cheapest such invoice, one of thousands of empty elements (REQ-002-PRS-F001); and two others as cheap: a number of hundreds of thousands of digits, and a telephone number of thousands of characters. What remains is thousands of invoice lines that each fail a rule (15 s for 10,000 lines in 3.2 MB), which looks like a large real invoice. A caller that validates invoices from outside runs `validate` where a time limit applies, such as a background job with a timeout ([ITEM-003](../backlog/item-003-erpnext-app.md)); a time limit inside the library is [ITEM-007](../backlog/item-007-validation-time-limit.md).
 
 ## Open Questions
 

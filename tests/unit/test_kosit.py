@@ -38,11 +38,11 @@ def test_a_malformed_value_is_missing_with_a_finding() -> None:
 
 
 def test_reads_the_encoding_the_input_declares() -> None:
-    text = CII.read_text(encoding="utf-8").replace("[Seller name]", "Müller GmbH")
+    text = CII.read_text(encoding="utf-8").replace("[Seller name]", "Exämple GmbH")
     data = text.replace('encoding="UTF-8"', 'encoding="windows-1252"', 1).encode("cp1252")
     invoice = kosit.read_invoice(data).invoice
     assert invoice.seller is not None
-    assert invoice.seller.name == "Müller GmbH"
+    assert invoice.seller.name == "Exämple GmbH"
     assert invoice == read_invoice(data).invoice
 
 

@@ -101,7 +101,7 @@ flowchart TB
         cii["cii<br/>read and write"]
         ubl["ubl<br/>read"]
         validate["validate<br/>rules into findings"]
-        xsd["XSD check<br/>(library open)"]
+        xsd["XSD check<br/>(lxml)"]
         kosit["kosit<br/>KoSIT reading path"]
         saxon["_saxon<br/>runs official XSLT"]
         artefacts[("artefacts<br/>vendored rules and stylesheets")]
@@ -133,7 +133,7 @@ flowchart TB
 | `cii`, `ubl` | The syntax bindings: each business term read from the element EN 16931-3-3 (CII) or -3-2 (UBL) assigns it, CII also written | Built |
 | `validate` | Choose the rule set, run it, turn the SVRL report into findings (rule, flag, location, text) | Built: KoSIT's scenarios with their levels (EN 16931, XRechnung 3.0, its extension, CVD); FeRD's Factur-X rules (MINIMUM, BASIC WL, BASIC, EXTENDED), compiled with SchXslt on first use |
 | XSD check | Check a written invoice against the CII and Factur-X XML Schemas | Built, with lxml ([ADR-006](adr/ADR-006-validation-with-official-rules.md)): CII D16B, and Factur-X's EN 16931 profile for that target |
-| `kosit` | Read through KoSIT's stylesheet into the same model; the tests' independent second reader | Built; agrees with `read_invoice` on the KoSIT suite and CEN's UBL credit note |
+| `kosit` | Read through KoSIT's stylesheet into the same model; the tests' independent second reader | Built; agrees with `read_invoice` on the KoSIT suite, CEN's UBL credit note and the vendored corpus PDFs |
 | `_saxon` | Compile each stylesheet once per process, run it on the original bytes | Built; imports `saxonche` on first use |
 | `artefacts` | KoSIT's visualisation stylesheets (the reading stylesheet) and validator stylesheets, unchanged, with provenance READMEs | Vendored: KoSIT's visualisation and validator configuration, FeRD's Factur-X Schematron and XML Schemas, SchXslt |
 | `pdf` | Extract the XML from a ZUGFeRD PDF without parsing it; embed checked XML into a PDF/A file the caller rendered (PDF/A-3, XMP), via `factur-x` | Built, extra `pdf`: `extract_xml` inflates against the size limit itself; `embed` writes the EN 16931 profile |
@@ -176,7 +176,7 @@ sequenceDiagram
     A->>H: write_cii(model)
     H->>H: check the target profile and the values
     H->>H: write CII
-    H->>H: XML Schema check (library open, ADR-006)
+    H->>H: XML Schema check (lxml, ADR-006)
     H->>S: written bytes, rules for the target profile
     S-->>H: findings
     alt fatal or error findings
@@ -203,13 +203,15 @@ flowchart LR
         caller["calling software"]
         lib["haflinger[pdf]"]
         saxon["saxonche<br/>(native wheel)"]
-        facturx["factur-x<br/>(extra pdf)"]
+        lxml["lxml<br/>(native wheel)"]
+        facturx["factur-x, pypdf<br/>(extra pdf)"]
     end
     caller --> lib --> saxon
+    lib --> lxml
     lib -.-> facturx
 ```
 
-Nothing is published yet; releases to PyPI are in the [backlog](../backlog/backlog.md). `saxonche` is a native wheel per platform; which platforms it covers, and its size, are in [ADR-006](adr/ADR-006-validation-with-official-rules.md).
+Nothing is published yet; the backlog holds reserving the name on PyPI ([backlog](../backlog/backlog.md)). `saxonche` is a native wheel per platform; which platforms it covers, and its size, are in [ADR-006](adr/ADR-006-validation-with-official-rules.md).
 
 ## 8. Cross-cutting concepts
 
@@ -267,7 +269,7 @@ Speed serves conformance: every invoice, received or sent, is validated.
 
 | ID | Scenario | Response and measure | Requirement |
 | :- | :- | :- | :- |
-| QS-08 | A 25.7 MB invoice with 26,813 lines arrives or is sent | Measured: reading 0.8 s with our mapping (KoSIT's stylesheet: 11 minutes in the spikes, which is why it is not the reader), the rules 6.8 s, writing 0.6 s; the 61.1 MB invoice read in 2.5 s and validated in 16.3 s (1.3 GiB peak memory); the first validation in a process, compiling its rules included, under 0.3 s | [REQ-002-PRS-NF002](../specs/req-002-conformance.md#req-002-prs-nf002-speed), [REQ-003-PRS-NF002](../specs/req-003-incoming-invoices.md#req-003-prs-nf002-speed), [REQ-004-PRS-NF001](../specs/req-004-outgoing-invoices.md#req-004-prs-nf001-speed) |
+| QS-08 | A 25.7 MB invoice with 26,813 lines arrives or is sent | Measured: reading 0.8 s with our mapping (KoSIT's stylesheet: 11 minutes in the spikes, which is why it is not the reader), the rules 6.8 s, writing 0.6 s; the 61.1 MB invoice read in 2.5 s and validated in 16–18 s (1.3–1.6 GiB peak memory); the first validation in a process, compiling its rules included, under 0.3 s for KoSIT's scenarios and up to 1.5 s for Factur-X EXTENDED | [REQ-002-PRS-NF002](../specs/req-002-conformance.md#req-002-prs-nf002-speed), [REQ-003-PRS-NF002](../specs/req-003-incoming-invoices.md#req-003-prs-nf002-speed), [REQ-004-PRS-NF001](../specs/req-004-outgoing-invoices.md#req-004-prs-nf001-speed) |
 
 ### Keeping current
 
@@ -285,10 +287,11 @@ Speed serves conformance: every invoice, received or sent, is validated.
 
 | Risk | Mitigation |
 | :- | :- |
-| Saxon: large, native, licence not yet confirmed ([ADR-006](adr/ADR-006-validation-with-official-rules.md)) | Confirm the licence before a release ([ADR-009](adr/ADR-009-licences-and-name.md)); check the platforms (open questions 1 and 2); without Saxon at runtime, incoming invoices couldn't be validated, so there is no fallback short of a new ADR |
+| Saxon: large, native, licence not yet confirmed ([ADR-006](adr/ADR-006-validation-with-official-rules.md)) | Confirm the licence before a release ([ADR-009](adr/ADR-009-licences-and-name.md)); check the platforms (open question 1) and the licence (open question 2); without Saxon at runtime, incoming invoices couldn't be validated, so there is no fallback short of a new ADR |
 | EN 16931-1:2026 and XRechnung 4.0, in parallel with 2017 for years ([ITEM-001](../backlog/item-001-en16931-2026.md)) | Edition-aware model from the start ([ADR-007](adr/ADR-007-model-scope-and-editions.md)); follow KoSIT's and CEN's releases |
 | The model holds a sum without its parts (BT-107 without BG-20): harmless when reading, an invalid invoice when writing | Write a profile only when the model holds its terms; the writer's tests list the rules still missed (REQ-004) |
 | Very large invoices | Our own mapping reads them; KoSIT's stylesheet only in tests; a size limit on every input (REQ-001) |
+| The official rules take time growing with the square of the number of sibling elements: a crafted invoice of a few hundred kB validates for minutes, and Saxon holds the Python process | `validate` refuses the cheapest cases: more than 1,000 empty elements, numbers of more than 1,000 digits, telephone numbers of more than 100 characters (REQ-002-PRS-F001); for the rest, documented: callers validate outside input where a time limit applies, such as a background job with a timeout (REQ-002's assumptions, ITEM-003); a time limit inside the library is [ITEM-007](../backlog/item-007-validation-time-limit.md) |
 | Upstream timing: a fix in an official artefact waits for its release | Documented patch with a test, or wait; never a silent edit |
 | Rules and their unit tests from different releases look like defects | Vendor both from the same release ([ADR-008](adr/ADR-008-vendoring-official-files.md)) |
 | Libraries with a single maintainer (`factur-x`) | Kept behind Haflinger's own interface, replaceable |
@@ -302,8 +305,7 @@ Speed serves conformance: every invoice, received or sent, is validated.
 | -- | :- | :- | :- |
 | 1 | Is Saxon's size acceptable in a bench, and does any target lack a wheel ([ADR-006](adr/ADR-006-validation-with-official-rules.md))? | Maintainer, [backlog](../backlog/backlog.md) | §2, §7 |
 | 2 | Saxon's licence for SaxonC-HE | Saxonica's licence terms, [backlog](../backlog/backlog.md) | [ADR-009](adr/ADR-009-licences-and-name.md) |
-| 3 | Outdated versions and moved code lists | [REQ-002's open questions](../specs/req-002-conformance.md#open-questions) | §8 |
-| 4 | The Python version of Frappe/ERPNext v16 benches against `requires-python >= 3.14` | [backlog](../backlog/backlog.md), [ADR-002](adr/ADR-002-toolchain.md) trigger 2 | §2 |
+| 3 | The Python version of Frappe/ERPNext v16 benches against `requires-python >= 3.14` | [backlog](../backlog/backlog.md), [ADR-002](adr/ADR-002-toolchain.md) trigger 2 | §2 |
 
 ## 12. Glossary
 

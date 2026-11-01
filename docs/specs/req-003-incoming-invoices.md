@@ -3,8 +3,8 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Draft |
-| **Version** | 0.2 |
-| **Date** | 2026-10-30 |
+| **Version** | 0.3 |
+| **Date** | 2026-11-01 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Intended Use
@@ -112,15 +112,15 @@ The personas are [REQ-001's](req-001-core.md#personas).
 
 - **Notes (BG-1)**: in UBL, a `cbc:Note` starting with `#XXX#` carries the subject code `XXX` (the convention of XRechnung and Peppol), the rest is the text.
 - **VAT totals (BT-110, BT-111)**: chosen by currency. In CII, the `TaxTotalAmount` in the invoice currency (BT-5) is BT-110 and the one in the VAT accounting currency (BT-6) is BT-111; one without `currencyID` is BT-110. In UBL, the `cac:TaxTotal` whose `cbc:TaxAmount` is in the invoice currency gives BT-110 and the VAT breakdown, the one in the VAT accounting currency gives BT-111; when no `cac:TaxTotal` gives BT-110, the first one holding a `cac:TaxSubtotal` gives the VAT breakdown, and the subtotals of every other `cac:TaxTotal` are left out with a `HAFL-DROPPED` finding. Where BT-6 equals BT-5, the first total in that currency is BT-110 and the second BT-111. A VAT total in another currency is left out with a `HAFL-DROPPED` finding.
-- **Repeated values**: where the invoice holds a term more often than the model does (two due dates, BT-9, in an EXTENDED invoice; two VAT totals in one currency), the first that holds a value is read and each further one that holds a value is left out with a `HAFL-DROPPED` finding. The same holds for the groups the model holds once (BG-4, BG-7, BG-22): the first element that holds any value is read.
+- **Repeated values**: where the invoice holds a term more often than the model does (two due dates, BT-9, in an EXTENDED invoice; two VAT totals in one currency), the first that holds a value is read and each further one that holds a value is left out with a `HAFL-DROPPED` finding. The same holds for the groups the model holds once and for the elements within a party or a line that hold several of its terms (the postal address, the legal organisation or entity, the line's VAT information BG-30, its price BG-29, its item BG-31): the first element that holds any value is read, all of its terms from it, and each further one holding a value is left out with a `HAFL-DROPPED` finding, so that no group mixes the terms of two. The VAT totals (BT-110, BT-111) are read also where the document totals (BG-22) are missing, and the unit of measure (BT-130) also where its quantity element is empty.
 - **Whitespace**: whitespace around a value is removed, and an element empty after that counts as missing (the exception of [REQ-001-URS-NF001](req-001-core.md#req-001-urs-nf001-values-exactly-as-they-are)).
-- **Malformed values**: a number not written as `xs:decimal` (REQ-001's term Value as written), a CII date not written as `YYYYMMDD` with `format="102"`, or a UBL date not written as `YYYY-MM-DD` is read as missing, with a `HAFL-VALUE` finding.
+- **Malformed values**: a number not written as `xs:decimal` (REQ-001's term Value as written), a CII date not written as `YYYYMMDD` with `format="102"`, or a UBL date not written as `YYYY-MM-DD`, and a value whose element holds elements instead of only text, is read as missing, with a `HAFL-VALUE` finding.
 
 The findings are those of [REQ-002-PRS-F010](req-002-conformance.md#req-002-prs-f010-haflingers-own-findings).
 
 **Related URS**: REQ-003-URS-F001, REQ-003-URS-F006
 
-**Definition of Done**: one test per choice: a UBL note with `#AAI#`; a KoSIT case with BT-6 for both VAT totals; a CII `TaxTotalAmount` without `currencyID`; a VAT total in a third currency; the corpus's EXTENDED invoice with two due dates (first read, one `HAFL-DROPPED`); an element holding only whitespace; `1E+2` as BT-112 and `2026-10-30` as a CII date (missing, one `HAFL-VALUE` each).
+**Definition of Done**: one test per choice: a UBL note with `#AAI#`; a KoSIT case with BT-6 for both VAT totals; a CII `TaxTotalAmount` without `currencyID`; a VAT total in a third currency; an invoice with two due dates (first read, one `HAFL-DROPPED`; constructed, and FeRD's EXTENDED sample X07 where the maintainer's copy of the package is present); an element holding only whitespace; `1E+2` as BT-112 and `2026-10-30` as a CII date (missing, one `HAFL-VALUE` each).
 
 #### REQ-003-PRS-F003: Missing terms
 
@@ -128,7 +128,7 @@ The findings are those of [REQ-002-PRS-F010](req-002-conformance.md#req-002-prs-
 
 **Related URS**: REQ-003-URS-F004
 
-**Definition of Done**: a ZUGFeRD MINIMUM and a BASIC WL invoice from the official test files read with no lines and with every term they hold, and their validation with the rules of their profile gives no `fatal` or `error` finding; a constructed EN 16931 invoice without lines reads, and its validation reports `BR-16` (tests).
+**Definition of Done**: FeRD's MINIMUM and BASIC WL samples read with no lines and with every term they hold (from the maintainer's copy of FeRD's package, skipped where it isn't present, [ITEM-002](../backlog/item-002-official-test-material.md)), and their validation with the rules of their profile gives no `fatal` or `error` finding; a constructed EN 16931 invoice without lines reads, and its validation reports `BR-16` (tests).
 
 #### REQ-003-PRS-F004: CII and UBL agree
 
@@ -167,7 +167,7 @@ The findings are those of [REQ-002-PRS-F010](req-002-conformance.md#req-002-prs-
 
 **Related URS**: REQ-003-URS-F002
 
-**Definition of Done**: for a selection of ZUGFeRD PDFs from the official test files, one per profile, the model equals that of the embedded XML read on its own, and the extracted bytes equal the embedded file; a PDF with UBL embedded as `xrechnung.xml` reads; one test per refusal (tests).
+**Definition of Done**: for the vendored ZUGFeRD PDFs (EN 16931, EXTENDED) and, where the maintainer's copy of FeRD's package is present, its PDFs of every profile, the model equals that of the embedded XML read on its own, and the extracted bytes equal the embedded file; a PDF with UBL embedded as `xrechnung.xml` reads; one test per refusal (tests).
 
 #### REQ-003-PRS-F008: Findings on incoming invoices
 
@@ -201,7 +201,7 @@ The findings are those of [REQ-002-PRS-F010](req-002-conformance.md#req-002-prs-
 
 **Related URS**: REQ-003-URS-NF003
 
-**Definition of Done**: tests with the ZUGFeRD corpus's broken PDFs kept with the tests, a truncated PDF and a PDF whose embedded file is not XML; a PDF with deeply nested objects gets `InvoiceReadError`; a fuzz test over mutated copies of the test PDFs gets only `InvoiceReadError` or a result, each within 5 s. A loop or crash found in a dependency is recorded in the test and reported upstream.
+**Definition of Done**: tests with the ZUGFeRD corpus's broken PDFs kept with the tests, a truncated PDF and a PDF whose embedded file is not XML; a PDF with deeply nested objects, and one whose tree of embedded files has thousands of entries, get `InvoiceReadError` within 5 s and 200 MB; a fuzz test over mutated copies of the test PDFs gets only `InvoiceReadError` or a result, each within 5 s. A loop or crash found in a dependency is recorded in the test and reported upstream.
 
 ## Acceptance Criteria
 
@@ -214,7 +214,7 @@ The findings are those of [REQ-002-PRS-F010](req-002-conformance.md#req-002-prs-
 
 ## Assumptions
 
-- A selection of ZUGFeRD corpus files (Apache-2.0), one per profile plus the broken PDFs used here, is vendored with the tests ([ADR-008](../arc42/adr/ADR-008-vendoring-official-files.md)).
+- The Mustang project's PDFs of the ZUGFeRD corpus (Apache-2.0), valid and broken, are vendored with the tests ([ADR-008](../arc42/adr/ADR-008-vendoring-official-files.md)); FeRD's and FNFE-MPE's samples aren't, as no terms name them ([ITEM-002](../backlog/item-002-official-test-material.md)).
 - The official test files include a UBL credit note (Peppol BIS or CEN examples).
 - The library doesn't bound the CPU time of reading: Python can't safely stop a running PDF parser from within its own thread. A caller that reads PDFs from outside runs them where a time limit applies, such as a background job with a timeout ([ITEM-003](../backlog/item-003-erpnext-app.md)).
 
