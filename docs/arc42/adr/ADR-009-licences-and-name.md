@@ -21,7 +21,7 @@ Haflinger also ships files it didn't write, each under its own licence:
 | SchXslt (runtime, compiles FeRD's Schematron) | MIT |
 | The PDF/A file of veraPDF's test corpus (tests only) | CC BY 4.0 |
 | FeRD's Factur-X XML Schemas and Schematron | Apache-2.0, by FeRD's rights of use; its XSLT and samples are not named there |
-| `saxonche` (runtime) | Not named in its package metadata; Saxonica publishes the Home Edition as open source; to be confirmed |
+| `saxonche` (runtime) | Not named in its package metadata; per Saxonica, MPL-2.0 for the most part, its files marked "Incompatible With Secondary Licenses", shipping GraalVM Community Edition; beside the GPL-3.0 app an open question ([ITEM-008](../../backlog/item-008-saxonche-licence.md)) |
 | `defusedxml`, `lxml` (runtime); `factur-x`, `pypdf` (`pdf` extra) | PSF, BSD-3-Clause; BSD, BSD-3-Clause |
 
 Frappe's trademark policy doesn't allow "ERPNext" or "Frappe" in the name of a third-party product; a description may say "for ERPNext".
