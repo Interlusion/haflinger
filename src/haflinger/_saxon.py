@@ -21,9 +21,13 @@ _LOCK = threading.Lock()
 
 @cache
 def _processor() -> PySaxonProcessor:
+    """Saxon, allowed to open local files only: the stylesheets read the vendored code lists and
+    texts, and nothing else (REQ-001-PRS-NF001)."""
     from saxonche import PySaxonProcessor
 
-    return PySaxonProcessor(license=False)
+    processor = PySaxonProcessor(license=False)
+    processor.set_configuration_property("http://saxon.sf.net/feature/allowedProtocols", "file")
+    return processor
 
 
 # SchXslt's steps from a Schematron schema to a stylesheet that reports in SVRL.
