@@ -7,6 +7,7 @@ import os
 import random
 import re
 import shutil
+import struct
 import subprocess
 import sys
 import time
@@ -17,6 +18,7 @@ from pathlib import Path
 
 import pytest
 from pypdf import PdfReader, PdfWriter
+from pypdf.generic import DecodedStreamObject, NameObject
 
 from haflinger import InvoiceReadError, InvoiceWriteError, ReadResult, read_invoice, write_cii
 from haflinger.pdf import embed, extract_xml
@@ -362,3 +364,170 @@ def test_embed_checks_the_pdf_before_the_invoice() -> None:
     invalid = XML.replace(b"<ram:GrandTotalAmount>336.9<", b"<ram:GrandTotalAmount>336.91<")
     with pytest.raises(InvoiceWriteError, match="the input must be PDF/A"):
         embed(plain, invalid)
+
+
+# The second review of 2026-11-01
+
+
+def incrementally_updated(base: bytes) -> bytes:
+    """`base` with two incremental updates: a 200 kB stream added to the catalogue, then removed."""
+    writer = PdfWriter(io.BytesIO(base), incremental=True)
+    stream = DecodedStreamObject()
+    stream.set_data(bytes(range(256)) * 800)
+    writer._root_object[NameObject("/Junk")] = writer._add_object(stream)  # pyright: ignore[reportPrivateUsage]
+    first = io.BytesIO()
+    writer.write(first)
+    writer = PdfWriter(io.BytesIO(first.getvalue()), incremental=True)
+    del writer._root_object["/Junk"]  # pyright: ignore[reportPrivateUsage]
+    second = io.BytesIO()
+    writer.write(second)
+    return second.getvalue()
+
+
+def test_embed_into_an_incrementally_updated_pdf() -> None:
+    """REQ-004-PRS-F007: the result is one PDF that a strict reader reads."""
+    result = embed(incrementally_updated(PDFA), XML)
+    assert result.count(b"%PDF-") == 1
+    reader = PdfReader(io.BytesIO(result), strict=True)
+    assert list(reader.attachments) == ["factur-x.xml"]
+    assert extract_xml(result) == XML
+
+
+@pytest.mark.parametrize(
+    ("pdf", "reason"),
+    [
+        (attached("timesheet.csv", b"a;b"), "embedded files or named destinations"),
+        (PDFA.replace(b'pdfaid:part="2"', b'pdfaid:part="4"'), "PDF/A-1, -2 or -3"),
+    ],
+    ids=["other-attachment", "pdfa-4"],
+)
+def test_embed_refuses_what_it_would_damage(pdf: bytes, reason: str) -> None:
+    assert b'pdfaid:part="2"' in PDFA
+    with pytest.raises(InvoiceWriteError, match=re.escape(reason)):
+        embed(pdf, XML)
+
+
+@pytest.mark.parametrize(
+    ("pdf", "xml"), [(PDFA, None), (PDFA, XML.decode()), (None, XML), (bytearray(PDFA), XML)]
+)
+def test_embed_refuses_arguments_that_arent_bytes(pdf: object, xml: object) -> None:
+    with pytest.raises(InvoiceWriteError, match="bytes"):
+        embed(pdf, xml)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("data", [None, "%PDF-1.7", bytearray(b"%PDF-1.7")])
+def test_extract_refuses_arguments_that_arent_bytes(data: object) -> None:
+    with pytest.raises(InvoiceReadError, match="bytes"):
+        extract_xml(data)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("parameters", [b"/DecodeParms null ", b"/DecodeParms << >> "])
+def test_extract_takes_flate_with_empty_parameters(parameters: bytes) -> None:
+    data = with_embedded_stream(
+        b"factur-x.xml", zlib.compress(XML), b"/Filter /FlateDecode " + parameters
+    )
+    assert extract_xml(data) == XML
+
+
+def object_stream_bomb(entries: int, size: int) -> bytes:
+    """A PDF whose tree of embedded files has `entries` kids, each in an object stream of its own
+    that inflates to `size` bytes."""
+    objects: dict[int, bytes] = {
+        1: b"<< /Type /Catalog /Names 2 0 R >>",
+        2: b"<< /EmbeddedFiles 3 0 R >>",
+        3: b"<< /Kids [" + b" ".join(b"%d 0 R" % (100 + i) for i in range(entries)) + b"] >>",
+    }
+    in_streams: dict[int, int] = {}
+    for i in range(entries):
+        header = b"%d 0 " % (100 + i)
+        payload = header + b"<< /Names [] >>"
+        packed = zlib.compress(payload + b" " * (size - len(payload)), 9)
+        objects[1000 + i] = (
+            b"<< /Type /ObjStm /N 1 /First %d /Filter /FlateDecode /Length %d >>\nstream\n"
+            % (len(header), len(packed))
+            + packed
+            + b"\nendstream"
+        )
+        in_streams[100 + i] = 1000 + i
+    body = bytearray(b"%PDF-1.7\n")
+    offsets: dict[int, int] = {}
+    for number, content in objects.items():
+        offsets[number] = len(body)
+        body += b"%d 0 obj\n" % number + content + b"\nendobj\n"
+    xref = 1000 + entries
+    offsets[xref] = len(body)
+    rows = {0: (0, 0, 65535)} | {n: (1, o, 0) for n, o in offsets.items()}
+    rows |= {n: (2, s, 0) for n, s in in_streams.items()}
+    numbers = sorted(rows)
+    table = zlib.compress(b"".join(struct.pack(">BIH", *rows[n]) for n in numbers))
+    index = b" ".join(b"%d 1" % n for n in numbers)
+    body += (
+        b"%d 0 obj\n<< /Type /XRef /Size %d /Root 1 0 R /W [1 4 2] /Index [%s] /Filter"
+        b" /FlateDecode /Length %d >>\nstream\n"
+        % (xref, max(numbers) + 1, index, len(table))
+        + table
+        + b"\nendstream\nendobj\nstartxref\n%d\n%%%%EOF\n" % offsets[xref]
+    )
+    return bytes(body)
+
+
+def test_a_wide_tree_of_embedded_files_is_refused_in_bounds() -> None:
+    """REQ-003-PRS-NF003: ten object streams of 20 MB each, behind a PDF of a few kB."""
+    data = object_stream_bomb(10, 20_000_000)
+    assert len(data) < 1024 * 1024
+    tracemalloc.start()
+    start = time.monotonic()
+    try:
+        with pytest.raises(InvoiceReadError):
+            extract_xml(data)
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    assert time.monotonic() - start < 5
+    assert peak < 100 * 1024 * 1024
+
+
+def test_a_tree_with_thousands_of_entries_is_refused() -> None:
+    data = raw_pdf(
+        b"<< /Type /Catalog /Names << /EmbeddedFiles 2 0 R >> >>",
+        b"<< /Names ["
+        + b" ".join(b"(f%d.txt) << /F (f%d.txt) >>" % (i, i) for i in range(5000))
+        + b"] >>",
+    )
+    with pytest.raises(InvoiceReadError, match="entries"):
+        extract_xml(data)
+
+
+def test_read_invoice_hands_max_size_to_the_pdf() -> None:
+    """REQ-001-PRS-NF003: a PDF read with a lower max_size limits its embedded file to it."""
+    bomb = zlib.compressobj(9)
+    stream = b"".join(bomb.compress(bytes(1024 * 1024)) for _ in range(8)) + bomb.flush()
+    data = with_embedded_stream(b"factur-x.xml", stream, b"/Filter /FlateDecode ")
+    with pytest.raises(InvoiceReadError, match="larger than max_size"):
+        read_invoice(data, max_size=1024 * 1024)
+
+
+def test_fatturapa_inside_a_pdf_is_named() -> None:
+    fattura = b'<?xml version="1.0"?><p:FatturaElettronica xmlns:p="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2"/>'
+    with pytest.raises(InvoiceReadError, match="FatturaPA"):
+        read_invoice(attached("factur-x.xml", fattura))
+
+
+def test_an_external_entity_inside_a_pdf_is_refused() -> None:
+    """REQ-001-PRS-NF001: the embedded XML is checked before anything parses it."""
+    xml = b'<?xml version="1.0"?><!DOCTYPE x [<!ENTITY e SYSTEM "file:///etc/hostname">]><x>&e;</x>'
+    with pytest.raises(InvoiceReadError, match="document type declaration"):
+        read_invoice(attached("factur-x.xml", xml))
+
+
+def test_a_file_specification_pointing_outside_isnt_opened(tmp_path: Path) -> None:
+    """A file specification naming a file outside the PDF, without an embedded stream."""
+    outside = tmp_path / "factur-x.xml"
+    outside.write_bytes(XML)
+    data = raw_pdf(
+        b"<< /Type /Catalog /Names << /EmbeddedFiles 2 0 R >> >>",
+        b"<< /Names [(factur-x.xml) 3 0 R] >>",
+        b"<< /Type /Filespec /F (" + str(outside).encode() + b") /UF (factur-x.xml) >>",
+    )
+    with pytest.raises(InvoiceReadError, match="no embedded file stream"):
+        extract_xml(data)

@@ -49,8 +49,8 @@ def test_benchmark_without_the_corpus() -> None:
     table = [line for line in output.splitlines() if line.startswith("| REQ-")]
     requirements = {line.split(" | ")[0].removeprefix("| ") for line in table}
     assert requirements == {"REQ-002-PRS-NF002", "REQ-003-PRS-NF002", "REQ-004-PRS-NF001"}
-    assert sum("First validation in a fresh process" in line for line in table) == 7
-    assert sum(line.endswith("| skipped: no corpus clone |") for line in table) == 4
+    assert sum("First validation in a fresh process" in line for line in table) == 15
+    assert sum(line.endswith("| skipped: no corpus clone |") for line in table) == 5
 
 
 def test_corpus_report_counts_crashes_by_outcome_only(tmp_path: Path) -> None:

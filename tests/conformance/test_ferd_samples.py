@@ -3,6 +3,7 @@ samples, so they aren't vendored (ITEM-002). Skipped unless HAFLINGER_FERD_PACKA
 unpacked package (REQ-002-PRS-F007, REQ-003-PRS-F003, REQ-003-PRS-F007)."""
 
 import os
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -18,6 +19,20 @@ SAMPLES = sorted(path for profile in PROFILES for path in (EXAMPLES / profile).g
 pytestmark = pytest.mark.skipif(
     not EXAMPLES.is_dir(), reason="HAFLINGER_FERD_PACKAGE names no unpacked ZUGFeRD package"
 )
+
+
+def test_the_samples_are_there() -> None:
+    """ZUGFeRD 2.5.2: 2 MINIMUM, 2 BASIC WL, 3 BASIC, 25 EN 16931 and 25 EXTENDED samples."""
+    counts = [len(list((EXAMPLES / profile).glob("*/*.xml"))) for profile in PROFILES]
+    assert counts == [2, 2, 3, 25, 25]
+
+
+def test_two_due_dates_read_the_first() -> None:
+    """REQ-003-PRS-F002: sample X07 of EXTENDED holds two due dates (BT-9)."""
+    (path,) = (EXAMPLES / "4. EXTENDED/X07_Fremdwaehrung").glob("*.xml")
+    result = read_invoice(path.read_bytes())
+    assert result.invoice.due_date == date(2025, 12, 31)
+    assert [(f.rule, f.text.split()[0]) for f in result.findings] == [("HAFL-DROPPED", "BT-9")]
 
 
 def name(path: Path) -> str:
@@ -48,7 +63,9 @@ def test_every_sample_reads_like_its_pdf(path: Path) -> None:
 def test_minimum_and_basic_wl_read_without_lines(profile: str) -> None:
     """REQ-003-PRS-F003: what EN 16931 requires but the profile leaves out is missing, without a
     refusal or a finding."""
-    for path in (EXAMPLES / profile).glob("*/*.xml"):
+    paths = list((EXAMPLES / profile).glob("*/*.xml"))
+    assert paths
+    for path in paths:
         result = read_invoice(path.read_bytes())
         assert result.invoice.lines == ()
         assert result.findings == ()

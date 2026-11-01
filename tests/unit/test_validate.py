@@ -1,14 +1,16 @@
 """Validation with the official rules (REQ-002), on edited copies of official files."""
 
 import re
+import time
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from pathlib import Path
 from xml.etree.ElementTree import tostring
 
 import defusedxml.ElementTree
 import pytest
 
-from haflinger import Finding, InvoiceReadError, validate
+from haflinger import Finding, Invoice, InvoiceReadError, Totals, cii, read_invoice, validate
 from haflinger._xsd import check_cii
 from haflinger.pdf import extract_xml
 
@@ -184,12 +186,51 @@ FACTUR_X = [
     (f"{EN16931}#conformant#urn:zugferd.de:2p0:extended", "FX-SCH-A-000635"),
     (f"{EN16931}:compliant:factur-x.eu:1p0:extended", "FX-SCH-A-000635"),
 ]
+MODEL = read_invoice(CII.read_bytes()).invoice
+assert MODEL.totals is not None
+assert MODEL.seller is not None
+assert MODEL.buyer is not None
+# KoSIT case 01.01a's model reduced to what MINIMUM and BASIC WL hold, so that the invoice passes
+# their XML Schemas (REQ-002-PRS-F011); BASIC and EXTENDED take the whole model.
+WITHOUT_LINES = replace(
+    MODEL,
+    notes=(),
+    lines=(),
+    buyer_reference=None,
+    seller=replace(MODEL.seller, trading_name=None),
+    totals=Totals(
+        total_without_vat=MODEL.totals.total_without_vat,
+        vat_total=MODEL.totals.vat_total,
+        total_with_vat=MODEL.totals.total_with_vat,
+        amount_due=MODEL.totals.amount_due,
+    ),
+)
+MINIMUM = replace(WITHOUT_LINES, vat_breakdown=(), buyer=replace(MODEL.buyer, country_code=None))
+BASIC_WL = replace(
+    WITHOUT_LINES,
+    totals=replace(WITHOUT_LINES.totals, line_net_total=MODEL.totals.line_net_total),  # type: ignore[arg-type]
+)
+
+
+def factur_x(specification_id: str, *edits: tuple[str, str], model: Invoice | None = None) -> bytes:
+    """An invoice of the Factur-X profile `specification_id` names that passes its XML Schema."""
+    if model is None:
+        model = (
+            MINIMUM
+            if "minimum" in specification_id
+            else (BASIC_WL if "basicwl" in specification_id else MODEL)
+        )
+    text = cii.write(replace(model, specification_id=specification_id)).decode()
+    for old, new in edits:
+        assert text.count(old) == 1, old
+        text = text.replace(old, new)
+    return text.encode()
 
 
 @pytest.mark.parametrize(("specification_id", "rule"), FACTUR_X)
 def test_factur_x_runs_ferds_rules_for_its_profile(specification_id: str, rule: str) -> None:
     """Each spelling of REQ-002-PRS-F003's Factur-X rows runs FeRD's rules for its profile."""
-    findings = validate(with_specification_id(CII, specification_id, WRONG_TYPE_CODE))
+    findings = validate(factur_x(specification_id, WRONG_TYPE_CODE))
     assert (rule, "error") in rules(findings)
     assert profile_findings(findings) == []
     assert xrechnung_rules(findings) == set()
@@ -205,24 +246,29 @@ def test_factur_x_runs_ferds_rules_for_its_profile(specification_id: str, rule: 
 def test_ferds_rules_judge_a_colon_spelling(specification_id: str, rule: str) -> None:
     """The colon spellings select their profile's rules, whose code list for BT-24 lacks them:
     the official verdict, reported as such."""
-    findings = validate(with_specification_id(CII, specification_id))
+    findings = validate(factur_x(specification_id))
     assert (rule, "error") in rules(findings)
 
 
-def test_an_official_extended_invoice_gets_the_extended_rules() -> None:
+def test_an_official_extended_invoice_gets_the_extended_schema() -> None:
+    """Mustang's EXTENDED PDF, filed as failing, fails FeRD's EXTENDED XML Schema."""
     pdf = ROOT / (
         "tests/data/zugferd-corpus/ZUGFeRDv2/fail/Mustangproject/"
         "MustangGnuaccountingBeispielRE-20171118_506.pdf"
     )
     findings = validate(extract_xml(pdf.read_bytes()))
     assert profile_findings(findings) == []
-    assert ("FX-SCH-A-000636", "error") in rules(findings)
+    assert findings
+    assert all(f.rule == "HAFL-XSD" for f in findings)
+    assert findings[0].text.startswith("Factur-X EXTENDED XML Schema: ")
 
 
 def test_a_rule_without_an_id() -> None:
     """FeRD reports an element its profile doesn't use without a rule ID or flag: an `error`
-    with an empty rule (REQ-002-PRS-F002)."""
-    findings = validate(with_specification_id(CII, "urn:factur-x.eu:1p0:minimum"))
+    with an empty rule (REQ-002-PRS-F002). MINIMUM doesn't use the buyer's address."""
+    findings = validate(
+        factur_x("urn:factur-x.eu:1p0:minimum", model=replace(MINIMUM, buyer=MODEL.buyer))
+    )
     unnamed = [finding for finding in findings if finding.rule == ""]
     assert unnamed
     assert all(finding.flag == "error" for finding in unnamed)
@@ -397,3 +443,154 @@ def test_schema_checks_from_several_threads() -> None:
     with ThreadPoolExecutor(max_workers=8) as pool:
         results = list(pool.map(check_cii, inputs * 50))
     assert results == expected * 50
+
+
+# REQ-002-PRS-F004: other profiles get CEN's rules
+
+
+@pytest.mark.parametrize(
+    ("path", "specification_id"),
+    [
+        (UBL, f"{EN16931}#compliant#urn:fdc:peppol.eu:2017:poacc:billing:3.0"),
+        (CII, f"{EN16931}#compliant#urn:xoev-de:kosit:standard:xrechnung_2.1"),
+    ],
+    ids=["peppol", "xrechnung-2.1"],
+)
+def test_other_profiles_run_cens_rules(path: Path, specification_id: str) -> None:
+    findings = validate(with_specification_id(path, specification_id, WRONG_TOTAL[path]))
+    assert ("BR-CO-15", "fatal") in rules(findings)
+
+
+# REQ-002-PRS-F011: the XML Schema first
+
+
+@pytest.mark.parametrize(
+    ("path", "edit"),
+    [
+        (CII, ("<ram:ID>123456XX</ram:ID>", "<ram:ID>123456XX</ram:ID><ram:Bogus>x</ram:Bogus>")),
+        (UBL, ("<cbc:ID>123456XX</cbc:ID>", "<cbc:ID>123456XX</cbc:ID><cbc:Bogus>x</cbc:Bogus>")),
+        (CII, ("<ram:GrandTotalAmount>336.9<", "<ram:GrandTotalAmount>1,00<")),
+        (
+            UBL,
+            (
+                '<cbc:TaxInclusiveAmount currencyID="EUR">336.9<',
+                '<cbc:TaxInclusiveAmount currencyID="EUR">1,00<',
+            ),
+        ),
+    ],
+    ids=["cii-unknown-element", "ubl-unknown-element", "cii-comma-amount", "ubl-comma-amount"],
+)
+def test_the_schema_comes_before_the_rules(path: Path, edit: tuple[str, str]) -> None:
+    findings = validate(edited(path, edit))
+    assert findings
+    assert {finding.rule for finding in findings} == {"HAFL-XSD"}
+    assert all(finding.flag == "fatal" for finding in findings)
+
+
+def test_a_factur_x_invoice_gets_its_profiles_schema() -> None:
+    """KoSIT case 01.01a holds lines, which MINIMUM's XML Schema doesn't allow."""
+    findings = validate(with_specification_id(CII, "urn:factur-x.eu:1p0:minimum"))
+    assert findings
+    assert {finding.rule for finding in findings} == {"HAFL-XSD"}
+    assert findings[0].text.startswith("Factur-X MINIMUM XML Schema: ")
+
+
+# REQ-001-PRS-NF001: validation writes nothing to the file system
+
+
+def test_validation_writes_no_file(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Nothing asks for a temporary file or directory while validating."""
+
+    def refuse(*args: object, **kwargs: object) -> None:
+        raise AssertionError("validation asked for a temporary file")
+
+    for name in ("mkstemp", "mkdtemp", "NamedTemporaryFile", "TemporaryDirectory"):
+        monkeypatch.setattr(f"tempfile.{name}", refuse)
+    validate(CII.read_bytes())
+    validate(factur_x(f"{EN16931}#conformant#urn:factur-x.eu:1p0:extended"))
+
+
+def test_factur_x_rules_under_a_path_with_hash_and_percent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The compiled Schematron reads its code lists relative to a file URI, not a raw path."""
+    import shutil
+
+    from haflinger import _saxon
+
+    artefacts = tmp_path / "odd#path%20name"
+    shutil.copytree(_saxon.ARTEFACTS, artefacts)
+    monkeypatch.setattr(_saxon, "ARTEFACTS", artefacts)
+    _saxon.clear_caches()
+    try:
+        findings = validate(factur_x("urn:factur-x.eu:1p0:minimum", WRONG_TYPE_CODE))
+    finally:
+        monkeypatch.undo()
+        _saxon.clear_caches()
+    assert ("FX-SCH-A-000023", "error") in rules(findings)
+
+
+# REQ-002-PRS-F001: thousands of empty elements, on which the rules would take minutes
+
+
+def with_empty_notes(total: int) -> bytes:
+    """KoSIT case 01.01a in CII with as many empty notes as make `total` empty elements."""
+    data = CII.read_bytes()
+    root = defusedxml.ElementTree.fromstring(data)
+    present = sum(1 for e in root.iter() if len(e) == 0 and not (e.text or "").strip())
+    note = b"<ram:IncludedNote/>" * (total - present)
+    return data.replace(b"</ram:IncludedNote>", b"</ram:IncludedNote>" + note, 1)
+
+
+def test_thousands_of_empty_elements_are_refused_at_once() -> None:
+    start = time.monotonic()
+    with pytest.raises(InvoiceReadError, match=r"25,000 empty elements"):
+        validate(with_empty_notes(25_000))
+    assert time.monotonic() - start < 1
+
+
+def test_a_thousand_empty_elements_are_validated() -> None:
+    findings = validate(with_empty_notes(1_000))
+    assert "PEPPOL-EN16931-R008" in {finding.rule for finding in findings}
+    with pytest.raises(InvoiceReadError, match=r"1,001 empty elements"):
+        validate(with_empty_notes(1_001))
+
+
+# REQ-002-PRS-F001: numbers and telephone numbers too long for the rules
+
+TELEPHONE = {
+    CII: "<ram:CompleteNumber>+49 1234-5678</ram:CompleteNumber>",
+    UBL: "<cbc:Telephone>+49 1234-5678</cbc:Telephone>",
+}
+
+
+def with_telephone(path: Path, number: str) -> bytes:
+    element = TELEPHONE[path].replace("+49 1234-5678", number)
+    return edited(path, (TELEPHONE[path], element))
+
+
+@pytest.mark.parametrize("path", [CII, UBL], ids=["cii", "ubl"])
+def test_a_long_telephone_number_is_refused_at_once(path: Path) -> None:
+    assert invalid(validate(with_telephone(path, "+49 " + "1" * 96))) == []
+    with pytest.raises(InvoiceReadError, match="101 characters"):
+        validate(with_telephone(path, "+49 " + "1" * 97))
+    start = time.monotonic()
+    with pytest.raises(InvoiceReadError, match="telephone number"):
+        validate(with_telephone(path, "a" * 8000 + "1"))
+    assert time.monotonic() - start < 1
+
+
+@pytest.mark.parametrize("path", [CII, UBL], ids=["cii", "ubl"])
+def test_a_long_number_is_refused_at_once(path: Path) -> None:
+    old, new = WRONG_TOTAL[path]
+    for digits, refused in ((1000, False), (1001, True)):
+        data = edited(path, (old, new.replace("336.91", "3" * (digits - 1) + ".9")))
+        if refused:
+            with pytest.raises(InvoiceReadError, match="1,001 digits"):
+                validate(data)
+        else:
+            assert ("BR-CO-15", "fatal") in rules(validate(data))
+    start = time.monotonic()
+    with pytest.raises(InvoiceReadError, match="digits"):
+        validate(edited(path, (old, new.replace("336.91", "3" * 200_000))))
+    assert time.monotonic() - start < 1

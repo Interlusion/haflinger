@@ -539,3 +539,158 @@ def test_pdf_header_in_xml_text_is_not_a_pdf() -> None:
         CII, b"<rsm:ExchangedDocumentContext>", b"<!-- %PDF-1.7 --><rsm:ExchangedDocumentContext>"
     )
     assert read_invoice(data).invoice.number == "123456XX"
+
+
+# The second review of 2026-11-01
+
+CII_LINE_TAX = (
+    b"<ram:ApplicableTradeTax>\r\n                    <ram:TypeCode>VAT</ram:TypeCode>\r\n"
+    b"                    <ram:CategoryCode>S</ram:CategoryCode>"
+)
+UBL_SELLER_ENTITY = b"<cac:PartyLegalEntity>\r\n                <cbc:RegistrationName>[Seller name]"
+
+
+def test_a_lines_vat_information_comes_from_one_element() -> None:
+    """REQ-003-PRS-F002: a second BG-30 doesn't lend its rate to the first."""
+    exempt = (
+        b"<ram:ApplicableTradeTax><ram:TypeCode>VAT</ram:TypeCode>"
+        b"<ram:CategoryCode>E</ram:CategoryCode></ram:ApplicableTradeTax>"
+    )
+    data = CII.replace(CII_LINE_TAX, exempt + CII_LINE_TAX, 1)
+    result = read_invoice(data)
+    line = result.invoice.lines[0]
+    assert (line.vat_category_code, line.vat_rate) == ("E", None)
+    assert [(f.rule, f.text.split()[0]) for f in result.findings] == [("HAFL-DROPPED", "BG-30")]
+
+
+def test_a_partys_legal_entity_comes_from_one_element() -> None:
+    other = (
+        b"<cac:PartyLegalEntity><cbc:RegistrationName>Other AG</cbc:RegistrationName>"
+        b"<cbc:CompanyID>HRB 1</cbc:CompanyID></cac:PartyLegalEntity>"
+    )
+    first = (
+        b"<cac:PartyLegalEntity><cbc:RegistrationName>Example GmbH</cbc:RegistrationName>"
+        b"</cac:PartyLegalEntity>"
+    )
+    result = read_invoice(edit(UBL, UBL_SELLER_ENTITY, first + other + UBL_SELLER_ENTITY))
+    assert result.invoice.seller is not None
+    assert (result.invoice.seller.name, result.invoice.seller.legal_registration_id) == (
+        "Example GmbH",
+        None,
+    )
+    assert {f.rule for f in result.findings} == {"HAFL-DROPPED"}
+
+
+def test_ubl_vat_totals_without_document_totals() -> None:
+    start, end = UBL.index(b"<cac:LegalMonetaryTotal>"), UBL.index(b"</cac:LegalMonetaryTotal>")
+    data = UBL[:start] + UBL[end + len(b"</cac:LegalMonetaryTotal>") :]
+    result = read_invoice(data)
+    assert result.invoice.totals is not None
+    assert result.invoice.totals.vat_total == Decimal("22.04")
+    assert result.findings == ()
+
+
+@pytest.mark.parametrize(
+    ("data", "old", "new"),
+    [
+        (
+            CII,
+            b'<ram:BilledQuantity unitCode="XPP">1</ram:BilledQuantity>',
+            b'<ram:BilledQuantity unitCode="XPP"></ram:BilledQuantity>',
+        ),
+        (
+            UBL,
+            b'<cbc:InvoicedQuantity unitCode="XPP">1</cbc:InvoicedQuantity>',
+            b'<cbc:InvoicedQuantity unitCode="XPP"></cbc:InvoicedQuantity>',
+        ),
+    ],
+    ids=["cii", "ubl"],
+)
+def test_the_unit_of_an_empty_quantity_is_read(data: bytes, old: bytes, new: bytes) -> None:
+    line = read_invoice(data.replace(old, new, 1)).invoice.lines[0]
+    assert (line.quantity, line.unit_code) == (None, "XPP")
+
+
+def test_a_value_holding_elements_is_malformed() -> None:
+    data = edit(CII, b"<ram:ID>123456XX</ram:ID>", b"<ram:ID>123<b/>456XX</ram:ID>")
+    result = read_invoice(data)
+    assert result.invoice.number is None
+    assert [(f.rule, f.text.split()[0]) for f in result.findings] == [("HAFL-VALUE", "BT-1")]
+
+
+@pytest.mark.parametrize("data", [CII, UBL], ids=["cii", "ubl"])
+def test_any_year_after_the_prefix_is_an_edition(data: bytes) -> None:
+    xrechnung = b"urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0"
+    reason = refusal(data.replace(xrechnung, b"urn:cen.eu:en16931:2026-01#compliant#x", 1))
+    assert "2026" in reason
+
+
+def test_a_vat_total_without_currency_is_bt_110_also_without_bt_5() -> None:
+    data = edit(CII, b"<ram:InvoiceCurrencyCode>EUR</ram:InvoiceCurrencyCode>", b"")
+    data = edit(data, TAX_TOTAL, b"<ram:TaxTotalAmount>22.04</ram:TaxTotalAmount>")
+    result = read_invoice(data)
+    assert result.invoice.totals is not None
+    assert result.invoice.totals.vat_total == Decimal("22.04")
+    assert result.findings == ()
+
+
+@pytest.mark.parametrize("syntax", ["cii", "ubl"])
+def test_vat_totals_in_two_currencies_keep_their_values(syntax: str) -> None:
+    """The official files give both totals the same number; here they differ."""
+    if syntax == "cii":
+        old, new = b'currencyID="GBP">2048.44<', b'currencyID="GBP">1702.13<'
+        data = edit(CII_02, old, new)
+    else:
+        data = edit(
+            UBL_02,
+            b'<cbc:TaxAmount currencyID="GBP">2048.44<',
+            b'<cbc:TaxAmount currencyID="GBP">1702.13<',
+        )
+    totals = read_invoice(data).invoice.totals
+    assert totals is not None
+    assert (totals.vat_total, totals.vat_total_in_tax_currency) == (
+        Decimal("2048.44"),
+        Decimal("1702.13"),
+    )
+
+
+def test_ubl_keeps_the_digits_as_written() -> None:
+    data = edit(
+        UBL,
+        b'<cbc:TaxInclusiveAmount currencyID="EUR">336.9<',
+        b'<cbc:TaxInclusiveAmount currencyID="EUR">336.900<',
+    )
+    totals = read_invoice(data).invoice.totals
+    assert totals is not None
+    assert str(totals.total_with_vat) == "336.900"
+
+
+def test_ubl_repeated_groups_are_dropped_with_findings_in_document_order() -> None:
+    totals = (
+        b'<cac:LegalMonetaryTotal><cbc:PayableAmount currencyID="EUR">1</cbc:PayableAmount>'
+        b"</cac:LegalMonetaryTotal>"
+    )
+    buyer = (
+        b"<cac:AccountingCustomerParty><cac:Party><cac:PartyLegalEntity>"
+        b"<cbc:RegistrationName>Other AG</cbc:RegistrationName>"
+        b"</cac:PartyLegalEntity></cac:Party></cac:AccountingCustomerParty>"
+    )
+    data = edit(UBL, b"<cac:LegalMonetaryTotal>", totals + b"<cac:LegalMonetaryTotal>")
+    data = edit(data, b"<cac:AccountingCustomerParty>", buyer + b"<cac:AccountingCustomerParty>")
+    result = read_invoice(data)
+    assert result.invoice.buyer is not None
+    assert result.invoice.buyer.name == "Other AG"
+    assert [(f.rule, f.text.split()[0]) for f in result.findings] == [
+        ("HAFL-DROPPED", "BG-7"),
+        ("HAFL-DROPPED", "BG-22"),
+    ]
+
+
+def test_a_ubl_credit_notes_due_date() -> None:
+    note = (ROOT / "tests/data/cen-en16931/ubl/examples/ubl-tc434-creditnote1.xml").read_bytes()
+    data = edit(
+        note,
+        b"<cac:PaymentMeans>",
+        b"<cac:PaymentMeans><cbc:PaymentDueDate>2019-10-23</cbc:PaymentDueDate>",
+    )
+    assert read_invoice(data).invoice.due_date == date(2019, 10, 23)

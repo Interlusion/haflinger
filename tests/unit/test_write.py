@@ -216,7 +216,7 @@ def test_a_document_validation_refuses_is_refused_after_writing(
     def refuse(data: bytes) -> list[object]:
         raise InvoiceReadError("the input is larger than max_size")
 
-    monkeypatch.setattr("haflinger.write.validate", refuse)
+    monkeypatch.setattr("haflinger.write.check_rules", refuse)
     with pytest.raises(InvoiceWriteError, match="larger than max_size") as refusal:
         write_cii(INVOICE)
     assert refusal.value.document is not None
@@ -258,3 +258,51 @@ def test_xrechnung_isnt_checked_against_factur_xs_schema(monkeypatch: pytest.Mon
     with contextlib.suppress(InvoiceWriteError):
         write_cii(INVOICE)
     assert calls == [False, True]
+
+
+# The second review of 2026-11-01
+
+
+@pytest.mark.parametrize(
+    ("invoice", "reason"),
+    [
+        (replace(INVOICE, notes=(Note(),)), "BG-1 holds a note with neither subject code nor text"),
+        (
+            replace(INVOICE, totals=replace(TOTALS, amount_due=Decimal("1E+999999999"))),
+            "BT-115 has more than 1,000 digits",
+        ),
+        (
+            replace(INVOICE, totals=replace(TOTALS, amount_due=Decimal("1" * 1001))),
+            "BT-115 has more than 1,000 digits",
+        ),
+    ],
+    ids=["empty-note", "huge-exponent", "long-number"],
+)
+def test_refuses_what_cant_be_written_sensibly(invoice: Any, reason: str) -> None:
+    with pytest.raises(InvoiceWriteError, match=re.escape(reason)) as refusal:
+        write_cii(invoice)
+    assert refusal.value.document is None
+
+
+def test_amounts_keep_their_digits() -> None:
+    invoice = replace(INVOICE, totals=replace(TOTALS, total_with_vat=Decimal("336.900")))
+    document = written(invoice)
+    assert b"<ram:GrandTotalAmount>336.900</ram:GrandTotalAmount>" in document
+    totals = read_invoice(document).invoice.totals
+    assert totals is not None
+    assert str(totals.total_with_vat) == "336.900"
+
+
+def test_bt_111_with_its_own_value_reads_back() -> None:
+    invoice = replace(
+        INVOICE,
+        tax_currency_code="GBP",
+        totals=replace(TOTALS, vat_total_in_tax_currency=Decimal("18.71")),
+    )
+    back = read_invoice(written(invoice)).invoice
+    assert back == invoice
+    assert back.totals is not None
+    assert (back.totals.vat_total, back.totals.vat_total_in_tax_currency) == (
+        Decimal("22.04"),
+        Decimal("18.71"),
+    )
