@@ -226,7 +226,7 @@ General vocabulary (CIUS, Leitweg-ID, Peppol …): the [E-Invoicing 101 glossary
 
 **Related URS**: REQ-001-URS-NF003
 
-**Definition of Done**: tests with an internal DTD, an entity expansion and an external entity each get a refusal, from reading and from validation; a PDF whose embedded XML declares an external entity gets a refusal from reading; a PDF whose file specification points to a file outside it reads without that file being opened (tests); no reference in an input is fetched, reading and validation write nothing to the file system, and no input value reaches a path, URL or command (inspection).
+**Definition of Done**: tests with an internal DTD, an entity expansion and an external entity each get a refusal, from reading and from validation; a PDF whose embedded XML declares an external entity gets a refusal from reading; a PDF whose file specification points to a file outside it reads without that file being opened (tests); Saxon opens only local files, so that a stylesheet can't fetch a URL (test); no reference in an input is fetched, reading and validation write nothing to the file system, and no input value reaches a path, URL or command (inspection).
 
 #### REQ-001-PRS-NF002: No Frappe
 
