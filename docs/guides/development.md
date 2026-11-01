@@ -43,7 +43,7 @@ uv run basedpyright
 uv run mdformat --check .           # Markdown; without --check it formats
 ```
 
-CI runs the same checks on every pull request and on `main` (`.github/workflows/checks.yml`), with its Actions pinned to a commit; Dependabot proposes updates to them and to `uv.lock` weekly.
+CI runs the same checks on every pull request and on `main` (`.github/workflows/checks.yml`), with its Actions pinned to a commit; Dependabot proposes updates to them and to `uv.lock` weekly, once a new version is 14 days old (Actions) or 7 days old (Python packages); security updates come at once (`.github/dependabot.yml`).
 
 ## Tests
 

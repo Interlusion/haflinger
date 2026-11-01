@@ -14,7 +14,7 @@ Every runtime dependency has to coexist with the versions its host pins; in a Fr
 
 ## Decision
 
-- **Toolchain**: uv with `uv_build` and a locked `uv.lock`; development tools as dependency groups; ruff for linting and formatting; mdformat with `mdformat-gfm` (`.mdformat.toml`); basedpyright strict; pytest; coverage with branch coverage. CI with Dependabot and pinned Actions once the repository is on GitHub.
+- **Toolchain**: uv with `uv_build` and a locked `uv.lock`; development tools as dependency groups; ruff for linting and formatting; mdformat with `mdformat-gfm` (`.mdformat.toml`); basedpyright strict; pytest; coverage with branch coverage. CI on GitHub with pinned Actions; Dependabot proposes updates after a cooldown (14 days for Actions, 7 for Python packages), security updates at once.
 - **A lower bound on Python, not one exact version**: `requires-python = ">=3.14"`, developed and tested on 3.14 (`.python-version`). A library must install next to whatever its host runs.
 - **Runtime dependencies, each for one job**:
   - `defusedxml` with the standard library's `ElementTree`, for parsing outside XML and for writing CII;
