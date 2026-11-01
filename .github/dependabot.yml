@@ -1,10 +1,16 @@
 version: 2
 updates:
+  # New versions wait before Dependabot proposes them, so that a compromised or broken release has
+  # time to be noticed; security updates come at once.
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 14
   - package-ecosystem: uv
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
