@@ -22,3 +22,17 @@ jobs:
       - run: uv run mdformat --check .
       - run: uv run basedpyright
       - run: uv run pytest
+
+  # The tests with the versions of shared dependencies that Frappe/ERPNext v16 pin, so that
+  # haflinger[pdf] stays installable into a bench (ADR-002).
+  frappe-v16-pins:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      # A real install, so that a version range clashing with the pins fails here.
+      - run: uv venv --python 3.14 "$RUNNER_TEMP/bench"
+      - run: uv pip install --python "$RUNNER_TEMP/bench" ".[pdf]" "pypdf==6.19.0" pytest
+      - run: '"$RUNNER_TEMP/bench/bin/python" -m pytest'
