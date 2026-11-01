@@ -6,16 +6,17 @@ A PDF is outside input. pypdf parses it; any failure of pypdf on a malformed PDF
 (REQ-003-PRS-NF001, REQ-003-PRS-NF003).
 """
 
+import dataclasses
 import io
 import re
 import tempfile
 import zlib
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 try:
     import facturx
-    from pypdf import PdfReader, apply_configuration
+    from pypdf import Configuration, PdfReader, apply_configuration
     from pypdf.generic import ArrayObject, DictionaryObject, NullObject, StreamObject
 except ImportError as error:
     raise ImportError("haflinger.pdf needs the extra 'pdf': install haflinger[pdf]") from error
@@ -34,7 +35,13 @@ _EMBED_LEVELS = {"urn:cen.eu:en16931:2017": "en16931"}
 _PDFA_PART = re.compile(rb"pdfaid:part(?:>|=[\"'])\s*[1-3](?![0-9])")
 _MAX_DEPTH = 32  # of the name tree of embedded files
 _MAX_ENTRIES = 100  # nodes and files of that tree read, at most (REQ-003-PRS-NF003)
-_PYPDF_LIMIT = 2_000_000  # bytes, for each stream pypdf decodes while the invoice is looked for
+# Bytes, for each stream pypdf decodes while the invoice is looked for: for every filter whose
+# output pypdf's version limits (6.19.0, which Frappe v16 pins, has no BrotliDecode).
+_PYPDF_LIMITS: dict[str, Any] = {
+    field.name: 2_000_000
+    for field in dataclasses.fields(Configuration)
+    if field.name.endswith("_maximum_output_length")
+}
 
 
 def extract_xml(data: bytes, *, max_size: int = MAX_SIZE) -> bytes:
@@ -47,12 +54,7 @@ def extract_xml(data: bytes, *, max_size: int = MAX_SIZE) -> bytes:
     try:
         # pypdf's own decoding (object and cross-reference streams) stays small: none of what
         # leads to the invoice needs more, and the decoded data is kept while the PDF is read.
-        with apply_configuration(
-            zlib_maximum_output_length=_PYPDF_LIMIT,
-            lzw_maximum_output_length=_PYPDF_LIMIT,
-            run_length_maximum_output_length=_PYPDF_LIMIT,
-            brotli_maximum_output_length=_PYPDF_LIMIT,
-        ):
+        with apply_configuration(**_PYPDF_LIMITS):
             return _extract(PdfReader(io.BytesIO(data)), max_size)
     except InvoiceReadError:
         raise
