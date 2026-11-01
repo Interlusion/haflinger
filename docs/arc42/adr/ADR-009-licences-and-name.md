@@ -17,6 +17,7 @@ Haflinger also ships files it didn't write, each under its own licence:
 | KoSIT's visualisation, validator configuration and test suite | Apache-2.0 |
 | CEN's EN 16931 rules (inside KoSIT's configuration) and unit tests | EUPL-1.2 |
 | UN/CEFACT's CII XML Schemas | © UN/CEFACT; may be copied and distributed unchanged with the notice |
+| OASIS's UBL 2.1 XML Schemas of invoice and credit note (inside KoSIT's configuration) | No licence named. The twelve UBL modules: © OASIS Open 2013, with OASIS's copyright notice, which allows copying and distributing them unchanged with the notice. Among their imports: the XML Signature schema © The Internet Society and W3C (2001), under the W3C Software License; UN/CEFACT's CCTS module © UN/CEFACT (2006), with a notice like OASIS's; two XAdES schemas, copies of ETSI's, without any notice |
 | ZUGFeRD corpus (the Mustang project's PDFs) | Apache-2.0 |
 | SchXslt (runtime, compiles FeRD's Schematron) | MIT |
 | The PDF/A file of veraPDF's test corpus (tests only) | CC BY 4.0 |
@@ -60,7 +61,7 @@ Frappe's trademark policy doesn't allow "ERPNext" or "Frappe" in the name of a t
 
 - Two repositories with two licences once the app exists.
 - Licences to track per source and dependency, by hand.
-- Shipping EUPL-1.2 files in an Apache-2.0 package needs a check before the first release.
+- Shipping EUPL-1.2 files, and schemas under their owners' copyright notices, in an Apache-2.0 package needs a check before the first release, the package's licence metadata included.
 
 ## Reconsideration Triggers
 

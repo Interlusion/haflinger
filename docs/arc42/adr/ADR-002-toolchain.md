@@ -42,7 +42,7 @@ Every runtime dependency has to coexist with the versions its host pins; in a Fr
 
 ### Alternative 4: PDF support in the plain library
 
-**Rejected because**: callers that handle only XML would carry `lxml`, `pypdf`, `requests` and the rest of `factur-x`'s dependencies.
+**Rejected because**: callers that handle only XML would carry `pypdf`, `requests` and the rest of `factur-x`'s dependencies. `lxml`, which `factur-x` needs too, is a dependency of the plain library anyway, for the XML Schema checks.
 
 ## Consequences
 
@@ -59,8 +59,8 @@ Every runtime dependency has to coexist with the versions its host pins; in a Fr
 
 ## Reconsideration Triggers
 
-1. A dependency's version range clashes with what Frappe/ERPNext v16 pins. Fired on 2026-11-01: Frappe v16 pins `pypdf==6.19.0`, while the `pdf` extra asked for 6.21.4 or later, so `haflinger[pdf]` couldn't be installed into a v16 bench; the extra's lower bound came down to 6.19.0, and CI tests with the versions Frappe v16 pins (see Compliance).
-2. The Python version of Frappe/ERPNext v16 benches is below the lower bound.
+1. A dependency's version range clashes with what Frappe/ERPNext v16 pins. Fired on 2026-11-01: Frappe v16 pins `pypdf==6.19.0`, while the `pdf` extra asked for 6.21.4 or later, so `haflinger[pdf]` couldn't be installed into a v16 bench; the extra's lower bound came down to 6.19.0, and CI tests with the versions Frappe v16 pins (see Compliance): `pypdf==6.19.0`, and `requests~=2.33.0`, which `factur-x` imports.
+2. The Python version of Frappe/ERPNext v16 benches is below the lower bound. Checked on 2026-11-01: Frappe's `version-16` requires `>=3.14,<3.15`, ERPNext `>=3.14`; Haflinger's `>=3.14` fits.
 3. lxml is needed for more than XML Schema checks; then weigh one XML stack.
 
 ## Compliance

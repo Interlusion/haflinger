@@ -3,7 +3,7 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Draft |
-| **Version** | 0.4 |
+| **Version** | 0.5 |
 | **Date** | 2026-11-01 |
 | **Author** | loxy (drafted with Claude) |
 
@@ -90,7 +90,7 @@ The personas are [REQ-001's](req-001-core.md#personas).
 
 **Related URS**: REQ-004-URS-F001, REQ-004-URS-F002
 
-**Definition of Done**: a test writes a valid invoice and gets UTF-8 bytes with an XML declaration; a test writes an invoice whose BT-112 is off by one cent and gets `InvoiceWriteError` with `BR-CO-15` among its findings and the document; one test per refusal before writing, each naming its business term (a float in BT-112, a string in BT-2, `" Example GmbH"` in BT-27, a control character in BT-153, BT-111 without BT-6).
+**Definition of Done**: a test writes a valid invoice and gets UTF-8 bytes with an XML declaration; a test writes an invoice whose BT-112 is off by one cent and gets `InvoiceWriteError` with `BR-CO-15` among its findings and the document; a number of exactly 1,000 digits is written; one test per refusal before writing, each naming its business term (a float in BT-112, a string in BT-2, `" Example GmbH"` in BT-27, a control character in BT-153, BT-111 without BT-6).
 
 #### REQ-004-PRS-F002: Supported target profiles
 
@@ -128,11 +128,11 @@ The personas are [REQ-001's](req-001-core.md#personas).
 
 #### REQ-004-PRS-F005: Official rules
 
-**Description**: A written invoice SHALL be validated with the rule set of its target profile ([REQ-002-PRS-F003](req-002-conformance.md#req-002-prs-f003-rule-sets)) and handed out only when it is valid as [REQ-002-PRS-F002](req-002-conformance.md#req-002-prs-f002-findings) defines.
+**Description**: A written invoice SHALL be validated with the rule set of its target profile ([REQ-002-PRS-F003](req-002-conformance.md#req-002-prs-f003-rule-sets)) and, for the target profile `urn:cen.eu:en16931:2017`, which a ZUGFeRD PDF labels Factur-X EN 16931 (REQ-004-PRS-F007), also with FeRD's Factur-X rules of the EN 16931 profile. It SHALL be handed out only when it is valid as [REQ-002-PRS-F002](req-002-conformance.md#req-002-prs-f002-findings) defines.
 
-**Related URS**: REQ-004-URS-F002
+**Related URS**: REQ-004-URS-F002 | **Rationale**: A recipient may check a ZUGFeRD PDF with FeRD's rules rather than CEN's; FeRD's rules of the profile also reject what the profile doesn't use, such as a line's VAT exemption reason.
 
-**Definition of Done**: in the round trip of REQ-004-PRS-F006, every `fatal` or `error` finding of a written KoSIT file is a rule that needs a business term the model doesn't hold yet; the test lists those rules with the missing terms, and a further test fails once a listed rule no longer fires on any file, so that the list shrinks as the model grows.
+**Definition of Done**: in the round trip of REQ-004-PRS-F006, every `fatal` or `error` finding of a written KoSIT file is a rule that needs a business term the model doesn't hold yet; the test lists those rules with the missing terms, and a further test fails once a listed rule no longer fires on any file, so that the list shrinks as the model grows; every invoice handed out passes FeRD's EN 16931 rules without `fatal` or `error`.
 
 #### REQ-004-PRS-F006: Round trip over the KoSIT suite
 
@@ -144,15 +144,15 @@ The personas are [REQ-001's](req-001-core.md#personas).
 
 #### REQ-004-PRS-F007: ZUGFeRD PDF
 
-**Description**: With the extra `pdf` installed, `haflinger.pdf.embed(pdf: bytes, xml: bytes) -> bytes` SHALL return the given PDF as PDF/A-3 with the XML embedded as `factur-x.xml`, with the relationship and the XMP metadata (profile, version) that ZUGFeRD and Factur-X require, and the pages unchanged. It SHALL raise `InvoiceWriteError`, and no other exception, when:
+**Description**: With the extra `pdf` installed, `haflinger.pdf.embed(pdf: bytes, xml: bytes) -> bytes` SHALL return the given PDF as PDF/A-3 with the XML embedded as `factur-x.xml`, with the relationship `/Alternative` and the XMP metadata (profile, version) that ZUGFeRD and Factur-X require, and the pages unchanged. The PDF's XMP metadata and document information are replaced by those of the invoice (title and subject from BT-1, BT-2 and BT-27, author BT-27), and a reader opening it shows its attachments (`/PageMode /UseAttachments`). It SHALL raise `InvoiceWriteError`, and no other exception, when:
 
-- either argument isn't `bytes`; the PDF isn't readable, or its XMP metadata declares no conformance to PDF/A-1, -2 or -3 (the reason says that the input must be PDF/A); or the PDF holds embedded files or named destinations, which embedding would drop;
-- the XML isn't a CII invoice whose BT-24 is `urn:cen.eu:en16931:2017`, the ZUGFeRD / Factur-X EN 16931 profile; XRechnung, the other target profile of REQ-004-PRS-F002, is sent as XML;
+- either argument isn't `bytes`; the PDF isn't readable, or its XMP metadata declares no conformance to PDF/A-1, -2 or -3 (the reason says that the input must be PDF/A); or the PDF holds what embedding would drop: a name tree (`/Names`: embedded files, named destinations and the others) or associated files of the document (`/AF`);
+- the XML isn't a CII invoice whose BT-24 is exactly `urn:cen.eu:en16931:2017`, with no whitespace around it, the ZUGFeRD / Factur-X EN 16931 profile; XRechnung, the other target profile of REQ-004-PRS-F002, is sent as XML;
 - the XML fails REQ-004-PRS-F004 or REQ-004-PRS-F005, with the findings.
 
-**Related URS**: REQ-004-URS-F002, REQ-004-URS-F004 | **Rationale**: ZUGFeRD PDFs go to businesses, XRechnung to public authorities as XML (Intended Use). ZUGFeRD's XRECHNUNG profile in a PDF (`xrechnung.xml`) is an open question; `factur-x` doesn't write it.
+**Related URS**: REQ-004-URS-F002, REQ-004-URS-F004 | **Rationale**: ZUGFeRD PDFs go to businesses, XRechnung to public authorities as XML (Intended Use). ZUGFeRD 2.5.2 allows only `/Alternative` for the EN 16931 profile in Germany, and Factur-X allows it in France: the PDF shows the same invoice as the XML, which is up to the caller, who renders the PDF. ZUGFeRD's XRECHNUNG profile in a PDF (`xrechnung.xml`) is an open question; `factur-x` doesn't write it.
 
-**Definition of Done**: for a CII invoice of the EN 16931 profile and a PDF/A test file, and for the same file after incremental updates, the result is one PDF that a strict reader reads, `haflinger.pdf.extract_xml` on the result returns the XML byte for byte, the result reads with `read_invoice` to the invoice's model, the XMP names the invoice's profile, the page content equals the input's, and veraPDF, the reference PDF/A validator, finds the result conformant to PDF/A-3 (tests; veraPDF runs where it is installed, as an oracle); one test per refusal.
+**Definition of Done**: for a CII invoice of the EN 16931 profile and a PDF/A test file, and for the same file after incremental updates, the result is one PDF that a strict reader reads, `haflinger.pdf.extract_xml` on the result returns the XML byte for byte, the result reads with `read_invoice` to the invoice's model, the XMP names the invoice's profile, the embedded file's relationship is `/Alternative`, the page content equals the input's, and veraPDF, the reference PDF/A validator, finds the result conformant to PDF/A-3 (tests; veraPDF runs where it is installed, as an oracle); a PDF/A whose page content holds the text `%PDF-`, one whose XMP uses another prefix for the PDF/A namespace, one with a catalogue `/Dests`, and an invoice with an attachment (BG-24) of more than 10 MB are embedded; one test per refusal, among them a description that mentions `pdfaid:part` without declaring it, a name tree other than embedded files, `/AF`, a BT-24 with whitespace around it, and an invoice that fails only FeRD's rules.
 
 ## PRS — Non-Functional
 

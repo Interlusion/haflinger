@@ -15,10 +15,11 @@ import tracemalloc
 import zlib
 from dataclasses import replace
 from pathlib import Path
+from typing import cast
 
 import pytest
 from pypdf import PdfReader, PdfWriter
-from pypdf.generic import DecodedStreamObject, NameObject
+from pypdf.generic import ArrayObject, DecodedStreamObject, DictionaryObject, NameObject
 
 from haflinger import InvoiceReadError, InvoiceWriteError, ReadResult, read_invoice, write_cii
 from haflinger.pdf import embed, extract_xml
@@ -396,7 +397,7 @@ def test_embed_into_an_incrementally_updated_pdf() -> None:
 @pytest.mark.parametrize(
     ("pdf", "reason"),
     [
-        (attached("timesheet.csv", b"a;b"), "embedded files or named destinations"),
+        (attached("timesheet.csv", b"a;b"), "/Names /EmbeddedFiles, which embedding would drop"),
         (PDFA.replace(b'pdfaid:part="2"', b'pdfaid:part="4"'), "PDF/A-1, -2 or -3"),
     ],
     ids=["other-attachment", "pdfa-4"],
@@ -429,9 +430,9 @@ def test_extract_takes_flate_with_empty_parameters(parameters: bytes) -> None:
     assert extract_xml(data) == XML
 
 
-def object_stream_bomb(entries: int, size: int) -> bytes:
+def object_stream_bomb(entries: int, size: int, listed: int = 1, filler: bytes = b"7 0 ") -> bytes:
     """A PDF whose tree of embedded files has `entries` kids, each in an object stream of its own
-    that inflates to `size` bytes."""
+    that inflates to `size` bytes and lists `listed` objects, all but one the `filler`."""
     objects: dict[int, bytes] = {
         1: b"<< /Type /Catalog /Names 2 0 R >>",
         2: b"<< /EmbeddedFiles 3 0 R >>",
@@ -439,12 +440,12 @@ def object_stream_bomb(entries: int, size: int) -> bytes:
     }
     in_streams: dict[int, int] = {}
     for i in range(entries):
-        header = b"%d 0 " % (100 + i)
-        payload = header + b"<< /Names [] >>"
+        header = filler * (listed - 1) + b"%d 2 " % (100 + i)
+        payload = header + b"0 << /Names [] >>"
         packed = zlib.compress(payload + b" " * (size - len(payload)), 9)
         objects[1000 + i] = (
-            b"<< /Type /ObjStm /N 1 /First %d /Filter /FlateDecode /Length %d >>\nstream\n"
-            % (len(header), len(packed))
+            b"<< /Type /ObjStm /N %d /First %d /Filter /FlateDecode /Length %d >>\nstream\n"
+            % (listed, len(header), len(packed))
             + packed
             + b"\nendstream"
         )
@@ -531,3 +532,191 @@ def test_a_file_specification_pointing_outside_isnt_opened(tmp_path: Path) -> No
     )
     with pytest.raises(InvoiceReadError, match="no embedded file stream"):
         extract_xml(data)
+
+
+# The third review of 2026-11-01
+
+DESCRIPTION = (
+    b'<dc:description><rdf:Alt><rdf:li xml:lang="x-default">%s</rdf:li></rdf:Alt></dc:description>'
+)
+
+
+@pytest.mark.parametrize(
+    ("entries", "listed", "filler"),
+    [(8, 490_000, b"7 0 "), (1, 4_000, b"7 2 ")],
+    ids=["many-objects", "long-whitespace"],
+)
+def test_object_streams_just_under_the_limits_are_refused_in_time(
+    entries: int, listed: int, filler: bytes
+) -> None:
+    """REQ-003-PRS-NF003: each stream under 2 MB, listing one object thousands of times; pypdf
+    parses every object a stream lists, and skips the whitespace after each one byte by byte."""
+    data = object_stream_bomb(entries, 1_990_000, listed=listed, filler=filler)
+    assert len(data) < 100 * 1024
+    start = time.monotonic()
+    with pytest.raises(InvoiceReadError, match="takes more than"):
+        extract_xml(data)
+    assert time.monotonic() - start < 5
+
+
+@pytest.mark.parametrize(
+    "dictionary",
+    [
+        b"/Filter [/FlateDecode] /DecodeParms [null] ",
+        b"/Filter [/FlateDecode] /DecodeParms [<< >>] ",
+        b"/Filter /FlateDecode /DecodeParms << /Predictor 1 >> ",
+    ],
+    ids=["array-null", "array-empty", "predictor-1"],
+)
+def test_extract_takes_flate_with_parameters_that_change_nothing(dictionary: bytes) -> None:
+    data = with_embedded_stream(b"factur-x.xml", zlib.compress(XML), dictionary)
+    assert extract_xml(data) == XML
+
+
+def embedded_relationship(pdf: bytes) -> object:
+    reader = PdfReader(io.BytesIO(pdf))
+    root = cast(DictionaryObject, reader.trailer["/Root"])
+    names = cast(DictionaryObject, root["/Names"])
+    files = cast(DictionaryObject, names["/EmbeddedFiles"])
+    specification = cast(DictionaryObject, cast(ArrayObject, files["/Names"])[1].get_object())
+    return specification["/AFRelationship"]
+
+
+def test_embed_relates_the_invoice_as_alternative() -> None:
+    """REQ-004-PRS-F007: ZUGFeRD 2.5.2 allows only /Alternative for EN 16931 in Germany."""
+    assert embedded_relationship(embed(PDFA, XML)) == "/Alternative"
+
+
+def with_page_content(base: bytes, prefix: bytes) -> bytes:
+    writer = PdfWriter(clone_from=io.BytesIO(base))
+    page = writer.pages[0]
+    contents = page.get_contents()
+    assert contents is not None
+    stream = DecodedStreamObject()
+    stream.set_data(prefix + contents.get_data())
+    page[NameObject("/Contents")] = writer._add_object(stream)  # pyright: ignore[reportPrivateUsage]
+    output = io.BytesIO()
+    writer.write(output)
+    return output.getvalue()
+
+
+def with_catalogue_entry(base: bytes, key: str, value: object) -> bytes:
+    writer = PdfWriter(clone_from=io.BytesIO(base))
+    writer._root_object[NameObject(key)] = value  # pyright: ignore[reportPrivateUsage]
+    output = io.BytesIO()
+    writer.write(output)
+    return output.getvalue()
+
+
+def test_embed_into_a_pdf_whose_content_holds_a_pdf_header() -> None:
+    pdf = with_page_content(PDFA, b"% a comment naming %PDF-1.7\n")
+    assert extract_xml(embed(pdf, XML)) == XML
+
+
+def test_embed_into_a_pdfa_with_another_namespace_prefix() -> None:
+    pdf = PDFA.replace(b"pdfaid", b"pdfaix")
+    assert b'pdfaix:part="2"' in pdf
+    assert extract_xml(embed(pdf, XML)) == XML
+
+
+def test_embed_keeps_a_catalogues_named_destinations() -> None:
+    page = PdfReader(io.BytesIO(PDFA)).pages[0].indirect_reference
+    destinations = DictionaryObject(
+        {NameObject("/chapter1"): ArrayObject([page, NameObject("/Fit")])}
+    )
+    result = embed(with_catalogue_entry(PDFA, "/Dests", destinations), XML)
+    root = cast(DictionaryObject, PdfReader(io.BytesIO(result)).trailer["/Root"])
+    assert "/chapter1" in cast(DictionaryObject, root["/Dests"])
+
+
+def test_embed_refuses_a_description_that_only_mentions_pdfa() -> None:
+    xmp = (
+        b'<?xpacket begin="" id="W5M0MpCehiHzreSzNTczkc9d"?>'
+        b'<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF'
+        b' xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">'
+        b'<rdf:Description rdf:about="" xmlns:dc="http://purl.org/dc/elements/1.1/">'
+        + DESCRIPTION % b"pdfaid:part='2'"
+        + b'</rdf:Description></rdf:RDF></x:xmpmeta><?xpacket end="w"?>'
+    )
+    pdf = raw_pdf(
+        b"<< /Type /Catalog /Pages 2 0 R /Metadata 3 0 R >>",
+        b"<< /Type /Pages /Kids [] /Count 0 >>",
+        b"<< /Type /Metadata /Subtype /XML /Length %d >>\nstream\n" % len(xmp)
+        + xmp
+        + b"\nendstream",
+    )
+    with pytest.raises(InvoiceWriteError, match="the input must be PDF/A"):
+        embed(pdf, XML)
+
+
+@pytest.mark.parametrize(
+    ("key", "reason"),
+    [("/Names", "/Names /JavaScript"), ("/AF", "/AF")],
+    ids=["name-tree", "associated-files"],
+)
+def test_embed_refuses_what_factur_x_drops(key: str, reason: str) -> None:
+    value = (
+        DictionaryObject(
+            {NameObject("/JavaScript"): DictionaryObject({NameObject("/Names"): ArrayObject()})}
+        )
+        if key == "/Names"
+        else ArrayObject()
+    )
+    with pytest.raises(InvoiceWriteError, match=re.escape(reason)):
+        embed(with_catalogue_entry(PDFA, key, value), XML)
+
+
+def test_embed_takes_bt_24_exactly_as_written() -> None:
+    xml = XML.replace(b">urn:cen.eu:en16931:2017<", b"> urn:cen.eu:en16931:2017\n<", 1)
+    with pytest.raises(InvoiceWriteError, match="BT-24"):
+        embed(PDFA, xml)
+
+
+def test_embed_runs_ferds_rules_of_the_profile() -> None:
+    """REQ-004-PRS-F005: valid by CEN's rules, but Factur-X EN 16931 doesn't use a line's VAT
+    exemption reason."""
+    xml = (SUITE / "01.21a-INVOICE_uncefact.xml").read_bytes()
+    xml = xml.replace(
+        b">urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0<",
+        b">urn:cen.eu:en16931:2017<",
+        1,
+    )
+    with pytest.raises(InvoiceWriteError) as refusal:
+        embed(PDFA, xml)
+    assert any("ExemptionReason" in finding.text for finding in refusal.value.findings)
+
+
+def test_embed_refuses_xml_breaking_factur_xs_schema() -> None:
+    xml = XML.replace(
+        b"<ram:ID>123456XX</ram:ID>", b"<ram:ID>123456XX</ram:ID><ram:Name>Rechnung</ram:Name>", 1
+    )
+    with pytest.raises(InvoiceWriteError) as refusal:
+        embed(PDFA, xml)
+    assert any(
+        f.rule == "HAFL-XSD" and f.text.startswith("Factur-X EN 16931 XML Schema: ")
+        for f in refusal.value.findings
+    )
+
+
+def test_embed_takes_an_attachment_over_ten_megabytes() -> None:
+    """factur-x would parse the XML with libxml2's limit on a text; embed gives it the metadata."""
+    attachment = (
+        b"<ram:AdditionalReferencedDocument><ram:IssuerAssignedID>A1</ram:IssuerAssignedID>"
+        b"<ram:TypeCode>916</ram:TypeCode>"
+        b'<ram:AttachmentBinaryObject mimeCode="application/pdf" filename="a.pdf">'
+        + b"QUFB" * 2_750_000
+        + b"</ram:AttachmentBinaryObject></ram:AdditionalReferencedDocument>"
+    )
+    xml = XML.replace(
+        b"</ram:ApplicableHeaderTradeAgreement>",
+        attachment + b"</ram:ApplicableHeaderTradeAgreement>",
+        1,
+    )
+    assert extract_xml(embed(PDFA, xml), max_size=len(xml)) == xml
+
+
+def test_extract_reads_input_as_large_as_max_size() -> None:
+    """REQ-001-PRS-NF003: just below the limit, for extract_xml."""
+    pdf = with_embedded_stream(b"factur-x.xml", zlib.compress(XML), b"/Filter /FlateDecode ")
+    assert extract_xml(pdf, max_size=len(XML)) == XML
+    assert extract_xml(attached("factur-x.xml", XML), max_size=len(XML) + 10**6) == XML

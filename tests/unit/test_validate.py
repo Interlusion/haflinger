@@ -594,3 +594,110 @@ def test_a_long_number_is_refused_at_once(path: Path) -> None:
     with pytest.raises(InvoiceReadError, match="digits"):
         validate(edited(path, (old, new.replace("336.91", "3" * 200_000))))
     assert time.monotonic() - start < 1
+
+
+# The third review of 2026-11-01
+
+DECLARATION = '<?xml version="1.0" encoding="UTF-8"?>'
+LINE_TOTAL = "<ram:LineTotalAmount>314.86</ram:LineTotalAmount>"
+
+
+@pytest.mark.parametrize(
+    "data",
+    ["text", memoryview(b"<x/>"), bytearray(b"<x/>"), None],
+    ids=["str", "memoryview", "bytearray", "none"],
+)
+def test_refuses_input_that_is_not_bytes(data: object) -> None:
+    with pytest.raises(InvoiceReadError, match="not bytes"):
+        validate(data)  # pyright: ignore[reportArgumentType]
+
+
+@pytest.mark.parametrize(
+    ("doctype", "seller"),
+    [
+        ("<!DOCTYPE rsm:CrossIndustryInvoice [<!ELEMENT rsm:CrossIndustryInvoice ANY>]>", None),
+        (
+            '<!DOCTYPE rsm:CrossIndustryInvoice [<!ENTITY seller SYSTEM "file:///etc/passwd">]>',
+            "&seller;",
+        ),
+    ],
+    ids=["internal DTD", "external entity"],
+)
+def test_refuses_dtds_and_external_entities(doctype: str, seller: str | None) -> None:
+    """REQ-001-PRS-NF001, from validation."""
+    edits = [(DECLARATION, DECLARATION + doctype)]
+    if seller is not None:
+        edits.append(("<ram:Name>[Seller name]</ram:Name>", f"<ram:Name>{seller}</ram:Name>"))
+    with pytest.raises(InvoiceReadError, match="DTD"):
+        validate(edited(CII, *edits))
+
+
+def test_refuses_a_byte_order_mark_that_contradicts_the_declaration() -> None:
+    data = b"\xef\xbb\xbf" + edited(CII, (DECLARATION, DECLARATION.replace("UTF-8", "ISO-8859-1")))
+    with pytest.raises(InvoiceReadError, match="byte order mark"):
+        validate(data)
+
+
+def test_validates_input_as_large_as_max_size() -> None:
+    """REQ-001-PRS-NF003: just below the limit, for validate."""
+    data = CII.read_bytes()
+    assert invalid(validate(data, max_size=len(data))) == []
+
+
+@pytest.mark.parametrize(
+    ("path", "edit"),
+    [
+        (CII, (LINE_TOTAL, LINE_TOTAL * 2)),
+        (
+            UBL,
+            (
+                "<cac:PartyLegalEntity>\n                <cbc:RegistrationName>[Seller name]",
+                "<cac:PartyLegalEntity><cbc:RegistrationName>[Seller name]</cbc:RegistrationName>"
+                "</cac:PartyLegalEntity><cac:PartyLegalEntity>"
+                "<cbc:RegistrationName>[Seller name]",
+            ),
+        ),
+    ],
+    ids=["cii-bt-106-twice", "ubl-two-legal-entities"],
+)
+def test_rules_that_fail_on_a_schema_valid_invoice_are_hafl_rules(
+    path: Path, edit: tuple[str, str]
+) -> None:
+    """REQ-002-PRS-F010: as KoSIT's processing error, a fatal finding, not a refusal."""
+    findings = validate(edited(path, edit))
+    assert [(f.rule, f.flag) for f in findings] == [("HAFL-RULES", "fatal")]
+    assert findings[0].location == ("/rsm:CrossIndustryInvoice" if path == CII else "/Invoice")
+    assert "EN16931 XRechnung" in findings[0].text
+
+
+def test_hafl_profile_also_when_the_schema_fails() -> None:
+    """REQ-002-PRS-F004: one HAFL-PROFILE each, whatever the schema finds."""
+    data = with_specification_id(
+        CII,
+        "urn:cen.eu:en16931:2017#compliant#urn:xoev-de:kosit:standard:xrechnung_2.1",
+        ("<ram:ID>123456XX</ram:ID>", "<ram:ID>123456XX</ram:ID><ram:Bogus>x</ram:Bogus>"),
+    )
+    assert {f.rule for f in validate(data)} == {"HAFL-PROFILE", "HAFL-XSD"}
+    assert len(profile_findings(validate(data))) == 1
+
+
+def test_the_schema_reads_the_text_the_rules_read() -> None:
+    """REQ-002-PRS-F011: an encoding Python knows and libxml2 doesn't."""
+    text = CII.read_text(encoding="utf-8")
+    data = text.replace(DECLARATION, DECLARATION.replace("UTF-8", "mac-roman")).encode("mac-roman")
+    assert invalid(validate(data)) == []
+
+
+def test_deeply_nested_xml_is_a_schema_finding() -> None:
+    """libxml2 stops at a depth of its own; the result is a finding, not a crash."""
+    nested = "<ram:Bogus>" * 50_000 + "x" + "</ram:Bogus>" * 50_000
+    data = edited(CII, ("<ram:ID>123456XX</ram:ID>", "<ram:ID>123456XX</ram:ID>" + nested))
+    findings = validate(data)
+    assert {f.rule for f in findings} == {"HAFL-XSD"}
+
+
+def test_a_text_over_ten_megabytes_passes_the_schema() -> None:
+    """REQ-002-PRS-F011: libxml2's limit on a text doesn't apply (`huge_tree`)."""
+    content = "<ram:Content>Es gelten"
+    data = edited(CII, (content, "<ram:Content>" + "A" * 11_000_000 + " Es gelten"))
+    assert "HAFL-XSD" not in {f.rule for f in validate(data)}

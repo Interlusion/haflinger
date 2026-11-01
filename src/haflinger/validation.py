@@ -12,7 +12,7 @@ from xml.etree.ElementTree import Element
 
 from haflinger import _saxon, _xsd
 from haflinger._input import Document, Opened, open_invoice
-from haflinger._xml import MAX_SIZE, XML_WHITESPACE, parse
+from haflinger._xml import MAX_SIZE, XML_WHITESPACE, decode, parse
 from haflinger.errors import InvoiceReadError
 from haflinger.findings import Finding, Flag
 
@@ -70,6 +70,13 @@ _FACTUR_X: dict[str, tuple[str, tuple[str, ...]]] = {
     ),
 }
 # REQ-002-PRS-F011: FeRD's XML Schema of each Factur-X profile.
+# REQ-004-PRS-F005: FeRD's rules of the EN 16931 profile, for a written invoice of that profile;
+# an incoming one is judged by CEN's rules, as KoSIT's scenario does (REQ-002-PRS-F003).
+FACTUR_X_EN16931 = "Factur-X EN 16931"
+_FACTUR_X_EN16931 = (
+    f"{_FERD}/3_Factur-X_1.09.2_EN16931/Factur-X_1.09.2_EN16931.xsd",
+    f"{_FERD}/3_Factur-X_1.09.2_EN16931/FACTUR-X_EN16931.sch",
+)
 _FACTUR_X_SCHEMAS = {
     "Factur-X MINIMUM": f"{_FERD}/0_Factur-X_1.09.2_MINIMUM/Factur-X_1.09.2_MINIMUM.xsd",
     "Factur-X BASIC WL": f"{_FERD}/1_Factur-X_1.09.2_BASICWL/Factur-X_1.09.2_BASICWL.xsd",
@@ -128,10 +135,10 @@ def validate(data: bytes, *, max_size: int = MAX_SIZE) -> list[Finding]:
     _refuse_costly(opened)
     name, no_profile = rule_set(opened)
     findings = [] if no_profile is None else [no_profile]
-    schema = _xsd.check(data, _scenarios()[name].schema)
+    schema = _xsd.check(decode(data), _scenarios()[name].schema)
     if schema:
         return [*findings, *schema]
-    return [*findings, *_rules(data, name)]
+    return [*findings, *_rules(data, name, opened)]
 
 
 def _refuse_costly(opened: Opened) -> None:
@@ -165,18 +172,35 @@ def _refuse_costly(opened: Opened) -> None:
         )
 
 
-def check_rules(data: bytes) -> list[Finding]:
+def check_rules(data: bytes, *also: str) -> list[Finding]:
     """Like `validate`, without the XML Schema check: for fragments that aren't whole invoices,
-    as in CEN's per-rule unit tests."""
+    as in CEN's per-rule unit tests, and for written invoices, whose schemas `write` checks.
+    `also` names further rule sets to run, such as `FACTUR_X_EN16931`."""
     opened = open_invoice(data, MAX_SIZE, pdf="the input is a PDF")
     name, no_profile = rule_set(opened)
-    return [*([] if no_profile is None else [no_profile]), *_rules(data, name)]
+    findings = [] if no_profile is None else [no_profile]
+    for each in (name, *also):
+        findings.extend(_rules(data, each, opened))
+    return findings
 
 
-def _rules(data: bytes, name: str) -> list[Finding]:
+def _rules(data: bytes, name: str, opened: Opened) -> list[Finding]:
+    """The findings of a rule set; where the rules themselves fail on the invoice, `HAFL-RULES`,
+    as KoSIT's validator reports a processing error (REQ-002-PRS-F010)."""
     scenario = _scenarios()[name]
+    try:
+        reports = _saxon.transform(data, *scenario.stylesheets)
+    except _saxon.TransformError as error:
+        return [
+            Finding(
+                rule="HAFL-RULES",
+                flag="fatal",
+                location=opened.reading.root.path,
+                text=f"the rules of {name} fail on this invoice: {error}",
+            )
+        ]
     findings: list[Finding] = []
-    for report in _saxon.transform(data, *scenario.stylesheets):
+    for report in reports:
         findings.extend(_findings(parse(report), scenario.levels))
     return findings
 
@@ -244,6 +268,8 @@ def _scenarios() -> dict[str, _Scenario]:
         name: _Scenario(schema=_FACTUR_X_SCHEMAS[name], stylesheets=(schematron,), levels={})
         for name, (schematron, _) in _FACTUR_X.items()
     }
+    schema, schematron = _FACTUR_X_EN16931
+    factur_x[FACTUR_X_EN16931] = _Scenario(schema=schema, stylesheets=(schematron,), levels={})
     return factur_x | {
         scenario.findtext(f"{n}name", ""): _Scenario(
             schema=f"{_CONFIGURATION}/"

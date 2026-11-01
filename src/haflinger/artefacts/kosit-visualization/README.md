@@ -15,7 +15,7 @@ The stylesheets of KoSIT's visualisation that turn a CII invoice, a UBL invoice 
 | `xsl/cii-xr.xsl`, `xsl/ubl-invoice-xr.xsl`, `xsl/ubl-creditnote-xr.xsl` | CII, UBL invoice and UBL credit note into the semantic XML |
 | `xsl/common-xr.xsl`, `xsl/functions.xsl` | Included by the three above |
 | `xsl/l10n/de.xml`, `xsl/l10n/en.xml` | Texts `functions.xsl` loads |
-| `xsd/xrechnung-semantic-model.xsd` | The schema of the semantic XML |
+| `xsd/xrechnung-semantic-model.xsd` | Not used: the schema of the semantic XML, which nothing checks against; kept as vendored |
 
 Not included: the HTML and PDF steps with their scripts, styles, fonts and FOP configuration, which rendering invoices for people would need ([ITEM-005](../../../../docs/backlog/item-005-rendering.md)); the release's test invoices; the documentation and changelog.
 

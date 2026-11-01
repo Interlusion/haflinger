@@ -3,7 +3,7 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Proposed |
-| **Date** | 2026-10-30 |
+| **Date** | 2026-11-01 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Context
@@ -34,7 +34,7 @@ The writer spike showed what the second reader is worth: a mistake made the same
 ## Decision
 
 - **Haflinger's own mapping is the reader.** `read_invoice` reads CII and UBL into the model through Haflinger's bindings, at every size, with no Saxon in the reading path.
-- **KoSIT's stylesheet is the independent check.** In the tests, every official test file, and every written invoice, is read by both; the two models must be equal. A difference is a defect in Haflinger, or a limit of KoSIT's stylesheet recorded in the test with its reason.
+- **KoSIT's stylesheet is the independent check.** In the tests, every official test file that is a whole invoice Haflinger reads, and every written invoice, is read by both; the two models must be equal. CEN's unit tests are fragments, not whole invoices, and files `read_invoice` refuses have no model to compare (REQ-003-PRS-F005). A difference is a defect in Haflinger, or a limit of KoSIT's stylesheet recorded in the test with its reason.
 - **KoSIT's coverage guides the mapping.** For a business term the model gains, KoSIT's semantic XML shows its element in both syntaxes, and its test files exercise it.
 - The stylesheets stay vendored unchanged ([ADR-008](ADR-008-vendoring-official-files.md)), for the tests now and for rendering invoices for people later.
 
@@ -76,7 +76,7 @@ The model read from KoSIT's semantic XML, all its terms without mapping work of 
 
 ## Compliance
 
-- Every official test file SHALL be read by Haflinger's mapping and by KoSIT's stylesheet in the tests, and the models SHALL be equal, except for differences recorded with their reason.
+- Every official test file that is a whole invoice `read_invoice` reads SHALL be read by Haflinger's mapping and by KoSIT's stylesheet in the tests, and the models SHALL be equal, except for differences recorded with their reason.
 - KoSIT's stylesheet SHALL NOT be on the runtime reading path.
 
 ## References

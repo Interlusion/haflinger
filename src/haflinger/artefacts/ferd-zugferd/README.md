@@ -1,6 +1,6 @@
 # FeRD's ZUGFeRD package: Factur-X rules and XML Schemas
 
-The Schematron rules and XML Schemas of FeRD's ZUGFeRD package for the five Factur-X profiles (MINIMUM, BASIC WL, BASIC, EN 16931, EXTENDED), unchanged and at their paths in the package. Haflinger compiles each Schematron with [SchXslt](../schxslt/README.md) on first use and validates Factur-X and ZUGFeRD invoices with it ([REQ-002-PRS-F003](../../../../docs/specs/req-002-conformance.md#req-002-prs-f003-rule-sets)); the EN 16931 profile's XML Schema checks the invoices Haflinger writes ([REQ-004-PRS-F004](../../../../docs/specs/req-004-outgoing-invoices.md#req-004-prs-f004-xml-schema)).
+The Schematron rules and XML Schemas of FeRD's ZUGFeRD package for the five Factur-X profiles (MINIMUM, BASIC WL, BASIC, EN 16931, EXTENDED), unchanged and at their paths in the package. Haflinger compiles each profile's Schematron with [SchXslt](../schxslt/README.md) on first use: those of MINIMUM, BASIC WL, BASIC and EXTENDED validate incoming invoices of their profile ([REQ-002-PRS-F003](../../../../docs/specs/req-002-conformance.md#req-002-prs-f003-rule-sets)), and that of EN 16931 checks, beside CEN's rules, the invoices Haflinger writes for that profile ([REQ-004-PRS-F005](../../../../docs/specs/req-004-outgoing-invoices.md#req-004-prs-f005-official-rules)). The XML Schemas of MINIMUM, BASIC WL, BASIC and EXTENDED check incoming invoices of their profile before the rules ([REQ-002-PRS-F011](../../../../docs/specs/req-002-conformance.md#req-002-prs-f011-xml-schema-first)); the EN 16931 profile's checks the invoices Haflinger writes ([REQ-004-PRS-F004](../../../../docs/specs/req-004-outgoing-invoices.md#req-004-prs-f004-xml-schema)).
 
 |  |  |
 | :- | :- |
@@ -12,9 +12,9 @@ The Schematron rules and XML Schemas of FeRD's ZUGFeRD package for the five Fact
 
 | File, per profile folder `Schema/<n>_Factur-X_1.09.2_<PROFILE>/` | Used for |
 | :- | :- |
-| `FACTUR-X_<PROFILE>.sch` | The profile's rules, compiled with SchXslt |
+| `FACTUR-X_<PROFILE>.sch` | The profile's rules, compiled with SchXslt; every profile's is used |
 | `FACTUR-X_<PROFILE>_codedb.xml` | The code lists the Schematron reads with `document()`; part of the Schematron |
-| `Factur-X_1.09.2_<PROFILE>.xsd` and its three imports | The profile's XML Schema; Haflinger uses the EN 16931 profile's |
+| `Factur-X_1.09.2_<PROFILE>.xsd` and its three imports | The profile's XML Schema; every profile's is used, EN 16931's for written invoices, the others' for incoming ones |
 
 Not included:
 

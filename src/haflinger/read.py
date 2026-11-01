@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from haflinger import cii, ubl
 from haflinger._input import is_pdf, open_invoice
-from haflinger._xml import MAX_SIZE, check_size
+from haflinger._xml import MAX_SIZE, check_bytes, check_size
 from haflinger.errors import InvoiceReadError
 from haflinger.findings import Finding
 from haflinger.model import Invoice
@@ -21,6 +21,7 @@ class ReadResult:
 def read_invoice(data: bytes, *, max_size: int = MAX_SIZE) -> ReadResult:
     """Read a CII invoice or a UBL invoice or credit note; the syntax is detected from the root
     element. Raises `InvoiceReadError` for input that can't be read (REQ-003-PRS-F006)."""
+    check_bytes(data)
     if is_pdf(data):
         return _read_pdf(data, max_size)
     opened = open_invoice(data, max_size, pdf="")
