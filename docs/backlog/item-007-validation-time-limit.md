@@ -31,6 +31,7 @@ The last three rows are not refused, and no list of refusals can be complete: th
 
 - **A child process per call**: simple, but every call pays process start-up and the compiling of its rule set (about 0.1 s to 1.1 s).
 - **A pool of child processes** that keep their compiled rule sets; a call that passes the limit stops its process, and the pool starts a new one. Fast after the first call; costs memory per process (Saxon and the compiled rules, a few hundred MB) and care in hosts that fork (Frappe's workers): start the children with `spawn`, not `fork`.
+- Either kind of child process is also the boundary [ITEM-008](item-008-saxonche-licence.md) considers for `saxonche`'s licence, and keeps a crash of Saxon out of the caller's process.
 - **Cheap refusals of further shapes**, beside or instead of the above, as for empty elements, long numbers and long telephone numbers: each covers one shape only. Decided against on 2026-11-01, after the third review found two more shapes: no further refusals.
 
 ## Open Questions
