@@ -37,3 +37,11 @@ def test_a_stylesheet_fetches_no_url(artefacts: Path) -> None:
     """Refused by Saxon before any connection, not failed by one."""
     with pytest.raises(InvoiceReadError, match="has been prohibited"):
         _saxon.transform(b"<x/>", "remote.xsl")
+
+
+def test_a_stylesheet_fetches_no_https_url(artefacts: Path) -> None:
+    (artefacts / "https.xsl").write_text(
+        REMOTE.replace("http://127.0.0.1:9/", "https://127.0.0.1:9/"), encoding="utf-8"
+    )
+    with pytest.raises(InvoiceReadError, match="has been prohibited"):
+        _saxon.transform(b"<x/>", "https.xsl")

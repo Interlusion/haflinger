@@ -694,3 +694,292 @@ def test_a_ubl_credit_notes_due_date() -> None:
         b"<cac:PaymentMeans><cbc:PaymentDueDate>2019-10-23</cbc:PaymentDueDate>",
     )
     assert read_invoice(data).invoice.due_date == date(2019, 10, 23)
+
+
+# The third review of 2026-11-01
+
+CII_HEADER_TAX = b"<ram:ApplicableHeaderTradeSettlement>"
+OTHER_TAX = (
+    b"<ram:ApplicableTradeTax><ram:CalculatedAmount>1.04</ram:CalculatedAmount>"
+    b"<ram:TypeCode>AAA</ram:TypeCode><ram:CategoryCode>S</ram:CategoryCode>"
+    b"<ram:RateApplicablePercent>2.00</ram:RateApplicablePercent></ram:ApplicableTradeTax>"
+)
+
+
+def test_a_tax_other_than_vat_gives_no_lines_vat_information() -> None:
+    """REQ-003-PRS-F002: Factur-X EXTENDED allows other taxes beside VAT."""
+    result = read_invoice(CII.replace(CII_LINE_TAX, OTHER_TAX + CII_LINE_TAX, 1))
+    line = result.invoice.lines[0]
+    assert (line.vat_category_code, line.vat_rate) == ("S", Decimal(7))
+    assert [(f.rule, f.text.split()[0]) for f in result.findings] == [("HAFL-DROPPED", "BG-30")]
+
+
+def test_a_tax_other_than_vat_gives_no_vat_breakdown() -> None:
+    settlement = CII.index(CII_HEADER_TAX) + len(CII_HEADER_TAX)
+    tax = CII.index(b"<ram:ApplicableTradeTax>", settlement)
+    result = read_invoice(CII[:tax] + OTHER_TAX + CII[tax:])
+    assert [(vat.category_code, vat.rate) for vat in result.invoice.vat_breakdown] == [
+        ("S", Decimal(7))
+    ]
+    assert [(f.rule, f.text.split()[0]) for f in result.findings] == [("HAFL-DROPPED", "BG-23")]
+
+
+@pytest.mark.parametrize(
+    ("data", "old", "new", "term"),
+    [
+        (
+            CII,
+            TAX_TOTAL,
+            b'<ram:TaxTotalAmount currencyID="EUR">1<b/>22.04</ram:TaxTotalAmount>',
+            "BT-110",
+        ),
+        (
+            UBL,
+            UBL_TAX_AMOUNT,
+            b'<cbc:TaxAmount currencyID="EUR">1<b/>22.04</cbc:TaxAmount>',
+            "BT-110",
+        ),
+        (
+            CII,
+            b'<ram:ID schemeID="VA">DE 123456789</ram:ID>',
+            b'<ram:ID schemeID="VA">DE<b/> 123456789</ram:ID>',
+            "BT-31",
+        ),
+        (
+            UBL,
+            b"<cbc:CompanyID>DE 123456789</cbc:CompanyID>",
+            b"<cbc:CompanyID>DE<b/> 123456789</cbc:CompanyID>",
+            "BT-31",
+        ),
+        (UBL, b"<cbc:Note>#ADU#Es gelten", b"<cbc:Note>#ADU#Es <b/>gelten", "BT-22"),
+    ],
+    ids=["cii-bt-110", "ubl-bt-110", "cii-bt-31", "ubl-bt-31", "ubl-note"],
+)
+def test_every_value_holding_elements_is_malformed(
+    data: bytes, old: bytes, new: bytes, term: str
+) -> None:
+    assert old in data
+    result = read_invoice(data.replace(old, new, 1))
+    invoice = result.invoice
+    assert invoice.totals is not None
+    assert invoice.seller is not None
+    value = {
+        "BT-110": invoice.totals.vat_total,
+        "BT-31": invoice.seller.vat_id,
+        "BT-22": next((n for n in invoice.notes if n.subject_code == "ADU"), None),
+    }[term]
+    assert value is None
+    assert [(f.rule, f.text.split()[0]) for f in result.findings] == [("HAFL-VALUE", term)]
+
+
+def test_ubl_reads_the_first_tax_amount_holding_a_value() -> None:
+    empty = b'<cbc:TaxAmount currencyID="EUR"/>'
+    result = read_invoice(UBL.replace(UBL_TAX_AMOUNT, empty + UBL_TAX_AMOUNT, 1))
+    assert result.invoice.totals is not None
+    assert result.invoice.totals.vat_total == Decimal("22.04")
+    assert result.findings == ()
+
+
+def test_ubl_drops_a_second_tax_amount_of_one_tax_total() -> None:
+    second = b'<cbc:TaxAmount currencyID="EUR">99.99</cbc:TaxAmount>'
+    result = read_invoice(UBL.replace(UBL_TAX_AMOUNT, UBL_TAX_AMOUNT + second, 1))
+    assert result.invoice.totals is not None
+    assert result.invoice.totals.vat_total == Decimal("22.04")
+    assert [(f.rule, f.location.rsplit("/", 1)[1]) for f in result.findings] == [
+        ("HAFL-DROPPED", "cbc:TaxAmount[2]")
+    ]
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "vat_id", "findings"),
+    [
+        (
+            b"<cbc:CompanyID>DE 123456789</cbc:CompanyID>",
+            b"<cbc:CompanyID/><cbc:CompanyID>DE 123456789</cbc:CompanyID>",
+            "DE 123456789",
+            [],
+        ),
+        (
+            b"<cbc:CompanyID>DE 123456789</cbc:CompanyID>",
+            b"<cbc:CompanyID>DE 123456789</cbc:CompanyID><cbc:CompanyID>DE 1</cbc:CompanyID>",
+            "DE 123456789",
+            [("HAFL-DROPPED", "BT-31")],
+        ),
+        (
+            b"<cac:TaxScheme>\r\n                    <cbc:ID>VAT</cbc:ID>",
+            b"<cac:TaxScheme><cbc:ID/><cbc:ID>VAT</cbc:ID>",
+            "DE 123456789",
+            [],
+        ),
+    ],
+    ids=["empty-first", "second-value", "empty-scheme-first"],
+)
+def test_ubl_vat_identifier_from_the_first_value(
+    old: bytes, new: bytes, vat_id: str, findings: list[tuple[str, str]]
+) -> None:
+    result = read_invoice(UBL.replace(old, new, 1))
+    assert result.invoice.seller is not None
+    assert result.invoice.seller.vat_id == vat_id
+    assert [(f.rule, f.text.split()[0]) for f in result.findings] == findings
+
+
+@pytest.mark.parametrize(
+    ("data", "old", "new"),
+    [
+        (
+            CII,
+            b"<ram:IncludedSupplyChainTradeLineItem>",
+            b"<ram:IncludedSupplyChainTradeLineItem/><ram:IncludedSupplyChainTradeLineItem>",
+        ),
+        (UBL, b"<cac:InvoiceLine>", b"<cac:InvoiceLine> </cac:InvoiceLine><cac:InvoiceLine>"),
+    ],
+    ids=["cii", "ubl"],
+)
+def test_an_empty_invoice_line_is_missing(data: bytes, old: bytes, new: bytes) -> None:
+    result = read_invoice(data.replace(old, new, 1))
+    assert len(result.invoice.lines) == len(read_invoice(data).invoice.lines)
+    assert result.findings == ()
+
+
+def test_an_empty_vat_breakdown_is_missing() -> None:
+    settlement = CII.index(CII_HEADER_TAX) + len(CII_HEADER_TAX)
+    tax = CII.index(b"<ram:ApplicableTradeTax>", settlement)
+    result = read_invoice(CII[:tax] + b"<ram:ApplicableTradeTax/>" + CII[tax:])
+    assert len(result.invoice.vat_breakdown) == 1
+    assert result.findings == ()
+
+
+@pytest.mark.parametrize(
+    ("data", "old", "new", "term"),
+    [
+        (
+            CII,
+            b"</ram:PostalTradeAddress>",
+            b"</ram:PostalTradeAddress><ram:PostalTradeAddress><ram:CountryID>FR</ram:CountryID>"
+            b"</ram:PostalTradeAddress>",
+            "BG-5",
+        ),
+        (
+            CII,
+            b"</ram:SpecifiedLegalOrganization>",
+            b"</ram:SpecifiedLegalOrganization><ram:SpecifiedLegalOrganization><ram:ID>HRB 1"
+            b"</ram:ID></ram:SpecifiedLegalOrganization>",
+            "BT-30,",
+        ),
+        (
+            UBL,
+            b"</cac:PostalAddress>",
+            b"</cac:PostalAddress><cac:PostalAddress><cac:Country><cbc:IdentificationCode>FR"
+            b"</cbc:IdentificationCode></cac:Country></cac:PostalAddress>",
+            "BG-5",
+        ),
+        (
+            UBL,
+            b"</cac:Item>",
+            b"</cac:Item><cac:Item><cbc:Name>Other item</cbc:Name></cac:Item>",
+            "BG-31",
+        ),
+        (
+            UBL,
+            b"</cac:ClassifiedTaxCategory>",
+            b"</cac:ClassifiedTaxCategory><cac:ClassifiedTaxCategory><cbc:ID>E</cbc:ID>"
+            b"</cac:ClassifiedTaxCategory>",
+            "BG-30",
+        ),
+        (
+            UBL,
+            b"</cac:PartyTaxScheme>",
+            b"</cac:PartyTaxScheme><cac:PartyTaxScheme><cbc:CompanyID>DE 1</cbc:CompanyID>"
+            b"<cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:PartyTaxScheme>",
+            "BT-31",
+        ),
+    ],
+    ids=["cii-address", "cii-organization", "ubl-address", "ubl-item", "ubl-bg-30", "ubl-bt-31"],
+)
+def test_each_group_is_read_from_one_element(
+    data: bytes, old: bytes, new: bytes, term: str
+) -> None:
+    """REQ-003-PRS-F002: the first element is read, a second one dropped naming its term."""
+    result = read_invoice(data.replace(old, new, 1))
+    assert result.invoice == read_invoice(data).invoice
+    assert [(f.rule, f.text.split()[0]) for f in result.findings] == [("HAFL-DROPPED", term)]
+
+
+def test_a_buyers_address_finding_names_bg_8() -> None:
+    buyer = CII.index(b"<ram:BuyerTradeParty>")
+    end = CII.index(b"</ram:PostalTradeAddress>", buyer) + len(b"</ram:PostalTradeAddress>")
+    second = b"<ram:PostalTradeAddress><ram:CountryID>FR</ram:CountryID></ram:PostalTradeAddress>"
+    result = read_invoice(CII[:end] + second + CII[end:])
+    assert [(f.rule, f.text.split()[0]) for f in result.findings] == [("HAFL-DROPPED", "BG-8")]
+
+
+def test_ubl_breakdown_comes_from_the_total_in_the_invoice_currency() -> None:
+    """The total in the VAT accounting currency comes first and holds subtotals of its own."""
+    data = edit(
+        UBL,
+        b"<cbc:DocumentCurrencyCode>EUR</cbc:DocumentCurrencyCode>",
+        b"<cbc:DocumentCurrencyCode>EUR</cbc:DocumentCurrencyCode>"
+        b"<cbc:TaxCurrencyCode>GBP</cbc:TaxCurrencyCode>",
+    )
+    gbp = (
+        b'<cac:TaxTotal><cbc:TaxAmount currencyID="GBP">19.10</cbc:TaxAmount><cac:TaxSubtotal>'
+        b'<cbc:TaxableAmount currencyID="GBP">272.80</cbc:TaxableAmount>'
+        b'<cbc:TaxAmount currencyID="GBP">19.10</cbc:TaxAmount>'
+        b"<cac:TaxCategory><cbc:ID>Z</cbc:ID></cac:TaxCategory></cac:TaxSubtotal></cac:TaxTotal>"
+    )
+    result = read_invoice(data.replace(UBL_TAX_TOTAL_START, gbp + UBL_TAX_TOTAL_START, 1))
+    assert result.invoice.totals is not None
+    assert result.invoice.totals.vat_total_in_tax_currency == Decimal("19.10")
+    assert [vat.category_code for vat in result.invoice.vat_breakdown] == ["S"]
+    assert [(f.rule, f.text.split()[0]) for f in result.findings] == [("HAFL-DROPPED", "BG-23")]
+
+
+def test_a_ubl_note_over_several_lines_keeps_its_subject_code() -> None:
+    data = edit(UBL, b"<cbc:Note>#ADU#Es gelten", b"<cbc:Note>#ADU#Zeile eins\nEs gelten")
+    note = read_invoice(data).invoice.notes[0]
+    assert note.subject_code == "ADU"
+    assert note.text is not None
+    assert note.text.startswith("Zeile eins\nEs gelten")
+
+
+def test_whitespace_other_than_xml_whitespace_is_kept() -> None:
+    data = edit(
+        CII, b"<ram:ID>123456XX</ram:ID>", "<ram:ID>\N{NO-BREAK SPACE}123456XX</ram:ID>".encode()
+    )
+    assert read_invoice(data).invoice.number == "\N{NO-BREAK SPACE}123456XX"
+
+
+def test_a_number_keeps_its_value_and_decimal_places_not_its_notation() -> None:
+    """REQ-001-URS-NF001: the exception for the notation of numbers."""
+    data = edit(CII, GRAND_TOTAL, b"<ram:GrandTotalAmount>+0336.90</ram:GrandTotalAmount>")
+    totals = read_invoice(data).invoice.totals
+    assert totals is not None
+    assert str(totals.total_with_vat) == "336.90"
+
+
+@pytest.mark.parametrize(
+    "data",
+    ["text", memoryview(CII), bytearray(CII), None],
+    ids=["str", "memoryview", "bytearray", "none"],
+)
+def test_refuses_input_that_is_not_bytes(data: object) -> None:
+    with pytest.raises(InvoiceReadError, match="not bytes"):
+        read_invoice(data)  # pyright: ignore[reportArgumentType]
+
+
+def test_refuses_a_byte_order_mark_that_contradicts_the_declaration() -> None:
+    declaration = b'<?xml version="1.0" encoding="UTF-8"?>'
+    data = b"\xef\xbb\xbf" + edit(CII, declaration, b'<?xml version="1.0" encoding="ISO-8859-1"?>')
+    assert "byte order mark" in refusal(data)
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        b'<?xml version="1.0" encoding="UTF-8"?>',
+        b'<?xml version="1.0"?>',
+    ],
+)
+def test_reads_a_byte_order_mark_that_agrees_with_the_declaration(declaration: bytes) -> None:
+    data = b"\xef\xbb\xbf" + edit(CII, b'<?xml version="1.0" encoding="UTF-8"?>', declaration)
+    assert read_invoice(data).invoice.number == "123456XX"

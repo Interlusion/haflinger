@@ -201,10 +201,10 @@ def test_the_schema_check_reports_each_violation() -> None:
     assert findings[0].location.startswith("/")
 
 
-def test_a_huge_text_is_checked_not_crashed_on() -> None:
-    """A text over libxml2's default limit of 10 MB: a result or InvoiceWriteError, nothing else."""
-    with contextlib.suppress(InvoiceWriteError):
-        write_cii(replace(INVOICE, notes=(Note(text="A" * 11_000_000),)))
+def test_a_huge_text_is_written() -> None:
+    """A text over libxml2's default limit of 10 MB passes the schema check (`huge_tree`)."""
+    document = write_cii(replace(INVOICE, notes=(Note(text="A" * 11_000_000),)))
+    assert b"A" * 11_000_000 in document
 
 
 def test_a_document_validation_refuses_is_refused_after_writing(
@@ -213,7 +213,7 @@ def test_a_document_validation_refuses_is_refused_after_writing(
     """Validation's own refusals, such as the size limit, become InvoiceWriteError with the
     document."""
 
-    def refuse(data: bytes) -> list[object]:
+    def refuse(data: bytes, *also: str) -> list[object]:
         raise InvoiceReadError("the input is larger than max_size")
 
     monkeypatch.setattr("haflinger.write.check_rules", refuse)
@@ -306,3 +306,39 @@ def test_bt_111_with_its_own_value_reads_back() -> None:
         Decimal("22.04"),
         Decimal("18.71"),
     )
+
+
+# The third review of 2026-11-01
+
+
+@pytest.mark.parametrize(
+    ("value", "text"),
+    [(Decimal("9" * 1000), "9" * 1000), (Decimal("0E+2000"), "0"), (Decimal("0E-5"), "0.00000")],
+    ids=["1000-digits", "zero-with-a-large-exponent", "zero-with-places"],
+)
+def test_numbers_up_to_the_limit_are_written(value: Decimal, text: str) -> None:
+    """REQ-004-PRS-F001: the limit is more than 1,000 digits in plain notation."""
+    document = written(replace(INVOICE, totals=replace(TOTALS, prepaid_amount=value)))
+    assert f"<ram:TotalPrepaidAmount>{text}</ram:TotalPrepaidAmount>".encode() in document
+
+
+def test_en16931_runs_ferds_rules_of_the_profile_too(monkeypatch: pytest.MonkeyPatch) -> None:
+    """REQ-004-PRS-F005: for EN 16931, FeRD's Factur-X rules besides CEN's; not for XRechnung."""
+    calls: list[tuple[str, ...]] = []
+
+    def rules(data: bytes, *also: str) -> list[object]:
+        calls.append(also)
+        return []
+
+    monkeypatch.setattr("haflinger.write.check_rules", rules)
+    write_cii(INVOICE)
+    with contextlib.suppress(InvoiceWriteError):
+        write_cii(replace(INVOICE, specification_id=XRECHNUNG))
+    assert calls == [("Factur-X EN 16931",), ()]
+
+
+def test_written_invoices_pass_ferds_rules() -> None:
+    from haflinger.validation import FACTUR_X_EN16931, check_rules
+
+    findings = check_rules(write_cii(INVOICE), FACTUR_X_EN16931)
+    assert [f for f in findings if f.flag in ("fatal", "error")] == []
