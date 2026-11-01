@@ -3,7 +3,7 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Proposed |
-| **Date** | 2026-10-30 |
+| **Date** | 2026-11-01 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Context
@@ -14,11 +14,11 @@ What the spikes ran into:
 
 - Rules and the unit tests that check them, taken from different releases (CEN 1.3.16 against tests of 1.3.17), gave 65 false misses.
 - Git's `core.autocrlf=input` silently stored the CRLF line endings of the UN/CEFACT XML Schemas as LF, so the files in the repository were no longer the published ones.
-- The runtime artefacts are small (2.9 MB); test corpora can be large (the ZUGFeRD corpus is 152 MB).
+- The runtime artefacts are small (2.9 MB at first, 6 MB with the Factur-X rules and the UBL schemas); test corpora can be large (the ZUGFeRD corpus is 152 MB).
 
 ## Decision
 
-- **Vendored in the repository**: runtime artefacts under `src/haflinger/artefacts/<source>/`, test files under `tests/data/<source>/`. Only the files used, not whole repositories.
+- **Vendored in the repository**: runtime artefacts under `src/haflinger/artefacts/<source>/`, test files under `tests/data/<source>/`. Only the files used, not whole repositories; a folder a release ships as one piece (a schema with its modules, SchXslt's pipeline) stays whole, and its README marks what isn't used.
 - **Unchanged, byte for byte.** `.gitattributes` marks both directories `-text`. A file is never edited to make something work; a needed fix waits for the upstream release, or is carried as a separate, documented patch with a test.
 - **Provenance per source**: a README naming the source repository, the release tag, the commit, the archive's SHA-256 when it came from a release asset, and the licence; the source's licence file next to it.
 - **Pinned to a release, consistently**: rules and the tests that check them come from the same release.

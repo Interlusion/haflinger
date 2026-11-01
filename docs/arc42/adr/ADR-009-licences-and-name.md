@@ -3,7 +3,7 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Proposed |
-| **Date** | 2026-10-30 |
+| **Date** | 2026-11-01 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Context
@@ -17,10 +17,12 @@ Haflinger also ships files it didn't write, each under its own licence:
 | KoSIT's visualisation, validator configuration and test suite | Apache-2.0 |
 | CEN's EN 16931 rules (inside KoSIT's configuration) and unit tests | EUPL-1.2 |
 | UN/CEFACT's CII XML Schemas | © UN/CEFACT; may be copied and distributed unchanged with the notice |
-| ZUGFeRD corpus | Apache-2.0 |
+| ZUGFeRD corpus (the Mustang project's PDFs) | Apache-2.0 |
+| SchXslt (runtime, compiles FeRD's Schematron) | MIT |
+| The PDF/A file of veraPDF's test corpus (tests only) | CC BY 4.0 |
 | FeRD's Factur-X XML Schemas and Schematron | Apache-2.0, by FeRD's rights of use; its XSLT and samples are not named there |
 | `saxonche` (runtime) | Not named in its package metadata; Saxonica publishes the Home Edition as open source; to be confirmed |
-| `defusedxml`, `factur-x` (`pdf` extra) | PSF, BSD |
+| `defusedxml`, `lxml` (runtime); `factur-x`, `pypdf` (`pdf` extra) | PSF, BSD-3-Clause; BSD, BSD-3-Clause |
 
 Frappe's trademark policy doesn't allow "ERPNext" or "Frappe" in the name of a third-party product; a description may say "for ERPNext".
 

@@ -10,7 +10,7 @@
 
 ## Summary
 
-Show an incoming XML invoice to a person as HTML or PDF with KoSIT's visualisation stylesheets, which Haflinger will vendor for its second reader ([ADR-005](../arc42/adr/ADR-005-own-mapping-kosit-as-check.md)).
+Show an incoming XML invoice to a person as HTML or PDF with KoSIT's visualisation stylesheets, which Haflinger vendors for its second reader ([ADR-005](../arc42/adr/ADR-005-own-mapping-kosit-as-check.md)).
 
 ## Context / Motivation
 

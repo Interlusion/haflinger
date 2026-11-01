@@ -22,11 +22,11 @@ Haflinger uses official artefacts and maintained libraries unchanged, and implem
 
 | Area | Use | Maintained by |
 | :- | :- | :- |
-| Business rules, validation | The official Schematron (CEN EN 16931, XRechnung, Peppol, ZUGFeRD), run unchanged with Saxon ([ADR-006](ADR-006-validation-with-official-rules.md)) | CEN, KoSIT, OpenPeppol, FeRD |
+| Business rules, validation | The official Schematron (CEN EN 16931, XRechnung with the Peppol rules it includes, ZUGFeRD), run unchanged with Saxon ([ADR-006](ADR-006-validation-with-official-rules.md)); Peppol BIS's own rules later | CEN, KoSIT, FeRD; OpenPeppol |
 | Checking how CII and UBL are read | KoSIT's visualisation XSLT as the independent second reader in the tests; our own mapping reads ([ADR-005](ADR-005-own-mapping-kosit-as-check.md)) | KoSIT |
 | Rendering for people | KoSIT's visualisation XSLT (HTML, PDF) | KoSIT |
 | ZUGFeRD / Factur-X PDF | `factur-x` | Akretion |
-| Code lists | The EU registry, unchanged | European Commission |
+| Code lists | As the official rules carry them, unchanged; the EU registry behind them | European Commission |
 | Tests | The official test suites, unchanged | KoSIT, CEN, OpenPeppol, community |
 | Peppol transport | A certified access point provider; no AS4 of our own | Providers |
 

@@ -3,7 +3,7 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Proposed |
-| **Date** | 2026-10-30 |
+| **Date** | 2026-11-01 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Context
@@ -19,8 +19,8 @@ Every runtime dependency has to coexist with the versions its host pins; in a Fr
 - **Runtime dependencies, each for one job**:
   - `defusedxml` with the standard library's `ElementTree`, for parsing outside XML and for writing CII;
   - `saxonche`, for the official stylesheets ([ADR-006](ADR-006-validation-with-official-rules.md));
-  - `lxml`, only for checking written invoices against their XML Schema ([ADR-006](ADR-006-validation-with-official-rules.md)); outside XML stays with `defusedxml`;
-  - in the optional extra `pdf`: `factur-x`, for ZUGFeRD PDFs ([ADR-001](ADR-001-library-and-app.md)).
+  - `lxml`, only for XML Schema checks ([ADR-006](ADR-006-validation-with-official-rules.md)), of written invoices and of incoming ones after `defusedxml` has checked them;
+  - in the optional extra `pdf`: `factur-x`, for embedding invoices into PDFs, and `pypdf`, which `factur-x` brings anyway and Haflinger uses directly to take the invoice out of a PDF ([ADR-001](ADR-001-library-and-app.md)).
 - **The model as frozen dataclasses** with `Decimal` and `date`, not pydantic.
 - **Test-only tools stay in the test group**.
 - **No container image**: the library is published as a package.
@@ -55,13 +55,13 @@ Every runtime dependency has to coexist with the versions its host pins; in a Fr
 
 - Saxon is large and native ([ADR-006](ADR-006-validation-with-official-rules.md)).
 - Hand-written XML access instead of generated bindings.
-- Two XML stacks: lxml checks written invoices against the XML Schema, beside ElementTree for everything else. Weighed when lxml arrived (2026-10-31): kept, because lxml there only reads documents Haflinger wrote itself.
+- Two XML stacks: lxml checks invoices against their XML Schema, beside ElementTree for everything else. Weighed when lxml arrived (2026-10-31), and again when the schema check came to incoming invoices (2026-11-01, trigger 3): kept, because `defusedxml` stays the gate for outside input, and lxml only reads what has passed it, with entities, DTDs and the network off.
 
 ## Reconsideration Triggers
 
 1. A dependency's version range clashes with what Frappe/ERPNext v16 pins.
 2. The Python version of Frappe/ERPNext v16 benches is below the lower bound.
-3. lxml is needed for more than the XML Schema check of written invoices; then weigh one XML stack.
+3. lxml is needed for more than XML Schema checks; then weigh one XML stack.
 
 ## Compliance
 

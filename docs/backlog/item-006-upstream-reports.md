@@ -21,7 +21,7 @@ The spikes compared what KoSIT's reading stylesheet makes of the CII and UBL fil
 | BT-107, BT-108, BT-113, BT-114 | 6 | CII writes 0, UBL leaves the sum out | No: the standard allows both ([REQ-003-PRS-F004](../specs/req-003-incoming-invoices.md#req-003-prs-f004-cii-and-ubl-agree)) |
 | BT-35, BT-37, BT-38, BT-52, BT-53 | 2 | Different placeholder texts in addresses | No: placeholders |
 | BT-13 | 7 | Only the UBL files have a purchase order reference (`Dummywert`) | Ask whether it is deliberate |
-| BT-31, BT-82, BT-107, BT-120 | 01.21a | Different values | Yes |
+| BT-31, BT-82, BT-120 | 01.21a | Different values (BT-107 too, but as 0 against absent, which the standard allows) | Yes |
 | BT-45 | 03.01a | Only in UBL | Yes |
 | BT-29, BT-61, BT-122 | 03.07a | Only in one of the two files | Yes |
 | BT-44, BT-45 | technical 01.01 to 01.04 | The UBL files swap the buyer's name and trading name placeholders | Yes |

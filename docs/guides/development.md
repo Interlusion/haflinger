@@ -18,6 +18,7 @@ tests/
   conformance/            against the official test files: both syntaxes,
                           both readers, round trip, XML Schema, rules
   data/<source>/          official test files, vendored (ADR-008)
+typings/                  type stubs for saxonche and factur-x, which ship none
 scripts/
   corpus_report.py        runs a corpus of invoices through Haflinger
   benchmark.py            time and memory against the specs' limits
@@ -118,7 +119,7 @@ git clone --filter=blob:none https://github.com/ZUGFeRD/corpus /path/to/zugferd-
 uv run python scripts/corpus_report.py /path/to/zugferd-corpus corpus.tsv
 ```
 
-Files above 5 MB are read with Haflinger's mapping only; KoSIT's reading stylesheet takes minutes for them. At commit `82e886f` (2026-10-31): 240 files, no crash; 197 read, 40 refused (22 ZUGFeRD 1.0, 14 FatturaPA, the rest broken or another format); the readers agree on all but FeRD's two EXTENDED invoices with two due dates, which KoSIT's stylesheet joins into one value (`HAFL-VALUE BT-9` in its column).
+Files above 5 MB are read with Haflinger's mapping only; KoSIT's reading stylesheet takes minutes for them. At commit `82e886f` (2026-10-31): 240 files, no crash; 3 PDFs refused when their invoice is taken out, 197 read, 40 refused (22 ZUGFeRD 1.0, 14 FatturaPA, the rest broken or another format); the readers agree on all but FeRD's two EXTENDED invoices with two due dates, which KoSIT's stylesheet joins into one value (`HAFL-VALUE BT-9` in its column).
 
 The same clone serves the benchmark of [REQ-002-PRS-NF002](../specs/req-002-conformance.md#req-002-prs-nf002-speed), [REQ-003-PRS-NF002](../specs/req-003-incoming-invoices.md#req-003-prs-nf002-speed) and [REQ-004-PRS-NF001](../specs/req-004-outgoing-invoices.md#req-004-prs-nf001-speed), which uses its two large Peppol invoices (`PEPPOL/Valid/Qvalia/Large_Invoice_sample1.xml`, 25.7 MB, and `Large_Invoice_sample2.xml`, 61.1 MB). It prints a Markdown table with the machine it ran on, to record with a release; without the clone, the large invoices' rows are skipped:
 

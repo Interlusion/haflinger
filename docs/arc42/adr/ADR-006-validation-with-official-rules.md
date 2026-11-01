@@ -3,7 +3,7 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Proposed |
-| **Date** | 2026-10-30 |
+| **Date** | 2026-11-01 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Context
@@ -24,12 +24,14 @@ Written invoices also need their XML Schema checked; the rules assume a schema-v
 ## Decision
 
 - **The official Schematron stylesheets run unchanged with `saxonche`**, at runtime, for incoming and outgoing invoices. Haflinger reimplements no rule ([ADR-003](ADR-003-integrate-dont-implement.md)).
-- **The rule set is chosen per invoice**, like the scenarios of KoSIT's validator: by syntax from the root element, then by profile and version from BT-24; for ZUGFeRD the Factur-X rules of its profile. FeRD's rights of use cover its Schematron but not the XSLT compiled from it, so Haflinger compiles the Schematron with SchXslt 1.10.1, the compiler KoSIT uses for CEN's rules, on first use in a process (measured on 2026-10-31: under 0.2 s per profile, and the same findings as FeRD's XSLT on FeRD's samples). The table of supported profiles and versions belongs to REQ-002. An invoice whose profile has no rule set of its own is checked with CEN's EN 16931 rules for its syntax and gets a Haflinger warning that says so (REQ-002); it is never silently checked with rules it doesn't claim.
+- **The rule set is chosen per invoice**, like the scenarios of KoSIT's validator: by syntax from the root element, then by profile and version from BT-24; for ZUGFeRD the Factur-X rules of its profile. FeRD's rights of use cover its Schematron but not the XSLT compiled from it, so Haflinger compiles the Schematron with SchXslt 1.10.1, the compiler KoSIT uses for CEN's rules, on first use in a process (measured on 2026-11-01: from 0.04 s for MINIMUM to 1.1–1.5 s for EXTENDED, and the same findings as FeRD's XSLT on FeRD's samples and on some 700 edited copies of them). The table of supported profiles and versions belongs to REQ-002. An invoice whose profile has no rule set of its own is checked with CEN's EN 16931 rules for its syntax and gets a Haflinger warning that says so (REQ-002); it is never silently checked with rules it doesn't claim.
 - **KoSIT's rule levels apply**: the levels its scenario file sets override the stylesheets' own.
-- **Saxon gets the original bytes**, after `defusedxml` has rejected DTDs and entities in them; never a re-serialised tree.
+- **Saxon gets the document as received**, after `defusedxml` has rejected DTDs and entities in it: the original bytes decoded in Python by the encoding `defusedxml` accepted, as text in memory, never a re-serialised tree and never a file (changed on 2026-11-01: until then a temporary file held the bytes, which REQ-001-PRS-NF001 forbids and a killed worker left behind; decoding in Python also makes Saxon see exactly the characters the reader sees).
 - **Findings** carry rule ID, flag, location and text; `fatal` and `error` make an invoice invalid.
 - **Each stylesheet is compiled once per process** and reused.
 - **The XML Schema check** runs beside the rules for invoices Haflinger writes, with `lxml` (decided 2026-10-31, when REQ-004-PRS-F004 was built). Checking the 25.7 MB Peppol invoice written as CII took 0.13 s with `lxml` 6.1.3 and 10 s with `xmlschema` (pure Python); `lxml` is BSD-3-Clause, has wheels for every platform `saxonche` has and for musl, and comes with the `pdf` extra anyway. It reads only documents Haflinger wrote.
+- **Incoming invoices get the XML Schema check first**, as KoSIT's scenarios do (decided 2026-11-01): CII against CII D16B, UBL against UBL 2.1, a Factur-X profile against FeRD's schema of the profile; each violation is a `HAFL-XSD` finding, and the rules run only on a schema-valid invoice. lxml thereby parses outside input, always after `defusedxml`'s check and with entities, DTDs and the network off ([ADR-002](ADR-002-toolchain.md)).
+- **Validation time isn't bounded by the library.** The official rules compute each finding's location with `xsl:number`, which grows with the square of the number of sibling elements: a crafted invoice of a few hundred kB takes minutes, and Saxon holds the Python process meanwhile. `validate` refuses the cheapest such invoices before the rules run: more than 1,000 empty elements, a number of more than 1,000 digits, a telephone number of more than 100 characters (XRechnung checks it with a pattern whose time grows with the square of its length) (REQ-002-PRS-F001); for the rest, callers validating outside input run `validate` where a time limit applies (REQ-002's assumptions).
 
 ## Alternatives Considered
 
@@ -77,7 +79,7 @@ Small, MIT-licensed and buildable for every platform, musl included: it would re
 ## Compliance
 
 - The official stylesheets SHALL run unchanged; a change SHALL come from a new upstream release ([ADR-008](ADR-008-vendoring-official-files.md)).
-- Saxon SHALL receive the original bytes, after the `defusedxml` check.
+- Saxon SHALL receive the document as received, decoded in memory, after the `defusedxml` check.
 - An invoice SHALL be validated with the rule set its syntax, profile and version call for; only an invoice whose profile has none gets CEN's EN 16931 rules, with the warning that says so.
 
 ## References
