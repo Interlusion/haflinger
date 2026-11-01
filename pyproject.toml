@@ -15,7 +15,7 @@ dependencies = [
 [project.optional-dependencies]
 pdf = [
     "factur-x>=7.9",
-    "pypdf>=6.21.4",
+    "pypdf>=6.19.0",
 ]
 
 [dependency-groups]

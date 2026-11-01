@@ -288,7 +288,7 @@ requires-dist = [
     { name = "defusedxml", specifier = ">=0.7.1" },
     { name = "factur-x", marker = "extra == 'pdf'", specifier = ">=7.9" },
     { name = "lxml", specifier = ">=6.1.3" },
-    { name = "pypdf", marker = "extra == 'pdf'", specifier = ">=6.21.4" },
+    { name = "pypdf", marker = "extra == 'pdf'", specifier = ">=6.19.0" },
     { name = "saxonche", specifier = ">=13.1.1" },
 ]
 provides-extras = ["pdf"]
