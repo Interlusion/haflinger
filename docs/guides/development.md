@@ -43,7 +43,7 @@ uv run basedpyright
 uv run mdformat --check .           # Markdown; without --check it formats
 ```
 
-CI runs the same checks on every pull request and on `main` (`.github/workflows/checks.yml`), with its Actions pinned to a commit; Dependabot proposes updates to them and to `uv.lock` weekly, once a new version is 14 days old (Actions) or 7 days old (Python packages); security updates come at once (`.github/dependabot.yml`).
+CI runs the same checks on every pull request and on `main` (`.github/workflows/checks.yml`), and the tests once more with the versions of shared dependencies that Frappe/ERPNext v16 pin (for now `pypdf==6.19.0`), so that Haflinger stays installable into a bench ([ADR-002](../arc42/adr/ADR-002-toolchain.md)); its Actions are pinned to a commit; Dependabot proposes updates to them and to `uv.lock` weekly, once a new version is 14 days old (Actions) or 7 days old (Python packages); security updates come at once (`.github/dependabot.yml`).
 
 ## Tests
 

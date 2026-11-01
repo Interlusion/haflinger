@@ -59,7 +59,7 @@ Every runtime dependency has to coexist with the versions its host pins; in a Fr
 
 ## Reconsideration Triggers
 
-1. A dependency's version range clashes with what Frappe/ERPNext v16 pins.
+1. A dependency's version range clashes with what Frappe/ERPNext v16 pins. Fired on 2026-11-01: Frappe v16 pins `pypdf==6.19.0`, while the `pdf` extra asked for 6.21.4 or later, so `haflinger[pdf]` couldn't be installed into a v16 bench; the extra's lower bound came down to 6.19.0, and CI tests with the versions Frappe v16 pins (see Compliance).
 2. The Python version of Frappe/ERPNext v16 benches is below the lower bound.
 3. lxml is needed for more than XML Schema checks; then weigh one XML stack.
 
@@ -67,6 +67,7 @@ Every runtime dependency has to coexist with the versions its host pins; in a Fr
 
 - A new runtime dependency SHALL come with a change to this ADR or a new ADR.
 - Outside XML SHALL be parsed with `defusedxml`, DTDs and entities forbidden, before any other component sees it.
+- The lower bounds of the dependencies SHALL admit the versions Frappe/ERPNext v16 pin, and CI SHALL run the tests with those versions as well as with the locked ones.
 
 ## References
 
