@@ -47,7 +47,7 @@ So Saxonica neither allows nor forbids the in-process combination, and won't wid
 
 ## Open Questions
 
-- Should the app validate in a separate process from its first release, so that its process never loads `saxonche`? That would settle the open question by design rather than by a legal opinion, and serve [ITEM-007](item-007-validation-time-limit.md) at the same time; a lawyer could still confirm that the boundary suffices before the app is published.
+- [ADR-010](../arc42/adr/ADR-010-saxon-in-a-worker-process.md) (Proposed) puts Saxon into a worker process that Haflinger starts, so that no caller's process, the app's included, loads `saxonche`. A lawyer should still confirm that the boundary suffices before the app is published.
 - Which licence texts and notices an image or installer that holds `saxonche` must carry, since the wheel brings none: the lists in the Saxon 13 documentation, checked against the components in the wheel, GraalVM Community Edition's among them.
 
 Also open: whether the app must be GPL-3.0 at all, if it used only the Frappe Framework (MIT) and none of ERPNext's code; the app works on ERPNext's sales and purchase invoices ([ITEM-003](item-003-erpnext-app.md)), so it would import ERPNext.
