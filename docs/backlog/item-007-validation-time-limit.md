@@ -2,7 +2,7 @@
 
 | Meta | Value |
 | :- | :- |
-| **Status** | CANDIDATE; decided in [ADR-010](../arc42/adr/ADR-010-saxon-in-a-worker-process.md) (Proposed): one kept worker process per caller, killed when the limit passes |
+| **Status** | CANDIDATE; answered by [ADR-010](../arc42/adr/ADR-010-saxon-in-a-worker-process.md), not built yet: one kept worker process per caller, killed when the limit passes |
 | **Type** | feature |
 | **Origin** | Second review of 2026-11-01 ([REQ-002](../specs/req-002-conformance.md)'s assumptions); third review of 2026-11-01 |
 | **Created** | 2026-11-01 |
