@@ -59,3 +59,5 @@ Documentation: [docs/README.md](docs/README.md).
 ## Licence
 
 Apache-2.0. Vendored official files keep their own licences, named next to them ([ADR-009](docs/arc42/adr/ADR-009-licences-and-name.md)).
+
+Validation runs the official rules with The Saxon XSLT and XQuery Processor from Saxonica Limited (https://www.saxonica.com/): SaxonC-HE, installed as the `saxonche` package under MPL-2.0. Haflinger requires it and ships none of its files.
