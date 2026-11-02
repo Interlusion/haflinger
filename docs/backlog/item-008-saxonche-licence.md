@@ -28,17 +28,25 @@ What is known (2026-11-01):
 
 ## Options
 
-- **Saxon in the app's process**, as today: allowed if Saxonica, or a lawyer, says that importing an independently installed `saxonche` doesn't form a combined work, or if Saxonica and its contributors grant an extra permission.
-- **Validation in a separate process** that the app starts or calls, with invoice bytes in and findings out: an Apache-2.0 Haflinger worker that loads `saxonche`, while the app's process never does. It is the same boundary [ITEM-007](item-007-validation-time-limit.md) needs for a time limit, and a crash of Saxon wouldn't take the app's process down. Whether it suffices legally is part of the question to Saxonica.
+- **Saxon in the app's process**, as today: allowed only if a lawyer says that importing an independently installed `saxonche` doesn't form a combined work. Saxonica gives no extra permission (see below).
+- **Validation in a separate process** that the app starts or calls, with invoice bytes in and findings out: an Apache-2.0 Haflinger worker that loads `saxonche`, while the app's process never does. It is the same boundary [ITEM-007](item-007-validation-time-limit.md) needs for a time limit, and a crash of Saxon wouldn't take the app's process down. Saxonica left open whether it suffices legally.
 - **Another engine** ([ADR-006](../arc42/adr/ADR-006-validation-with-official-rules.md), trigger 2): Xee, once it runs the official rules with the same findings as Saxon, Saxon serving as the oracle in CI.
+- **A commercial licence** for Saxon-PE or Saxon-EE, which Saxonica offers for redistribution: it fits a closed product, not a GPL-3.0 app given away, whose users would each need a licence and whose combination with proprietary code the GPL doesn't allow either.
+
+## Saxonica's answer
+
+Asked on Saxonica's SaxonC tracker; Michael Kay answered on 2026-11-02:
+
+- On the in-process case: "We can't give you an answer to that question. We are not lawyers." In his personal view, "the language of the GPL makes no technical sense", and he has "no idea how the courts would interpret it".
+- On notices: the open-source components of SaxonJ and their licences are listed in the Saxon 13 documentation (`https://www.saxonica.com/documentation13/index.html#!conditions`), and "most of these components are also used in SaxonC". "Many of the licenses require you to include a copy of the license with your distribution."
+- On an extra permission: none; Saxonica offers "a license that you may find more suitable to your needs, but it costs money", a redistribution licence for Saxon-PE or Saxon-EE. "If you want to use the open source product and license, then I'm afraid you have to take it as it comes."
+- The case of a separate process wasn't answered.
+
+So Saxonica neither allows nor forbids the in-process combination, and won't widen the licence. Running ERPNext, the app and `saxonche` on one's own servers stays unaffected (GPL-3.0 section 9); publishing the app with Saxon in its process would rest on an untested reading of the GPL.
 
 ## Open Questions
 
-To ask Saxonica in writing, and a lawyer if their answer isn't conclusive:
-
-- Does a GPL-3.0 Python app that imports an Apache-2.0 library, which in turn loads an independently installed `saxonche` in the same process, combine the app with code marked "incompatible with secondary licenses", and is that allowed?
-- Does the answer change when the app talks to a separate process, started by the app or running as a service, that loads `saxonche` while the app's process doesn't?
-- Which notices and sources does conveying the unchanged `saxonche` wheel require, for example in a Docker image of a bench, including GraalVM Community Edition's parts in it?
-- Could Saxonica grant an extra permission for the first case, or would that need the assent of past contributors?
+- Should the app validate in a separate process from its first release, so that its process never loads `saxonche`? That would settle the open question by design rather than by a legal opinion, and serve [ITEM-007](item-007-validation-time-limit.md) at the same time; a lawyer could still confirm that the boundary suffices before the app is published.
+- Which licence texts an image or installer that holds `saxonche` must carry: the list in the Saxon 13 documentation, checked against the components in the wheel.
 
 Also open: whether the app must be GPL-3.0 at all, if it used only the Frappe Framework (MIT) and none of ERPNext's code; the app works on ERPNext's sales and purchase invoices ([ITEM-003](item-003-erpnext-app.md)), so it would import ERPNext.
