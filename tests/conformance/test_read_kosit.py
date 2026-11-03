@@ -61,6 +61,13 @@ CONTACT_POINT = {
         NOT_YET_REPORTED,
     ),
 }
+ONE_PRECEDING_INVOICE = {
+    "preceding_invoices": (
+        "BG-3",
+        "two in UBL, one in CII",
+        "none: CII D16B holds one preceding invoice reference",
+    ),
+}
 KNOWN_DIFFERENCES: dict[str, dict[str, tuple[str, str, str]]] = {
     "standard/01.20a-INVOICE": {
         "seller.address_line_1": ("BT-35", "[Street] in CII, [Seller street] in UBL", PLACEHOLDERS),
@@ -105,7 +112,11 @@ KNOWN_DIFFERENCES: dict[str, dict[str, tuple[str, str, str]]] = {
                 "the UBL file has the name's placeholder as the trading name",
                 NOT_YET_REPORTED,
             ),
-            **{1: SELLER_IDENTIFIERS, 3: CONTACT_POINT, 4: CONTACT_POINT}.get(n, {}),
+            **{
+                1: SELLER_IDENTIFIERS | ONE_PRECEDING_INVOICE,
+                3: CONTACT_POINT,
+                4: CONTACT_POINT,
+            }.get(n, {}),
         }
         for n in range(1, 5)
     },
