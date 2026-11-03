@@ -14,7 +14,7 @@ Report upstream the differences between the CII and UBL files of the KoSIT test 
 
 ## Context / Motivation
 
-The spikes compared what KoSIT's reading stylesheet makes of the CII and UBL file of each business case, over every business term in them, in the KoSIT test suite `v2026-08-31`. Apart from differences in the files themselves, both agree. Those differences, with the technical cases' found by Haflinger's reading in the rebuild, and limits of KoSIT's reading stylesheet itself (the last two rows):
+The spikes compared what KoSIT's reading stylesheet makes of the CII and UBL file of each business case, over every business term in them, in the KoSIT test suite `v2026-08-31`. Apart from differences in the files themselves, both agree. Those differences, with the technical cases' found by Haflinger's reading in the rebuild, and limits of KoSIT's reading stylesheet itself (the last four rows):
 
 | Business term | Cases | Difference | Report? |
 | :- | :- | :- | :- |
@@ -30,6 +30,8 @@ The spikes compared what KoSIT's reading stylesheet makes of the CII and UBL fil
 | BT-110 | technical 01.05 | Absent in CII, 0 in UBL | No: the term is optional, and UBL's `cac:TaxTotal` needs an amount |
 | BT-84 | ZUGFeRD corpus, `MustangGnuaccountingBeispielRE-20190610_507.pdf` | KoSIT's reading stylesheet gives a CII account with both `ram:IBANID` and `ram:ProprietaryID` as two BT-84, the proprietary one first, where EN 16931 allows one; Haflinger reads the IBAN (REQ-003-PRS-F002), and its tests' KoSIT reader prefers the one from `ram:IBANID` | Ask: the two elements give one account in two forms |
 | BT-41, BT-56 | none in the suite | KoSIT's reading stylesheet gives two contact points for a CII contact with both a person and a department name, where EN 16931 allows one; Haflinger reads the person name (REQ-003-PRS-F002) | No: CEN's `CII-SR-465` and `CII-SR-466` already warn against such an input |
+| BG-20, BG-21 | none in the suite | KoSIT's reading stylesheet takes an allowance or charge only where its charge indicator is the text `true` or `false`, so one written `1` or `0`, which `xs:boolean` and EN 16931's own rules allow, is neither; Haflinger reads all four (REQ-003-PRS-F002) | No: XRechnung, which the stylesheet is made for, forbids such values (`PEPPOL-EN16931-R043`) |
+| BG-20, BG-21 | none in the suite | KoSIT's reading stylesheet compares the charge indicator with `true` and `false` as written, so one with whitespace around it, such as a line feed after `false`, is neither, although XRechnung allows it (`PEPPOL-EN16931-R043` compares after `normalize-space`); Haflinger removes the whitespace, as from any value (REQ-003-PRS-F002) | Yes |
 
 ## Open Questions
 
