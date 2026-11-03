@@ -4,7 +4,7 @@ findings name (REQ-001-PRS-F001), and what reading them shares across the syntax
 
 from dataclasses import dataclass
 
-from haflinger._xml import Node, first_of
+from haflinger._xml import Node, first_of, none_if_empty
 from haflinger.model import Contact, Identifier
 
 # The seller's tax registration identifier; the buyer has no such term.
@@ -115,5 +115,4 @@ def identifier(node: Node | None, scheme: str = "schemeID") -> Identifier | None
 
 def contact(point: str | None, telephone: str | None, email: str | None) -> Contact | None:
     """The contact of these terms; None where it holds none of them."""
-    read = Contact(point=point, telephone=telephone, email=email)
-    return None if read == Contact() else read
+    return none_if_empty(Contact(point=point, telephone=telephone, email=email))

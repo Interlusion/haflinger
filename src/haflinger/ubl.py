@@ -5,12 +5,24 @@ import re
 from datetime import date
 
 from haflinger._parties import BUYER, SELLER, PartyTerms, contact, identifier, identifiers
-from haflinger._xml import XML_WHITESPACE, Node, choose_vat_totals, first_of
+from haflinger._payments import one_value, payment_means
+from haflinger._xml import (
+    XML_WHITESPACE,
+    Node,
+    choose_vat_totals,
+    first_group,
+    first_of,
+    none_if_empty,
+)
 from haflinger.model import (
+    CreditTransfer,
+    DirectDebit,
     Invoice,
     InvoiceLine,
     Note,
     Party,
+    PaymentCard,
+    PaymentInstructions,
     Totals,
     VatBreakdown,
 )
@@ -65,11 +77,13 @@ def read(root: Node, specification_id: str | None, *, credit_note: bool) -> Invo
             root, "cac:PaymentMeans/cbc:PaymentDueDate" if credit_note else "cbc:DueDate", "BT-9"
         ),
         buyer_reference=root.text("cbc:BuyerReference", "BT-10"),
+        payment_terms=root.text("cac:PaymentTerms/cbc:Note", "BT-20"),
         business_process=root.text("cbc:ProfileID", "BT-23"),
         specification_id=specification_id,
         notes=tuple(note for node in root.findall("cbc:Note") if (note := _note(node)) is not None),
         seller=_party(root.group("cac:AccountingSupplierParty/cac:Party", "BG-4"), SELLER),
         buyer=_party(root.group("cac:AccountingCustomerParty/cac:Party", "BG-7"), BUYER),
+        payment_instructions=_payment_instructions(root),
         totals=_totals(
             root.group("cac:LegalMonetaryTotal", "BG-22"),
             _tax_amount(vat_total),
@@ -178,6 +192,75 @@ def _party(party: Node | None, terms: PartyTerms) -> Party | None:
 
 # The elements of a contact's terms, which make a cac:Contact the contact.
 _CONTACT = ("cbc:Name", "cbc:Telephone", "cbc:ElectronicMail")
+
+
+def _payment_instructions(root: Node) -> PaymentInstructions | None:
+    """BG-16 from the payment means, repeated for each account (REQ-003-PRS-F002)."""
+    means, code = payment_means(
+        root.findall("cac:PaymentMeans"), lambda node: node.text("cbc:PaymentMeansCode", "BT-81")
+    )
+    texts = [
+        (node, name)
+        for m in means
+        for node in m.findall("cbc:PaymentMeansCode")
+        if (name := node.attribute("name")) is not None
+    ]
+    remittances = [(n, n.value or "") for m in means for n in m.holding("BT-83", "cbc:PaymentID")]
+    transfers = [
+        CreditTransfer(
+            account_id=account.text("cbc:ID", "BT-84"),
+            account_name=account.text("cbc:Name", "BT-85"),
+            provider_id=account.text("cac:FinancialInstitutionBranch/cbc:ID", "BT-86"),
+        )
+        for node in means
+        for account in node.findall("cac:PayeeFinancialAccount")
+        if account.holds_value()
+    ]
+    card = first_group([c for node in means for c in node.findall("cac:CardAccount")], "BG-18")
+    mandate = first_group(
+        [m for node in means for m in node.findall("cac:PaymentMandate")], "BG-19"
+    )
+    return none_if_empty(
+        PaymentInstructions(
+            means_code=code,
+            means_text=one_value(texts, "BT-82"),
+            remittance_information=one_value(remittances, "BT-83"),
+            credit_transfers=tuple(transfers),
+            card=None
+            if card is None
+            else PaymentCard(
+                account_number=card.text("cbc:PrimaryAccountNumberID", "BT-87"),
+                holder_name=card.text("cbc:HolderName", "BT-88"),
+            ),
+            direct_debit=_direct_debit(root, mandate),
+        )
+    )
+
+
+def _direct_debit(root: Node, mandate: Node | None) -> DirectDebit | None:
+    """BG-19 from the mandate and the creditor identifier: the payee's, or else the seller's,
+    identifier with scheme SEPA, which without a mandate is no direct debit's
+    (REQ-003-PRS-F002)."""
+    creditors = [
+        node
+        for party in ("cac:PayeeParty", "cac:AccountingSupplierParty/cac:Party")
+        for node in root.findall(f"{party}/cac:PartyIdentification/cbc:ID")
+        if node.attribute("schemeID") == "SEPA" and node.plain("BT-90") is not None
+    ]
+    if mandate is None:
+        for node in creditors:
+            node.drop(
+                f"BT-90 without a direct debit (cac:PaymentMandate) is left out: {node.value!r}"
+            )
+        return None
+    creditor = first_of(creditors, "BT-90")
+    return none_if_empty(
+        DirectDebit(
+            mandate_reference=mandate.text("cbc:ID", "BT-89"),
+            creditor_id=None if creditor is None else creditor.value,
+            debited_account_id=mandate.text("cac:PayerFinancialAccount/cbc:ID", "BT-91"),
+        )
+    )
 
 
 def _totals(

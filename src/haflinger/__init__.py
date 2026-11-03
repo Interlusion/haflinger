@@ -4,11 +4,15 @@ from haflinger.errors import InvoiceReadError, InvoiceWriteError
 from haflinger.findings import Finding
 from haflinger.model import (
     Contact,
+    CreditTransfer,
+    DirectDebit,
     Identifier,
     Invoice,
     InvoiceLine,
     Note,
     Party,
+    PaymentCard,
+    PaymentInstructions,
     Totals,
     VatBreakdown,
 )
@@ -18,6 +22,8 @@ from haflinger.write import write_cii
 
 __all__ = [
     "Contact",
+    "CreditTransfer",
+    "DirectDebit",
     "Finding",
     "Identifier",
     "Invoice",
@@ -26,6 +32,8 @@ __all__ = [
     "InvoiceWriteError",
     "Note",
     "Party",
+    "PaymentCard",
+    "PaymentInstructions",
     "ReadResult",
     "Totals",
     "VatBreakdown",
