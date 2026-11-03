@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from haflinger import Finding, Invoice, InvoiceWriteError, kosit, read_invoice, write_cii
+from haflinger.cii import with_one_preceding_invoice
 
 ROOT = Path(__file__).resolve().parents[2]
 SUITE = ROOT / "tests/data/kosit-testsuite/instances"
@@ -40,8 +41,9 @@ def write(path: Path) -> tuple[Invoice, bytes, tuple[Finding, ...]]:
     """The file's model, the document written from it, and the findings of the refusal.
 
     The model's BT-24 becomes XRechnung 3.0 where it names the extension or CVD, which aren't
-    target profiles (REQ-004-PRS-F002)."""
-    invoice = read_invoice(path.read_bytes()).invoice
+    target profiles (REQ-004-PRS-F002), and its preceding invoices (BG-3) the first where it
+    holds more than CII D16B can (REQ-004-PRS-F006)."""
+    invoice = with_one_preceding_invoice(read_invoice(path.read_bytes()).invoice)
     if invoice.specification_id != XRECHNUNG:
         invoice = replace(invoice, specification_id=XRECHNUNG)
     try:
@@ -90,7 +92,10 @@ def test_every_listed_rule_still_fails() -> None:
 @pytest.mark.parametrize("path", FILES, ids=lambda path: path.name)
 def test_written_as_en16931_passes_both_schemas_and_reads_back(path: Path) -> None:
     """REQ-004-PRS-F004: the EN 16931 target also passes Factur-X's XML Schema."""
-    invoice = replace(read_invoice(path.read_bytes()).invoice, specification_id=EN16931)
+    invoice = replace(
+        with_one_preceding_invoice(read_invoice(path.read_bytes()).invoice),
+        specification_id=EN16931,
+    )
     try:
         document, findings = write_cii(invoice), ()
     except InvoiceWriteError as error:

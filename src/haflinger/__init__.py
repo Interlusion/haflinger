@@ -5,6 +5,7 @@ from haflinger.findings import Finding
 from haflinger.model import (
     Contact,
     CreditTransfer,
+    Delivery,
     DirectDebit,
     Identifier,
     Invoice,
@@ -13,6 +14,8 @@ from haflinger.model import (
     Party,
     PaymentCard,
     PaymentInstructions,
+    Period,
+    PrecedingInvoice,
     Totals,
     VatBreakdown,
 )
@@ -23,6 +26,7 @@ from haflinger.write import write_cii
 __all__ = [
     "Contact",
     "CreditTransfer",
+    "Delivery",
     "DirectDebit",
     "Finding",
     "Identifier",
@@ -34,6 +38,8 @@ __all__ = [
     "Party",
     "PaymentCard",
     "PaymentInstructions",
+    "Period",
+    "PrecedingInvoice",
     "ReadResult",
     "Totals",
     "VatBreakdown",

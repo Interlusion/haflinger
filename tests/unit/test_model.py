@@ -72,6 +72,13 @@ def test_fields_match_req_001() -> None:
     assert actual == expected
 
 
+@pytest.mark.parametrize("cls", sorted(spec_fields()))
+def test_each_fields_type_can_be_inspected(cls: str) -> None:
+    """A field named like a type, such as `Delivery.date`, doesn't hide that type."""
+    hints = typing.get_type_hints(getattr(model, cls))
+    assert set(hints) >= {f.name for f in dataclasses.fields(getattr(model, cls))}
+
+
 def test_missing_terms_are_none_and_missing_groups_empty() -> None:
     invoice = Invoice()
     assert invoice.number is None

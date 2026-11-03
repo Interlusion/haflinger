@@ -5,6 +5,7 @@ missing repeated group an empty tuple; whether a term is required is checked by 
 writing, not here.
 """
 
+import datetime
 import re
 from dataclasses import dataclass, field
 from datetime import date
@@ -35,9 +36,17 @@ class Note:
 
 
 @dataclass(frozen=True, kw_only=True)
+class PrecedingInvoice:
+    """BG-3."""
+
+    number: str | None = None  # BT-25
+    issue_date: date | None = None  # BT-26
+
+
+@dataclass(frozen=True, kw_only=True)
 class Identifier:
     """An identifier with the scheme it belongs to: BT-29 and BT-29-1, BT-34 and BT-34-1, BT-46
-    and BT-46-1, BT-49 and BT-49-1."""
+    and BT-46-1, BT-49 and BT-49-1, BT-71 and BT-71-1."""
 
     value: str | None = None
     scheme: str | None = None
@@ -72,6 +81,31 @@ class Party:
     country_subdivision: str | None = None  # BT-39, BT-54
     country_code: str | None = None  # BT-40, BT-55
     contact: Contact | None = None  # BG-6, BG-9
+
+
+@dataclass(frozen=True, kw_only=True)
+class Delivery:
+    """BG-13, with the deliver to address (BG-15)."""
+
+    party_name: str | None = None  # BT-70
+    location: Identifier | None = None  # BT-71
+    # `datetime.date`, since the field's name hides `date` within the class.
+    date: datetime.date | None = None  # BT-72
+    address_line_1: str | None = None  # BT-75
+    address_line_2: str | None = None  # BT-76
+    address_line_3: str | None = None  # BT-165
+    city: str | None = None  # BT-77
+    post_code: str | None = None  # BT-78
+    country_subdivision: str | None = None  # BT-79
+    country_code: str | None = None  # BT-80
+
+
+@dataclass(frozen=True, kw_only=True)
+class Period:
+    """BG-14."""
+
+    start: date | None = None  # BT-73
+    end: date | None = None  # BT-74
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -173,8 +207,11 @@ class Invoice:
     business_process: str | None = None  # BT-23
     specification_id: str | None = None  # BT-24
     notes: tuple[Note, ...] = ()  # BG-1
+    preceding_invoices: tuple[PrecedingInvoice, ...] = ()  # BG-3
     seller: Party | None = None  # BG-4
     buyer: Party | None = None  # BG-7
+    delivery: Delivery | None = None  # BG-13
+    invoicing_period: Period | None = None  # BG-14
     payment_instructions: PaymentInstructions | None = None  # BG-16
     totals: Totals | None = None  # BG-22
     vat_breakdown: tuple[VatBreakdown, ...] = ()  # BG-23

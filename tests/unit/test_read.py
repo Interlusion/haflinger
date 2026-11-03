@@ -5,6 +5,7 @@ REQ-001-PRS-F005, REQ-001-PRS-NF001 and REQ-001-PRS-NF003 for reading. Most inpu
 case 01.01a with one change.
 """
 
+from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -14,12 +15,15 @@ import pytest
 from haflinger import (
     Contact,
     CreditTransfer,
+    Delivery,
     DirectDebit,
     Identifier,
     InvoiceReadError,
     Note,
     PaymentCard,
     PaymentInstructions,
+    Period,
+    PrecedingInvoice,
     ReadResult,
     read_invoice,
 )
@@ -1519,3 +1523,155 @@ def test_a_cii_bic_without_an_account_is_dropped() -> None:
         CreditTransfer(account_id=IBAN),
     )
     assert dropped(result) == ["BT-86"]
+
+
+# REQ-003-PRS-F002: preceding invoices, delivery and invoicing period
+
+CII_SUMMATION_END = b"</ram:SpecifiedTradeSettlementHeaderMonetarySummation>"
+UBL_SUPPLIER_START = b"<cac:AccountingSupplierParty>"
+UBL_MEANS_START = b"<cac:PaymentMeans>"
+
+
+def test_preceding_invoices() -> None:
+    """CII D16B holds one; UBL any number, here one without its date."""
+    cii = edit(
+        CII,
+        CII_SUMMATION_END,
+        CII_SUMMATION_END
+        + b"<ram:InvoiceReferencedDocument><ram:IssuerAssignedID>R-0</ram:IssuerAssignedID>"
+        b'<ram:FormattedIssueDateTime><qdt:DateTimeString format="102">20160301'
+        b"</qdt:DateTimeString></ram:FormattedIssueDateTime></ram:InvoiceReferencedDocument>",
+    )
+    ubl = edit(
+        UBL,
+        UBL_SUPPLIER_START,
+        b"<cac:BillingReference><cac:InvoiceDocumentReference><cbc:ID>R-0</cbc:ID>"
+        b"<cbc:IssueDate>2016-03-01</cbc:IssueDate></cac:InvoiceDocumentReference>"
+        b"</cac:BillingReference><cac:BillingReference><cac:InvoiceDocumentReference>"
+        b"<cbc:ID>R-00</cbc:ID></cac:InvoiceDocumentReference></cac:BillingReference>"
+        + UBL_SUPPLIER_START,
+    )
+    first = PrecedingInvoice(number="R-0", issue_date=date(2016, 3, 1))
+    for data, expected in ((cii, (first,)), (ubl, (first, PrecedingInvoice(number="R-00")))):
+        result = read_invoice(data)
+        assert result.invoice.preceding_invoices == expected
+        assert result.findings == ()
+
+
+def test_a_preceding_invoice_without_its_terms_is_left_out() -> None:
+    """A reference holding only what the model doesn't read is no preceding invoice."""
+    cii = edit(
+        CII,
+        CII_SUMMATION_END,
+        CII_SUMMATION_END + b"<ram:InvoiceReferencedDocument><ram:TypeCode>380</ram:TypeCode>"
+        b"</ram:InvoiceReferencedDocument>",
+    )
+    ubl = edit(
+        UBL,
+        UBL_SUPPLIER_START,
+        b"<cac:BillingReference><cac:InvoiceDocumentReference><cbc:ID> </cbc:ID>"
+        b"<cbc:DocumentTypeCode>380</cbc:DocumentTypeCode></cac:InvoiceDocumentReference>"
+        b"</cac:BillingReference>" + UBL_SUPPLIER_START,
+    )
+    for data in (cii, ubl):
+        assert read_invoice(data).invoice.preceding_invoices == ()
+
+
+def delivered(cii_location: bytes, ubl_location: bytes) -> tuple[bytes, bytes]:
+    """01.01a with delivery information and an invoicing period, in both syntaxes."""
+    cii = edit(
+        CII,
+        b"<ram:ApplicableHeaderTradeDelivery/>",
+        b"<ram:ApplicableHeaderTradeDelivery><ram:ShipToTradeParty>"
+        + cii_location
+        + b"<ram:Name>Example Lager</ram:Name><ram:PostalTradeAddress>"
+        b"<ram:PostcodeCode>12345</ram:PostcodeCode><ram:LineOne>Lagerstr. 1</ram:LineOne>"
+        b"<ram:CityName>Example City</ram:CityName><ram:CountryID>DE</ram:CountryID>"
+        b"</ram:PostalTradeAddress></ram:ShipToTradeParty><ram:ActualDeliverySupplyChainEvent>"
+        b'<ram:OccurrenceDateTime><udt:DateTimeString format="102">20160401</udt:DateTimeString>'
+        b"</ram:OccurrenceDateTime></ram:ActualDeliverySupplyChainEvent>"
+        b"</ram:ApplicableHeaderTradeDelivery>",
+    )
+    cii = edit(
+        cii,
+        b"<ram:SpecifiedTradePaymentTerms>",
+        b'<ram:BillingSpecifiedPeriod><ram:StartDateTime><udt:DateTimeString format="102">'
+        b"20160301</udt:DateTimeString></ram:StartDateTime><ram:EndDateTime>"
+        b'<udt:DateTimeString format="102">20160331</udt:DateTimeString></ram:EndDateTime>'
+        b"</ram:BillingSpecifiedPeriod><ram:SpecifiedTradePaymentTerms>",
+    )
+    ubl = edit(
+        UBL,
+        UBL_MEANS_START,
+        b"<cac:InvoicePeriod><cbc:StartDate>2016-03-01</cbc:StartDate>"
+        b"<cbc:EndDate>2016-03-31</cbc:EndDate></cac:InvoicePeriod><cac:Delivery>"
+        b"<cbc:ActualDeliveryDate>2016-04-01</cbc:ActualDeliveryDate><cac:DeliveryLocation>"
+        + ubl_location
+        + b"<cac:Address><cbc:StreetName>Lagerstr. 1</cbc:StreetName>"
+        b"<cbc:CityName>Example City</cbc:CityName><cbc:PostalZone>12345</cbc:PostalZone>"
+        b"<cac:Country><cbc:IdentificationCode>DE</cbc:IdentificationCode></cac:Country>"
+        b"</cac:Address></cac:DeliveryLocation><cac:DeliveryParty><cac:PartyName>"
+        b"<cbc:Name>Example Lager</cbc:Name></cac:PartyName></cac:DeliveryParty></cac:Delivery>"
+        + UBL_MEANS_START,
+    )
+    return cii, ubl
+
+
+DELIVERY = Delivery(
+    party_name="Example Lager",
+    date=date(2016, 4, 1),
+    address_line_1="Lagerstr. 1",
+    city="Example City",
+    post_code="12345",
+    country_code="DE",
+)
+
+
+def test_delivery_and_invoicing_period() -> None:
+    for location, cii_location, ubl_location in (
+        (
+            Identifier(value="4000001000005", scheme="0088"),
+            b'<ram:GlobalID schemeID="0088">4000001000005</ram:GlobalID>',
+            b'<cbc:ID schemeID="0088">4000001000005</cbc:ID>',
+        ),
+        (Identifier(value="L-1"), b"<ram:ID>L-1</ram:ID>", b"<cbc:ID>L-1</cbc:ID>"),
+    ):
+        for data in delivered(cii_location, ubl_location):
+            result = read_invoice(data)
+            assert result.invoice.delivery == replace(DELIVERY, location=location)
+            assert result.invoice.invoicing_period == Period(
+                start=date(2016, 3, 1), end=date(2016, 3, 31)
+            )
+            assert result.findings == ()
+
+
+def test_a_second_ubl_delivery_is_dropped() -> None:
+    _, ubl = delivered(b"", b"")
+    ubl = edit(
+        ubl,
+        b"</cac:Delivery>",
+        b"</cac:Delivery><cac:Delivery><cbc:ActualDeliveryDate>2016-04-02"
+        b"</cbc:ActualDeliveryDate></cac:Delivery>",
+    )
+    result = read_invoice(ubl)
+    assert result.invoice.delivery == DELIVERY
+    assert dropped(result) == ["BG-13"]
+
+
+def test_a_ubl_delivery_and_period_without_the_models_terms_dont_count() -> None:
+    """A first cac:Delivery or cac:InvoicePeriod holding only terms the model doesn't read
+    leaves the group to the next one."""
+    _, ubl = delivered(b"", b"")
+    ubl = edit(
+        ubl,
+        b"<cac:InvoicePeriod><cbc:StartDate>",
+        b"<cac:InvoicePeriod><cbc:DescriptionCode>35</cbc:DescriptionCode></cac:InvoicePeriod>"
+        b"<cac:InvoicePeriod><cbc:StartDate>",
+    )
+    ubl = edit(
+        ubl, b"<cac:Delivery>", b"<cac:Delivery><cbc:ID>D-1</cbc:ID></cac:Delivery><cac:Delivery>"
+    )
+    result = read_invoice(ubl)
+    assert result.invoice.delivery == DELIVERY
+    assert result.invoice.invoicing_period == Period(start=date(2016, 3, 1), end=date(2016, 3, 31))
+    assert dropped(result) == []

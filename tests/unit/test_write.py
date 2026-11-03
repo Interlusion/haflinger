@@ -13,13 +13,17 @@ import pytest
 from haflinger import (
     Contact,
     CreditTransfer,
+    Delivery,
     DirectDebit,
     Identifier,
+    Invoice,
     InvoiceReadError,
     InvoiceWriteError,
     Note,
     PaymentCard,
     PaymentInstructions,
+    Period,
+    PrecedingInvoice,
     read_invoice,
     write_cii,
 )
@@ -399,6 +403,32 @@ def test_refuses_what_cant_be_written_sensibly(invoice: Any, reason: str) -> Non
             "BG-17 is not a tuple of CreditTransfer",
         ),
         (
+            replace(
+                INVOICE,
+                preceding_invoices=(PrecedingInvoice(number="R-0"), PrecedingInvoice(number="R-1")),
+            ),
+            "BG-3 holds more preceding invoices than CII D16B can, which is one",
+        ),
+        (
+            replace(INVOICE, preceding_invoices=(PrecedingInvoice(),)),
+            "BG-3 holds a preceding invoice without any term",
+        ),
+        (
+            replace(INVOICE, delivery=Delivery()),
+            "BG-13 holds delivery information without any term",
+        ),
+        (replace(INVOICE, invoicing_period=Period()), "BG-14 holds a period without any term"),
+        (
+            replace(INVOICE, delivery=Delivery(city="")),
+            "BT-77 is empty; a missing term is None",
+        ),
+        (replace(INVOICE, delivery="Lager"), "BG-13 is not a Delivery"),
+        (replace(INVOICE, invoicing_period="March"), "BG-14 is not a Period"),
+        (
+            replace(INVOICE, preceding_invoices=[PrecedingInvoice(number="R-0")]),
+            "BG-3 is not a tuple of PrecedingInvoice",
+        ),
+        (
             replace(INVOICE, buyer=replace(BUYER, tax_registration_id="201/113/40209")),
             "BT-32 is the seller's alone; the buyer (BG-7) has none",
         ),
@@ -422,6 +452,14 @@ def test_refuses_what_cant_be_written_sensibly(invoice: Any, reason: str) -> Non
         "empty-direct-debit",
         "str-instructions",
         "list-credit-transfers",
+        "two-preceding-invoices",
+        "empty-preceding-invoice",
+        "empty-delivery",
+        "empty-period",
+        "empty-city",
+        "str-delivery",
+        "str-period",
+        "list-preceding-invoices",
         "buyer-tax-registration",
         "two-buyer-identifiers",
     ],
@@ -526,6 +564,77 @@ def test_xrechnungs_discount_terms_end_with_a_line_feed() -> None:
         document = write_cii(invoice)
         assert f"<ram:Description>{terms}{line_feed}</ram:Description>".encode() in document
         assert read_invoice(document).invoice == invoice
+
+
+def test_writes_preceding_invoice_delivery_and_period_and_reads_them_back() -> None:
+    invoice = replace(
+        INVOICE,
+        preceding_invoices=(PrecedingInvoice(number="R-0", issue_date=date(2016, 3, 1)),),
+        delivery=Delivery(
+            party_name="Example Lager",
+            location=Identifier(value="4000001000005", scheme="0088"),
+            date=date(2016, 4, 1),
+            address_line_1="Lagerstr. 1",
+            city="Example City",
+            post_code="12345",
+            country_code="DE",
+        ),
+        invoicing_period=Period(start=date(2016, 3, 1), end=date(2016, 3, 31)),
+    )
+    document = written(invoice)
+    for expected in (
+        b"<ram:ApplicableHeaderTradeDelivery><ram:ShipToTradeParty>"
+        b'<ram:GlobalID schemeID="0088">4000001000005</ram:GlobalID>'
+        b"<ram:Name>Example Lager</ram:Name><ram:PostalTradeAddress>"
+        b"<ram:PostcodeCode>12345</ram:PostcodeCode><ram:LineOne>Lagerstr. 1</ram:LineOne>"
+        b"<ram:CityName>Example City</ram:CityName><ram:CountryID>DE</ram:CountryID>"
+        b"</ram:PostalTradeAddress></ram:ShipToTradeParty><ram:ActualDeliverySupplyChainEvent>"
+        b'<ram:OccurrenceDateTime><udt:DateTimeString format="102">20160401</udt:DateTimeString>'
+        b"</ram:OccurrenceDateTime></ram:ActualDeliverySupplyChainEvent>"
+        b"</ram:ApplicableHeaderTradeDelivery>",
+        b'<ram:BillingSpecifiedPeriod><ram:StartDateTime><udt:DateTimeString format="102">'
+        b"20160301</udt:DateTimeString></ram:StartDateTime><ram:EndDateTime>"
+        b'<udt:DateTimeString format="102">20160331</udt:DateTimeString></ram:EndDateTime>'
+        b"</ram:BillingSpecifiedPeriod>",
+        b"</ram:SpecifiedTradeSettlementHeaderMonetarySummation><ram:InvoiceReferencedDocument>"
+        b"<ram:IssuerAssignedID>R-0</ram:IssuerAssignedID><ram:FormattedIssueDateTime>"
+        b'<qdt:DateTimeString format="102">20160301</qdt:DateTimeString>'
+        b"</ram:FormattedIssueDateTime></ram:InvoiceReferencedDocument>",
+    ):
+        assert expected in document
+    assert read_invoice(document).invoice == invoice
+
+
+@pytest.mark.parametrize(
+    ("invoice", "rule"),
+    [
+        (
+            replace(INVOICE, preceding_invoices=(PrecedingInvoice(issue_date=date(2016, 3, 1)),)),
+            "BR-55",
+        ),
+        (
+            replace(INVOICE, delivery=Delivery(city="Example City"), specification_id=XRECHNUNG),
+            "BR-57",
+        ),
+        (replace(INVOICE, delivery=Delivery(city="Example City")), "HAFL-XSD"),
+    ],
+    ids=[
+        "preceding-invoice-without-number",
+        "deliver-to-address-without-country",
+        "deliver-to-address-without-country-factur-x",
+    ],
+)
+def test_the_official_artefacts_refuse_a_group_without_a_term_it_needs(
+    invoice: Invoice, rule: str
+) -> None:
+    """Written, since CII D16B can hold the rest, and refused after writing: a preceding invoice
+    without its number (BT-25) by BR-55, a deliver to address without its country code (BT-80)
+    by BR-57 or, for EN 16931, by Factur-X's XML Schema, which requires it (REQ-004-PRS-F001)."""
+    with pytest.raises(InvoiceWriteError, match=rule) as refusal:
+        write_cii(invoice)
+    assert rule in {finding.rule for finding in refusal.value.findings}
+    assert refusal.value.document is not None
+    assert read_invoice(refusal.value.document).invoice == invoice
 
 
 def test_identifiers_in_another_order_are_written_as_the_schema_wants() -> None:

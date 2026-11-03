@@ -19,11 +19,12 @@ from dataclasses import replace
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
-from haflinger import Totals, cii, read_invoice, validate
+from haflinger import Party, Totals, cii, read_invoice, validate
 from haflinger._input import open_invoice
 from haflinger._xml import MAX_SIZE
+from haflinger._xsd import check
 from haflinger.validation import _RULE_SETS as RULE_SETS  # pyright: ignore[reportPrivateUsage]
-from haflinger.validation import rule_set
+from haflinger.validation import _scenarios, rule_set  # pyright: ignore[reportPrivateUsage]
 
 ROOT = Path(__file__).resolve().parents[1]
 SUITE = sorted((ROOT / "tests/data/kosit-testsuite/instances").rglob("*.xml"))
@@ -42,7 +43,7 @@ start = time.perf_counter()
 from haflinger import cii, read_invoice, validate
 data = path.read_bytes()
 if step == "write":
-    invoice = read_invoice(data).invoice
+    invoice = cii.with_one_preceding_invoice(read_invoice(data).invoice)
     start = time.perf_counter()
     cii.write(invoice)
 elif step == "read":
@@ -122,6 +123,8 @@ def rule_set_samples(directory: Path) -> dict[str, Path]:
             continue
         if name.startswith("Factur-X"):
             data = factur_x(specification_id)
+            if check(data, _scenarios()[name].schema):
+                raise SystemExit(f"the sample for {name} fails its XML Schema; its rules won't run")
         else:
             base = bases[document]
             current = re.search(rb"(?:CustomizationID|ram:ID)>(urn:cen\.eu:[^<]*)<", base)
@@ -144,7 +147,14 @@ def factur_x(specification_id: str) -> bytes:
             notes=(),
             lines=(),
             buyer_reference=None,
-            seller=replace(seller, trading_name=None),
+            # The parties' terms that every profile's XML Schema allows.
+            seller=Party(
+                name=seller.name,
+                legal_registration_id=seller.legal_registration_id,
+                vat_id=seller.vat_id,
+                country_code=seller.country_code,
+            ),
+            buyer=Party(name=buyer.name, country_code=buyer.country_code),
             totals=Totals(
                 line_net_total=None if "minimum" in specification_id else totals.line_net_total,
                 total_without_vat=totals.total_without_vat,
@@ -153,8 +163,19 @@ def factur_x(specification_id: str) -> bytes:
                 amount_due=totals.amount_due,
             ),
         )
+    elif "basic" in specification_id:  # BASIC has no seller contact
+        model = replace(model, seller=replace(seller, contact=None))
     if "minimum" in specification_id:
-        model = replace(model, vat_breakdown=(), buyer=replace(buyer, country_code=None))
+        model = replace(
+            model,
+            vat_breakdown=(),
+            buyer=Party(name=buyer.name),
+            payment_terms=None,
+            payment_instructions=None,
+            preceding_invoices=(),
+            delivery=None,
+            invoicing_period=None,
+        )
     return cii.write(replace(model, specification_id=specification_id))
 
 
@@ -173,7 +194,7 @@ def main(arguments: list[str]) -> int:
 def measure(corpus: Path | None, scratch: Path) -> int:
     rows: list[tuple[str, str, str, str]] = []
 
-    models = [read_invoice(path.read_bytes()).invoice for path in SUITE]
+    models = [cii.with_one_preceding_invoice(read_invoice(p.read_bytes()).invoice) for p in SUITE]
     rows.append(
         ("REQ-003-PRS-NF002", "Read a KoSIT file", "20 ms", ms(per_file(read_invoice, SUITE)))
     )
