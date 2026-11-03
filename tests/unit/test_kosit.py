@@ -65,6 +65,8 @@ def test_read_invoice_runs_without_saxon() -> None:
     script = (
         "import sys, haflinger;"
         f"haflinger.read_invoice(open({str(CII)!r}, 'rb').read());"
-        "assert 'saxonche' not in sys.modules, 'saxonche loaded'"
+        "assert 'saxonche' not in sys.modules, 'saxonche loaded';"
+        "from haflinger import _saxon;"
+        "assert _saxon.worker_pid() is None, 'a worker was started'"
     )
     subprocess.run([sys.executable, "-c", script], check=True)  # noqa: S603
