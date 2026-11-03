@@ -4,7 +4,9 @@
 KoSIT's stylesheets turn a CII invoice, a UBL invoice or a UBL credit note into one semantic XML
 in which every element carries its business term ID (`xr:id="BT-1"`). This module reads the
 model from that XML by business term ID alone, apart from the root elements that pick the
-stylesheet and the one limit of KoSIT's stylesheet that `with_subject_codes` evens out.
+stylesheet and two limits of KoSIT's stylesheet: the UBL notes' subject codes, which
+`with_subject_codes` evens out, and a CII account given in two forms, for which `_account` reads
+the source path KoSIT's stylesheet records.
 """
 
 import re
@@ -14,13 +16,17 @@ from decimal import Decimal
 
 from haflinger import _saxon, cii, ubl
 from haflinger._parties import BUYER, SELLER, PartyTerms, contact, identifier, identifiers
-from haflinger._xml import XML_WHITESPACE, Node, Reading, parse
+from haflinger._xml import XML_WHITESPACE, Node, Reading, none_if_empty, parse
 from haflinger.errors import InvoiceReadError
 from haflinger.model import (
+    CreditTransfer,
+    DirectDebit,
     Invoice,
     InvoiceLine,
     Note,
     Party,
+    PaymentCard,
+    PaymentInstructions,
     Syntax,
     Totals,
     VatBreakdown,
@@ -34,6 +40,8 @@ _STYLESHEETS: dict[str, tuple[str, Syntax]] = {
     ubl.INVOICE_TAG: ("kosit-visualization/xsl/ubl-invoice-xr.xsl", "ubl"),
     ubl.CREDIT_NOTE_TAG: ("kosit-visualization/xsl/ubl-creditnote-xr.xsl", "ubl"),
 }
+# The source path KoSIT's stylesheet gives a BT-84 read from ram:IBANID, indexed where repeated.
+_IBAN_SOURCE = re.compile(r"ram:IBANID(\[[0-9]+\])?$")
 # KoSIT's stylesheets write dates as YYYY-MM-DD in both syntaxes.
 _ISO_DATE = re.compile(r"([0-9]{4})-([0-9]{2})-([0-9]{2})")
 
@@ -106,6 +114,7 @@ def _invoice(invoice: Node, syntax: Syntax) -> Invoice:
         tax_currency_code=_text(invoice, "BT-6"),
         due_date=_date(invoice, "BT-9"),
         buyer_reference=_text(invoice, "BT-10"),
+        payment_terms=_text(invoice, "BT-20"),
         business_process=_text(invoice, "BG-2", "BT-23"),
         specification_id=_text(invoice, "BG-2", "BT-24"),
         notes=tuple(
@@ -114,6 +123,7 @@ def _invoice(invoice: Node, syntax: Syntax) -> Invoice:
         ),
         seller=_party(invoice.find(_term("BG-4")), SELLER),
         buyer=_party(invoice.find(_term("BG-7")), BUYER),
+        payment_instructions=_payment_instructions(invoice.group(_term("BG-16"), "BG-16")),
         totals=_totals(invoice.find(_term("BG-22"))),
         vat_breakdown=tuple(_vat_breakdown(vat) for vat in invoice.findall(_term("BG-23"))),
         lines=tuple(_line(line) for line in invoice.findall(_term("BG-25"))),
@@ -155,6 +165,50 @@ def _party(party: Node | None, terms: PartyTerms) -> Party | None:
             email=_text(contact_group, terms.email),
         ),
     )
+
+
+def _payment_instructions(payment: Node | None) -> PaymentInstructions | None:
+    if payment is None:
+        return None
+    card = payment.group(_term("BG-18"), "BG-18")
+    debit = payment.group(_term("BG-19"), "BG-19")
+    return none_if_empty(
+        PaymentInstructions(
+            means_code=_text(payment, "BT-81"),
+            means_text=_text(payment, "BT-82"),
+            remittance_information=_text(payment, "BT-83"),
+            credit_transfers=tuple(
+                CreditTransfer(
+                    account_id=_account(transfer),
+                    account_name=_text(transfer, "BT-85"),
+                    provider_id=_text(transfer, "BT-86"),
+                )
+                for transfer in payment.findall(_term("BG-17"))
+            ),
+            card=None
+            if card is None
+            else PaymentCard(account_number=_text(card, "BT-87"), holder_name=_text(card, "BT-88")),
+            direct_debit=None
+            if debit is None
+            else none_if_empty(
+                DirectDebit(
+                    mandate_reference=_text(debit, "BT-89"),
+                    creditor_id=_text(debit, "BT-90"),
+                    debited_account_id=_text(debit, "BT-91"),
+                )
+            ),
+        )
+    )
+
+
+def _account(transfer: Node) -> str | None:
+    """BT-84. KoSIT's stylesheet gives a CII account's `ram:ProprietaryID` and `ram:IBANID` both
+    as BT-84, the first first, where REQ-003-PRS-F002 reads the IBAN: the one from `ram:IBANID`
+    is taken (REQ-003-PRS-F005)."""
+    accounts = transfer.holding("BT-84", _term("BT-84"))
+    ibans = [node for node in accounts if _IBAN_SOURCE.search(node.element.get(f"{{{XR}}}src", ""))]
+    chosen = ibans or accounts
+    return chosen[0].value if chosen else None
 
 
 def _totals(totals: Node | None) -> Totals | None:

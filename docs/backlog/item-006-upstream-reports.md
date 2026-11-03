@@ -14,7 +14,7 @@ Report upstream the differences between the CII and UBL files of the KoSIT test 
 
 ## Context / Motivation
 
-The spikes compared what KoSIT's reading stylesheet makes of the CII and UBL file of each business case, over every business term in them, in the KoSIT test suite `v2026-08-31`. Apart from differences in the files themselves, both agree. Those differences, with the technical cases' found by Haflinger's reading in the rebuild, and a limit of KoSIT's reading stylesheet itself (the last row):
+The spikes compared what KoSIT's reading stylesheet makes of the CII and UBL file of each business case, over every business term in them, in the KoSIT test suite `v2026-08-31`. Apart from differences in the files themselves, both agree. Those differences, with the technical cases' found by Haflinger's reading in the rebuild, and limits of KoSIT's reading stylesheet itself (the last two rows):
 
 | Business term | Cases | Difference | Report? |
 | :- | :- | :- | :- |
@@ -28,6 +28,7 @@ The spikes compared what KoSIT's reading stylesheet makes of the CII and UBL fil
 | BT-41 | technical 01.03, 01.04 | The department name Testorganisation in CII, the person Tim Tester in UBL | Yes |
 | BT-44, BT-45 | technical 01.01 to 01.04 | The UBL files swap the buyer's name and trading name placeholders | Yes |
 | BT-110 | technical 01.05 | Absent in CII, 0 in UBL | No: the term is optional, and UBL's `cac:TaxTotal` needs an amount |
+| BT-84 | ZUGFeRD corpus, `MustangGnuaccountingBeispielRE-20190610_507.pdf` | KoSIT's reading stylesheet gives a CII account with both `ram:IBANID` and `ram:ProprietaryID` as two BT-84, the proprietary one first, where EN 16931 allows one; Haflinger reads the IBAN (REQ-003-PRS-F002), and its tests' KoSIT reader prefers the one from `ram:IBANID` | Ask: the two elements give one account in two forms |
 | BT-41, BT-56 | none in the suite | KoSIT's reading stylesheet gives two contact points for a CII contact with both a person and a department name, where EN 16931 allows one; Haflinger reads the person name (REQ-003-PRS-F002) | No: CEN's `CII-SR-465` and `CII-SR-466` already warn against such an input |
 
 ## Open Questions

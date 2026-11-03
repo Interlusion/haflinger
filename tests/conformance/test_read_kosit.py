@@ -14,11 +14,13 @@ import pytest
 
 from haflinger import (
     Contact,
+    CreditTransfer,
     Identifier,
     Invoice,
     InvoiceLine,
     Note,
     Party,
+    PaymentInstructions,
     Totals,
     VatBreakdown,
     read_invoice,
@@ -66,6 +68,11 @@ KNOWN_DIFFERENCES: dict[str, dict[str, tuple[str, str, str]]] = {
     },
     "standard/01.21a-INVOICE": {
         "seller.vat_id": ("BT-31", "DE152338654 in CII, DE 123456789 in UBL", NOT_YET_REPORTED),
+        "payment_instructions.means_text": (
+            "BT-82",
+            "Rechnung in CII, Information in UBL",
+            NOT_YET_REPORTED,
+        ),
         "vat_breakdown.0.exemption_reason": (
             "BT-120",
             "different texts in CII and UBL",
@@ -180,6 +187,7 @@ EXPECTED_01_01A = Invoice(
     buyer_reference="04011000-12345-03",
     business_process="urn:fdc:peppol.eu:2017:poacc:billing:01:1.0",
     specification_id="urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0",
+    payment_terms="Zahlbar sofort ohne Abzug.",
     notes=(
         Note(
             subject_code="ADU",
@@ -208,6 +216,10 @@ EXPECTED_01_01A = Invoice(
         city="[Buyer city]",
         post_code="12345",
         country_code="DE",
+    ),
+    payment_instructions=PaymentInstructions(
+        means_code="58",
+        credit_transfers=(CreditTransfer(account_id="DE79000000001234567890"),),
     ),
     totals=Totals(
         line_net_total=Decimal("314.86"),

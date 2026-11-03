@@ -75,6 +75,44 @@ class Party:
 
 
 @dataclass(frozen=True, kw_only=True)
+class CreditTransfer:
+    """BG-17."""
+
+    account_id: str | None = None  # BT-84
+    account_name: str | None = None  # BT-85
+    provider_id: str | None = None  # BT-86
+
+
+@dataclass(frozen=True, kw_only=True)
+class PaymentCard:
+    """BG-18."""
+
+    account_number: str | None = None  # BT-87
+    holder_name: str | None = None  # BT-88
+
+
+@dataclass(frozen=True, kw_only=True)
+class DirectDebit:
+    """BG-19."""
+
+    mandate_reference: str | None = None  # BT-89
+    creditor_id: str | None = None  # BT-90
+    debited_account_id: str | None = None  # BT-91
+
+
+@dataclass(frozen=True, kw_only=True)
+class PaymentInstructions:
+    """BG-16."""
+
+    means_code: str | None = None  # BT-81
+    means_text: str | None = None  # BT-82
+    remittance_information: str | None = None  # BT-83
+    credit_transfers: tuple[CreditTransfer, ...] = ()  # BG-17
+    card: PaymentCard | None = None  # BG-18
+    direct_debit: DirectDebit | None = None  # BG-19
+
+
+@dataclass(frozen=True, kw_only=True)
 class Totals:
     """BG-22."""
 
@@ -131,11 +169,13 @@ class Invoice:
     tax_currency_code: str | None = None  # BT-6
     due_date: date | None = None  # BT-9
     buyer_reference: str | None = None  # BT-10
+    payment_terms: str | None = None  # BT-20
     business_process: str | None = None  # BT-23
     specification_id: str | None = None  # BT-24
     notes: tuple[Note, ...] = ()  # BG-1
     seller: Party | None = None  # BG-4
     buyer: Party | None = None  # BG-7
+    payment_instructions: PaymentInstructions | None = None  # BG-16
     totals: Totals | None = None  # BG-22
     vat_breakdown: tuple[VatBreakdown, ...] = ()  # BG-23
     lines: tuple[InvoiceLine, ...] = ()  # BG-25

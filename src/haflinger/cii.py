@@ -16,15 +16,27 @@ from haflinger._parties import (
     identifier,
     identifiers,
 )
-from haflinger._xml import XML_WHITESPACE, Node, choose_vat_totals, first_of
+from haflinger._payments import one_value, payment_means
+from haflinger._xml import (
+    XML_WHITESPACE,
+    Node,
+    choose_vat_totals,
+    first_group,
+    first_of,
+    none_if_empty,
+)
 from haflinger.errors import InvoiceWriteError
 from haflinger.model import (
     Contact,
+    CreditTransfer,
+    DirectDebit,
     Identifier,
     Invoice,
     InvoiceLine,
     Note,
     Party,
+    PaymentCard,
+    PaymentInstructions,
     Totals,
     VatBreakdown,
 )
@@ -68,6 +80,9 @@ def read(root: Node, specification_id: str | None) -> Invoice:
             "BT-9",
         ),
         buyer_reference=root.text(f"{_AGREEMENT}/ram:BuyerReference", "BT-10"),
+        payment_terms=root.text(
+            f"{_SETTLEMENT}/ram:SpecifiedTradePaymentTerms/ram:Description", "BT-20"
+        ),
         business_process=root.text(
             f"{_CONTEXT}/ram:BusinessProcessSpecifiedDocumentContextParameter/ram:ID", "BT-23"
         ),
@@ -79,6 +94,7 @@ def read(root: Node, specification_id: str | None) -> Invoice:
         ),
         seller=_party(root.group(f"{_AGREEMENT}/ram:SellerTradeParty", "BG-4"), SELLER),
         buyer=_party(root.group(f"{_AGREEMENT}/ram:BuyerTradeParty", "BG-7"), BUYER),
+        payment_instructions=_payment_instructions(root),
         totals=_totals(
             root.group(
                 f"{_SETTLEMENT}/ram:SpecifiedTradeSettlementHeaderMonetarySummation", "BG-22"
@@ -114,7 +130,7 @@ def _note(node: Node) -> Note | None:
         subject_code=node.text("ram:SubjectCode", "BT-21"),
         text=node.text("ram:Content", "BT-22"),
     )
-    return None if note == Note() else note
+    return none_if_empty(note)
 
 
 def _party(party: Node | None, terms: PartyTerms) -> Party | None:
@@ -190,6 +206,74 @@ def _contact(element: Node, terms: PartyTerms) -> Contact | None:
         point=element.text(person, terms.contact_point, department),
         telephone=element.text(telephone, terms.telephone),
         email=element.text(email, terms.email),
+    )
+
+
+def _payment_instructions(root: Node) -> PaymentInstructions | None:
+    """BG-16 from the payment means, repeated for each account, and from the settlement and its
+    payment terms (REQ-003-PRS-F002)."""
+    means, code = payment_means(
+        root.findall(f"{_SETTLEMENT}/ram:SpecifiedTradeSettlementPaymentMeans"),
+        lambda node: node.text("ram:TypeCode", "BT-81"),
+    )
+    texts = [(n, n.value or "") for m in means for n in m.holding("BT-82", "ram:Information")]
+    transfers: list[CreditTransfer] = []
+    for node in means:
+        accounts = [
+            account
+            for account in node.findall("ram:PayeePartyCreditorFinancialAccount")
+            if account.holds_value()
+        ]
+        bic = node.first("ram:PayeeSpecifiedCreditorFinancialInstitution/ram:BICID", "BT-86")
+        if bic is not None and not accounts:
+            bic.drop(f"BT-86 without an account (BT-84) is left out: {bic.value!r}")
+        transfers += [
+            CreditTransfer(
+                account_id=account.text("ram:IBANID", "BT-84", "ram:ProprietaryID"),
+                account_name=account.text("ram:AccountName", "BT-85"),
+                provider_id=None if bic is None else bic.value,
+            )
+            for account in accounts
+        ]
+    card = first_group(
+        [
+            card
+            for node in means
+            for card in node.findall("ram:ApplicableTradeSettlementFinancialCard")
+        ],
+        "BG-18",
+    )
+    debited = first_of(
+        [
+            account
+            for node in means
+            for account in node.holding("BT-91", "ram:PayerPartyDebtorFinancialAccount/ram:IBANID")
+        ],
+        "BT-91",
+    )
+    return none_if_empty(
+        PaymentInstructions(
+            means_code=code,
+            means_text=one_value(texts, "BT-82"),
+            remittance_information=root.text(f"{_SETTLEMENT}/ram:PaymentReference", "BT-83"),
+            credit_transfers=tuple(transfers),
+            card=None
+            if card is None
+            else PaymentCard(
+                account_number=card.text("ram:ID", "BT-87"),
+                holder_name=card.text("ram:CardholderName", "BT-88"),
+            ),
+            direct_debit=none_if_empty(
+                DirectDebit(
+                    mandate_reference=root.text(
+                        f"{_SETTLEMENT}/ram:SpecifiedTradePaymentTerms/ram:DirectDebitMandateID",
+                        "BT-89",
+                    ),
+                    creditor_id=root.text(f"{_SETTLEMENT}/ram:CreditorReferenceID", "BT-90"),
+                    debited_account_id=None if debited is None else debited.value,
+                )
+            ),
+        )
     )
 
 
@@ -296,6 +380,11 @@ _REQUIRED = frozenset(
 _MAX_DIGITS = 1000
 # The characters XML 1.0 allows.
 _NOT_XML = re.compile("[^\t\n\r\x20-\ud7ff\ue000-\ufffd\U00010000-\U0010ffff]")
+# The form of an IBAN, which a credit transfer's account is written as ram:IBANID with
+# (REQ-004-PRS-F003).
+_IBAN = re.compile("[A-Z]{2}[0-9]{2}[A-Za-z0-9]{1,30}")
+# A `#…#` run within one line, as BR-DE-18 finds them.
+_HASH_RUN = re.compile("#.+#")
 
 
 def write(invoice: Invoice) -> bytes:
@@ -334,9 +423,25 @@ def write(invoice: Invoice) -> bytes:
     _write_party(agreement, "ram:SellerTradeParty", invoice.seller, SELLER)
     _write_party(agreement, "ram:BuyerTradeParty", invoice.buyer, BUYER)
     SubElement(transaction, "ram:ApplicableHeaderTradeDelivery")
+    payment = _checked_instructions(invoice.payment_instructions)
+    debit = None if payment is None else payment.direct_debit
     settlement = SubElement(transaction, "ram:ApplicableHeaderTradeSettlement")
+    _put_text(
+        settlement,
+        "ram:CreditorReferenceID",
+        None if debit is None else debit.creditor_id,
+        "BT-90",
+    )
+    _put_text(
+        settlement,
+        "ram:PaymentReference",
+        None if payment is None else payment.remittance_information,
+        "BT-83",
+    )
     _put_text(settlement, "ram:TaxCurrencyCode", invoice.tax_currency_code, "BT-6")
     _put_text(settlement, "ram:InvoiceCurrencyCode", invoice.currency_code, "BT-5")
+    if payment is not None:
+        _write_payment_means(settlement, payment)
     for vat in _group(invoice.vat_breakdown, VatBreakdown, "BG-23"):
         tax = SubElement(settlement, "ram:ApplicableTradeTax")
         _put_amount(tax, "ram:CalculatedAmount", vat.tax_amount, "BT-117")
@@ -346,8 +451,17 @@ def write(invoice: Invoice) -> bytes:
         _put_text(tax, "ram:CategoryCode", vat.category_code, "BT-118")
         _put_text(tax, "ram:ExemptionReasonCode", vat.exemption_reason_code, "BT-121")
         _put_amount(tax, "ram:RateApplicablePercent", vat.rate, "BT-119")
-    _put_date(
-        settlement, "ram:SpecifiedTradePaymentTerms/ram:DueDateDateTime", invoice.due_date, "BT-9"
+    terms = SubElement(settlement, "ram:SpecifiedTradePaymentTerms")
+    payment_terms = _checked_text(invoice.payment_terms, "BT-20")
+    if payment_terms is not None and _ends_with_discount_terms(payment_terms):
+        payment_terms += "\n"
+    _leaf(terms, "ram:Description", payment_terms, {})
+    _put_date(terms, "ram:DueDateDateTime", invoice.due_date, "BT-9")
+    _put_text(
+        terms,
+        "ram:DirectDebitMandateID",
+        None if debit is None else debit.mandate_reference,
+        "BT-89",
     )
     _write_totals(settlement, invoice)
 
@@ -466,6 +580,80 @@ def _write_contact(party: Element, contact: object, terms: PartyTerms) -> None:
         terms.telephone,
     )
     _put_text(element, "ram:EmailURIUniversalCommunication/ram:URIID", contact.email, terms.email)
+
+
+def _ends_with_discount_terms(payment_terms: str) -> bool:
+    """Whether a line starts with `#`, as XRechnung's discount terms do, and the text ends with a
+    `#…#` run, after which BR-DE-18 then wants a line feed (REQ-004-PRS-F003)."""
+    lines = payment_terms.split("\n")
+    if not any(line.lstrip(XML_WHITESPACE).startswith("#") for line in lines):
+        return False
+    runs = list(_HASH_RUN.finditer(payment_terms))
+    return bool(runs) and runs[-1].end() == len(payment_terms)
+
+
+def _checked_instructions(payment: object) -> PaymentInstructions | None:
+    """BG-16, with the groups in it of their classes and holding the terms they require."""
+    if payment is None:
+        return None
+    if not isinstance(payment, PaymentInstructions):
+        raise InvoiceWriteError(f"BG-16 is not a PaymentInstructions: {payment!r}")
+    if payment.means_code is None:
+        raise InvoiceWriteError("BG-16 holds payment instructions without their means code (BT-81)")
+    for transfer in _group(payment.credit_transfers, CreditTransfer, "BG-17"):
+        if transfer.account_id is None:
+            raise InvoiceWriteError("BG-17 holds a credit transfer without its account (BT-84)")
+    card = cast(object, payment.card)
+    if card is not None:
+        if not isinstance(card, PaymentCard):
+            raise InvoiceWriteError(f"BG-18 is not a PaymentCard: {card!r}")
+        if card.account_number is None:
+            raise InvoiceWriteError("BG-18 holds a card without its account number (BT-87)")
+    debit = cast(object, payment.direct_debit)
+    if debit is not None:
+        if not isinstance(debit, DirectDebit):
+            raise InvoiceWriteError(f"BG-19 is not a DirectDebit: {debit!r}")
+        if debit == DirectDebit():
+            raise InvoiceWriteError("BG-19 holds a direct debit without any term")
+    return payment
+
+
+def _write_payment_means(settlement: Element, payment: PaymentInstructions) -> None:
+    """One payment means for each credit transfer, or one without any; the card and the
+    debited account in the first (REQ-004-PRS-F003)."""
+    transfers: tuple[CreditTransfer | None, ...] = payment.credit_transfers or (None,)
+    for index, transfer in enumerate(transfers):
+        means = SubElement(settlement, "ram:SpecifiedTradeSettlementPaymentMeans")
+        _put_text(means, "ram:TypeCode", payment.means_code, "BT-81")
+        _put_text(means, "ram:Information", payment.means_text, "BT-82")
+        if index == 0:
+            card = payment.card
+            if card is not None:
+                element = SubElement(means, "ram:ApplicableTradeSettlementFinancialCard")
+                _put_text(element, "ram:ID", card.account_number, "BT-87")
+                _put_text(element, "ram:CardholderName", card.holder_name, "BT-88")
+            debit = payment.direct_debit
+            _put_text(
+                means,
+                "ram:PayerPartyDebtorFinancialAccount/ram:IBANID",
+                None if debit is None else debit.debited_account_id,
+                "BT-91",
+            )
+        if transfer is not None:
+            account = SubElement(means, "ram:PayeePartyCreditorFinancialAccount")
+            account_id = _checked_text(transfer.account_id, "BT-84")
+            iban = account_id is not None and _IBAN.fullmatch(account_id) is not None
+            if iban:
+                _put_text(account, "ram:IBANID", account_id, "BT-84")
+            _put_text(account, "ram:AccountName", transfer.account_name, "BT-85")
+            if not iban:
+                _put_text(account, "ram:ProprietaryID", account_id, "BT-84")
+            _put_text(
+                means,
+                "ram:PayeeSpecifiedCreditorFinancialInstitution/ram:BICID",
+                transfer.provider_id,
+                "BT-86",
+            )
 
 
 def _write_totals(settlement: Element, invoice: Invoice) -> None:

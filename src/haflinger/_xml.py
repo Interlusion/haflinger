@@ -203,15 +203,14 @@ class Node:
         """The first element at `path` that holds a value, for a group the model holds once; each
         further one holding a value is left out with a finding. Where `terms` gives the paths of
         the group's terms, only an element holding a value at one of them counts."""
-        nodes = [
-            node
-            for node in self.findall(path)
-            if node.holds_value()
-            and (not terms or any(term.holds_value() for p in terms for term in node.findall(p)))
-        ]
-        for node in nodes[1:]:
-            node.drop(f"{group} appears more than once; this one is left out")
-        return nodes[0] if nodes else None
+        return first_group(
+            [
+                node
+                for node in self.findall(path)
+                if not terms or any(term.holds_value() for p in terms for term in node.findall(p))
+            ],
+            group,
+        )
 
     def attribute(self, name: str) -> str | None:
         return _stripped(self.element.get(name))
@@ -283,6 +282,20 @@ class Node:
             "error",
             f"{term} is not written as {kind}: {value!r}; read as missing",
         )
+
+
+def none_if_empty[T](group: T) -> T | None:
+    """A group read from the document, or None where it holds no term (REQ-001-PRS-F001)."""
+    return None if group == type(group)() else group
+
+
+def first_group(nodes: list[Node], group: str) -> Node | None:
+    """The first of `nodes` that holds a value, for a group the model holds once; each further one
+    holding a value is left out with a finding."""
+    nodes = [node for node in nodes if node.holds_value()]
+    for node in nodes[1:]:
+        node.drop(f"{group} appears more than once; this one is left out")
+    return nodes[0] if nodes else None
 
 
 def first_of(nodes: list[Node], term: str) -> Node | None:

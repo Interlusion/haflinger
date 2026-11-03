@@ -221,7 +221,13 @@ WITHOUT_LINES = replace(
         amount_due=MODEL.totals.amount_due,
     ),
 )
-MINIMUM = replace(WITHOUT_LINES, vat_breakdown=(), buyer=Party(name=MODEL.buyer.name))
+MINIMUM = replace(
+    WITHOUT_LINES,
+    vat_breakdown=(),
+    buyer=Party(name=MODEL.buyer.name),
+    payment_terms=None,
+    payment_instructions=None,
+)
 BASIC = replace(MODEL, seller=replace(MODEL.seller, contact=None))
 BASIC_WL = replace(
     WITHOUT_LINES,

@@ -11,7 +11,18 @@ from pathlib import Path
 
 import pytest
 
-from haflinger import Contact, Identifier, InvoiceReadError, Note, ReadResult, read_invoice
+from haflinger import (
+    Contact,
+    CreditTransfer,
+    DirectDebit,
+    Identifier,
+    InvoiceReadError,
+    Note,
+    PaymentCard,
+    PaymentInstructions,
+    ReadResult,
+    read_invoice,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 STANDARD = ROOT / "tests/data/kosit-testsuite/instances/standard"
@@ -1026,7 +1037,8 @@ def test_seller_identifiers_with_and_without_scheme() -> None:
             Identifier(value="B2"),
             Identifier(value="4000001000005", scheme="0088"),
         )
-        assert result.findings == ()
+        # The UBL SEPA identifier is no BT-29, and without a mandate no BT-90 either.
+        assert dropped(result) == ([] if data is cii else ["BT-90"])
 
 
 def test_seller_tax_registration_identifier() -> None:
@@ -1239,3 +1251,271 @@ def test_a_contact_element_holding_none_of_the_contacts_terms_is_not_the_contact
             point="nicht vorhanden", telephone="+49 1234-5678", email="seller@email.de"
         )
         assert result.findings == ()
+
+
+# REQ-003-PRS-F002: payment instructions
+
+# Dummy IBANs from KoSIT's test files.
+IBAN, OTHER_IBAN = "DE79000000001234567890", "DE16000000002345678901"
+CII_MEANS_END = b"</ram:SpecifiedTradeSettlementPaymentMeans>"
+CII_MEANS_CODE = (
+    b"<ram:TypeCode>58</ram:TypeCode>\r\n                <ram:PayeePartyCreditorFinancialAccount>"
+)
+UBL_MEANS_END = b"</cac:PaymentMeans>"
+UBL_MEANS_CODE = b"<cbc:PaymentMeansCode>58</cbc:PaymentMeansCode>"
+
+
+def cii_means(code: str, account: bytes) -> bytes:
+    return (
+        b"<ram:SpecifiedTradeSettlementPaymentMeans><ram:TypeCode>"
+        + code.encode()
+        + b"</ram:TypeCode><ram:Information>SEPA</ram:Information>"
+        b"<ram:PayeePartyCreditorFinancialAccount>"
+        + account
+        + b"</ram:PayeePartyCreditorFinancialAccount></ram:SpecifiedTradeSettlementPaymentMeans>"
+    )
+
+
+def ubl_means(code: str, account: str) -> bytes:
+    return (
+        b'<cac:PaymentMeans><cbc:PaymentMeansCode name="SEPA">'
+        + code.encode()
+        + b"</cbc:PaymentMeansCode><cac:PayeeFinancialAccount><cbc:ID>"
+        + account.encode()
+        + b"</cbc:ID></cac:PayeeFinancialAccount></cac:PaymentMeans>"
+    )
+
+
+def test_a_payment_means_repeated_for_another_account_is_one() -> None:
+    """One with another means code is left out with what it holds."""
+    cii = edit(
+        CII,
+        CII_MEANS_CODE,
+        CII_MEANS_CODE.replace(
+            b"</ram:TypeCode>", b"</ram:TypeCode><ram:Information>SEPA</ram:Information>"
+        ),
+    )
+    cii = edit(
+        cii,
+        CII_MEANS_END,
+        CII_MEANS_END
+        + cii_means("58", b"<ram:ProprietaryID>12345678</ram:ProprietaryID>")
+        + cii_means("30", b"<ram:IBANID>" + OTHER_IBAN.encode() + b"</ram:IBANID>"),
+    )
+    ubl = edit(UBL, UBL_MEANS_CODE, b'<cbc:PaymentMeansCode name="SEPA">58</cbc:PaymentMeansCode>')
+    ubl = edit(
+        ubl,
+        UBL_MEANS_END,
+        UBL_MEANS_END + ubl_means("58", "12345678") + ubl_means("30", OTHER_IBAN),
+    )
+    for data in (cii, ubl):
+        result = read_invoice(data)
+        assert result.invoice.payment_instructions == PaymentInstructions(
+            means_code="58",
+            means_text="SEPA",
+            credit_transfers=(
+                CreditTransfer(account_id=IBAN),
+                CreditTransfer(account_id="12345678"),
+            ),
+        )
+        assert dropped(result) == ["BG-16"]
+
+
+def test_card_direct_debit_and_creditor_identifier() -> None:
+    card_and_debtor = (
+        b"<ram:ApplicableTradeSettlementFinancialCard><ram:ID>1234</ram:ID>"
+        b"<ram:CardholderName>Max Muster</ram:CardholderName>"
+        b"</ram:ApplicableTradeSettlementFinancialCard>"
+        b"<ram:PayerPartyDebtorFinancialAccount><ram:IBANID>"
+        + OTHER_IBAN.encode()
+        + b"</ram:IBANID></ram:PayerPartyDebtorFinancialAccount>"
+    )
+    cii = edit(
+        CII,
+        CII_MEANS_CODE,
+        CII_MEANS_CODE.replace(
+            b"<ram:PayeePartyCreditorFinancialAccount>",
+            card_and_debtor + b"<ram:PayeePartyCreditorFinancialAccount>",
+        ),
+    )
+    cii = edit(
+        cii,
+        b"<ram:IBANID>DE79000000001234567890</ram:IBANID>",
+        b"<ram:IBANID>DE79000000001234567890</ram:IBANID>"
+        b"<ram:AccountName>Example GmbH</ram:AccountName>",
+    )
+    cii = edit(
+        cii,
+        CII_MEANS_END,
+        b"<ram:PayeeSpecifiedCreditorFinancialInstitution><ram:BICID>EXMPDEFFXXX</ram:BICID>"
+        b"</ram:PayeeSpecifiedCreditorFinancialInstitution>" + CII_MEANS_END,
+    )
+    cii = edit(
+        cii,
+        b"<ram:InvoiceCurrencyCode>EUR</ram:InvoiceCurrencyCode>",
+        b"<ram:CreditorReferenceID>DE98ZZZ09999999999</ram:CreditorReferenceID>"
+        b"<ram:PaymentReference>R-1</ram:PaymentReference>"
+        b"<ram:InvoiceCurrencyCode>EUR</ram:InvoiceCurrencyCode>",
+    )
+    cii = edit(
+        cii,
+        PAYMENT_TERMS,
+        PAYMENT_TERMS + b"<ram:DirectDebitMandateID>M-1</ram:DirectDebitMandateID>",
+    )
+    ubl = edit(
+        UBL,
+        UBL_MEANS_CODE,
+        UBL_MEANS_CODE + b"<cbc:PaymentID>R-1</cbc:PaymentID>"
+        b"<cac:CardAccount><cbc:PrimaryAccountNumberID>1234</cbc:PrimaryAccountNumberID>"
+        b"<cbc:NetworkID>VISA</cbc:NetworkID><cbc:HolderName>Max Muster</cbc:HolderName>"
+        b"</cac:CardAccount>",
+    )
+    ubl = edit(
+        ubl,
+        b"<cbc:ID>DE79000000001234567890</cbc:ID>",
+        b"<cbc:ID>DE79000000001234567890</cbc:ID><cbc:Name>Example GmbH</cbc:Name>"
+        b"<cac:FinancialInstitutionBranch><cbc:ID>EXMPDEFFXXX</cbc:ID>"
+        b"</cac:FinancialInstitutionBranch>",
+    )
+    ubl = edit(
+        ubl,
+        UBL_MEANS_END,
+        b"<cac:PaymentMandate><cbc:ID>M-1</cbc:ID><cac:PayerFinancialAccount><cbc:ID>"
+        + OTHER_IBAN.encode()
+        + b"</cbc:ID></cac:PayerFinancialAccount></cac:PaymentMandate>"
+        + UBL_MEANS_END,
+    )
+    sepa = b'<cac:PartyIdentification><cbc:ID schemeID="SEPA">{}</cbc:ID></cac:PartyIdentification>'
+    ubl = edit(
+        ubl,
+        UBL_SELLER_ENDPOINT,
+        UBL_SELLER_ENDPOINT + sepa.replace(b"{}", b"DE98ZZZ09999999999"),
+    )
+    ubl = edit(
+        ubl,
+        b"</cac:AccountingCustomerParty>",
+        b"</cac:AccountingCustomerParty><cac:PayeeParty>"
+        + sepa.replace(b"{}", b"DE11ZZZ00000000001")
+        + b"<cac:PartyName><cbc:Name>Example Factoring GmbH</cbc:Name></cac:PartyName>"
+        b"</cac:PayeeParty>",
+    )
+    for data, creditor in ((cii, "DE98ZZZ09999999999"), (ubl, "DE11ZZZ00000000001")):
+        result = read_invoice(data)
+        assert result.invoice.payment_instructions == PaymentInstructions(
+            means_code="58",
+            remittance_information="R-1",
+            credit_transfers=(
+                CreditTransfer(
+                    account_id=IBAN, account_name="Example GmbH", provider_id="EXMPDEFFXXX"
+                ),
+            ),
+            card=PaymentCard(account_number="1234", holder_name="Max Muster"),
+            direct_debit=DirectDebit(
+                mandate_reference="M-1", creditor_id=creditor, debited_account_id=OTHER_IBAN
+            ),
+        )
+        # The seller's identifier beside the payee's is a second one.
+        assert dropped(result) == ([] if data is cii else ["BT-90"])
+
+
+def test_a_cii_account_given_also_as_proprietary_id_reads_the_iban() -> None:
+    result = read_invoice(
+        edit(
+            CII,
+            b"<ram:IBANID>DE79000000001234567890</ram:IBANID>",
+            b"<ram:IBANID>DE79000000001234567890</ram:IBANID>"
+            b"<ram:ProprietaryID>44421800</ram:ProprietaryID>",
+        )
+    )
+    assert result.invoice.payment_instructions is not None
+    assert result.invoice.payment_instructions.credit_transfers == (
+        CreditTransfer(account_id=IBAN),
+    )
+    assert dropped(result) == ["BT-84"]
+
+
+def test_an_invoice_without_payment_means() -> None:
+    cii = (
+        CII[: CII.index(b"<ram:SpecifiedTradeSettlementPaymentMeans>")]
+        + CII[CII.index(CII_MEANS_END) + len(CII_MEANS_END) :]
+    )
+    ubl = (
+        UBL[: UBL.index(b"<cac:PaymentMeans>")]
+        + UBL[UBL.index(UBL_MEANS_END) + len(UBL_MEANS_END) :]
+    )
+    for data in (cii, ubl):
+        result = read_invoice(data)
+        assert result.invoice.payment_instructions is None
+        assert result.invoice.payment_terms == "Zahlbar sofort ohne Abzug."
+        assert result.findings == ()
+
+
+def test_a_repeated_payment_means_with_another_text_keeps_its_account() -> None:
+    """Payment means differ by their code alone; another text or remittance information is
+    dropped as that term."""
+    cii = edit(
+        CII,
+        CII_MEANS_CODE,
+        CII_MEANS_CODE.replace(
+            b"</ram:TypeCode>", b"</ram:TypeCode><ram:Information>SEPA</ram:Information>"
+        ),
+    )
+    other = cii_means("58", b"<ram:IBANID>" + OTHER_IBAN.encode() + b"</ram:IBANID>")
+    cii = edit(cii, CII_MEANS_END, CII_MEANS_END + other.replace(b">SEPA<", b">Other<"))
+    ubl = edit(UBL, UBL_MEANS_CODE, UBL_MEANS_CODE + b"<cbc:PaymentID>R-1</cbc:PaymentID>")
+    ubl = edit(
+        ubl,
+        UBL_MEANS_END,
+        UBL_MEANS_END
+        + ubl_means("58", OTHER_IBAN).replace(
+            b"</cbc:PaymentMeansCode>", b"</cbc:PaymentMeansCode><cbc:PaymentID>R-2</cbc:PaymentID>"
+        ),
+    )
+    for data, findings in ((cii, ["BT-82"]), (ubl, ["BT-83"])):
+        result = read_invoice(data)
+        payment = result.invoice.payment_instructions
+        assert payment is not None
+        assert payment.credit_transfers == (
+            CreditTransfer(account_id=IBAN),
+            CreditTransfer(account_id=OTHER_IBAN),
+        )
+        assert (payment.means_text, payment.remittance_information) == (
+            ("SEPA", None) if data is cii else ("SEPA", "R-1")
+        )
+        assert dropped(result) == findings
+
+
+def test_a_ubl_creditor_identifier_without_a_mandate_is_dropped() -> None:
+    """Without a direct debit there is no BT-90; a scheme counts with whitespace removed."""
+    for scheme in (b"SEPA", b" SEPA "):
+        data = edit(
+            UBL,
+            UBL_SELLER_ENDPOINT,
+            UBL_SELLER_ENDPOINT
+            + b'<cac:PartyIdentification><cbc:ID schemeID="'
+            + scheme
+            + b'">DE98ZZZ09999999999</cbc:ID></cac:PartyIdentification>',
+        )
+        result = read_invoice(data)
+        assert result.invoice.seller is not None
+        assert result.invoice.seller.identifiers == ()
+        assert result.invoice.payment_instructions is not None
+        assert result.invoice.payment_instructions.direct_debit is None
+        assert dropped(result) == ["BT-90"]
+
+
+def test_a_cii_bic_without_an_account_is_dropped() -> None:
+    data = edit(
+        CII,
+        CII_MEANS_END,
+        CII_MEANS_END + b"<ram:SpecifiedTradeSettlementPaymentMeans><ram:TypeCode>58</ram:TypeCode>"
+        b"<ram:PayeeSpecifiedCreditorFinancialInstitution><ram:BICID>EXMPDEFFXXX</ram:BICID>"
+        b"</ram:PayeeSpecifiedCreditorFinancialInstitution>"
+        b"</ram:SpecifiedTradeSettlementPaymentMeans>",
+    )
+    result = read_invoice(data)
+    assert result.invoice.payment_instructions is not None
+    assert result.invoice.payment_instructions.credit_transfers == (
+        CreditTransfer(account_id=IBAN),
+    )
+    assert dropped(result) == ["BT-86"]
