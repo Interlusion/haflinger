@@ -30,7 +30,7 @@ What is known (2026-11-01):
 ## Options
 
 - **Saxon in the app's process**, as today: allowed only if a lawyer says that importing an independently installed `saxonche` doesn't form a combined work. Saxonica gives no extra permission (see below).
-- **Validation in a separate process** that the app starts or calls, with invoice bytes in and findings out: an Apache-2.0 Haflinger worker that loads `saxonche`, while the app's process never does. It is the same boundary [ITEM-007](item-007-validation-time-limit.md) needs for a time limit, and a crash of Saxon wouldn't take the app's process down. Saxonica left open whether it suffices legally.
+- **Validation in a separate process** that the app starts or calls, with invoice bytes in and findings out: an Apache-2.0 Haflinger worker that loads `saxonche`, while the app's process never does. It is the same boundary [ITEM-007](archive/item-007-validation-time-limit.md) needs for a time limit, and a crash of Saxon wouldn't take the app's process down. Saxonica left open whether it suffices legally.
 - **Another engine** ([ADR-006](../arc42/adr/ADR-006-validation-with-official-rules.md), trigger 2): Xee, once it runs the official rules with the same findings as Saxon, Saxon serving as the oracle in CI.
 - **A commercial licence** for Saxon-PE or Saxon-EE, which Saxonica offers for redistribution: it fits a closed product, not a GPL-3.0 app given away, whose users would each need a licence and whose combination with proprietary code the GPL doesn't allow either.
 
@@ -47,7 +47,7 @@ So Saxonica neither allows nor forbids the in-process combination, and won't wid
 
 ## Open Questions
 
-- [ADR-010](../arc42/adr/ADR-010-saxon-in-a-worker-process.md) puts Saxon into a worker process that Haflinger starts, so that no caller's process, the app's included, loads `saxonche`. A lawyer should still confirm that the boundary suffices before the app is published.
+- [ADR-010](../arc42/adr/ADR-010-saxon-in-a-worker-process.md) puts Saxon into a worker process that Haflinger starts, so that no caller's process, the app's included, loads `saxonche`; built on 2026-11-02 (REQ-002-PRS-NF005). A lawyer should still confirm that the boundary suffices before the app is published.
 - Which licence texts and notices an image or installer that holds `saxonche` must carry, since the wheel brings none: the lists in the Saxon 13 documentation, checked against the components in the wheel, GraalVM Community Edition's among them.
 
 Also open: whether the app must be GPL-3.0 at all, if it used only the Frappe Framework (MIT) and none of ERPNext's code; the app works on ERPNext's sales and purchase invoices ([ITEM-003](item-003-erpnext-app.md)), so it would import ERPNext.

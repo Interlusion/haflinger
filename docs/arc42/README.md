@@ -103,7 +103,8 @@ flowchart TB
         validate["validate<br/>rules into findings"]
         xsd["XSD check<br/>(lxml)"]
         kosit["kosit<br/>KoSIT reading path"]
-        saxon["_saxon<br/>runs official XSLT"]
+        saxon["_saxon<br/>talks to the worker, time limit"]
+        worker["_worker (own process)<br/>runs official XSLT with Saxon"]
         artefacts[("artefacts<br/>vendored rules and stylesheets")]
         pdf["pdf (extra)<br/>extract and embed XML"]
     end
@@ -122,7 +123,8 @@ flowchart TB
     cii & ubl --> safe
     validate --> saxon
     kosit --> saxon
-    saxon --> artefacts
+    saxon -- "text over pipes" --> worker
+    worker --> artefacts
     tests -. "check our readers against" .-> kosit
 ```
 
@@ -135,7 +137,8 @@ flowchart TB
 | `validate` | Choose the rule set, check the invoice against the rule set's XML Schema, run the rules on a schema-valid invoice, turn the SVRL report into findings (rule, flag, location, text) | Built: KoSIT's scenarios with their levels (EN 16931, XRechnung 3.0, its extension, CVD); FeRD's Factur-X rules (MINIMUM, BASIC WL, BASIC, EXTENDED, and EN 16931 for written invoices), compiled with SchXslt on first use |
 | XSD check | Check an incoming invoice against the XML Schema of its rule set before the rules, and a written invoice against the CII and Factur-X XML Schemas | Built, with lxml ([ADR-006](adr/ADR-006-validation-with-official-rules.md)): on `validate`, on the text as decoded for Saxon, CII D16B, UBL 2.1 Invoice and CreditNote, and FeRD's schema of each Factur-X profile (MINIMUM, BASIC WL, BASIC, EXTENDED); on writing, on the bytes as a recipient parses them, CII D16B and Factur-X's EN 16931 profile for that target |
 | `kosit` | Read through KoSIT's stylesheet into the same model; the tests' independent second reader | Built; agrees with `read_invoice` on the KoSIT suite, CEN's UBL credit note and the vendored corpus PDFs |
-| `_saxon` | Compile each stylesheet once per process, run it on the document as text in memory, decoded once in Python | Built; imports `saxonche` on first use; Saxon opens only local files |
+| `_saxon` | Start the worker process on first use and keep it; a helper thread alone talks to it, taking the calls' requests in turn, so that a signal in a caller never interrupts an exchange; send it the document, decoded once in Python, and the stylesheets' names; enforce the time limit, killing the worker when it passes; replace a worker that died; log its stderr | Built ([ADR-010](adr/ADR-010-saxon-in-a-worker-process.md)); never imports `saxonche` |
+| `_worker` | A process of its own: compile each stylesheet once, run it on the document, reply with each output as text | Built; the only module that imports `saxonche`; Saxon opens only local files |
 | `artefacts` | KoSIT's visualisation stylesheets (the reading stylesheet) and validator stylesheets, unchanged, with provenance READMEs | Vendored: KoSIT's visualisation and validator configuration, FeRD's Factur-X Schematron and XML Schemas, SchXslt |
 | `pdf` | Extract the XML from a ZUGFeRD PDF without parsing it; embed checked XML into a PDF/A file the caller rendered (PDF/A-3, XMP), via `factur-x` | Built, extra `pdf`: `extract_xml` inflates against the size limit itself, within limits on the tree of embedded files, on the streams it decodes and on its time (3 s); `embed` writes the EN 16931 profile, with the relationship `Alternative` |
 
@@ -149,7 +152,7 @@ Which spec owns which block: the placement map in the [specs index](../specs/REA
 sequenceDiagram
     participant A as Caller
     participant H as haflinger
-    participant S as Saxon with official rules
+    participant S as Worker: Saxon with official rules
     A->>H: read_invoice(bytes: XML or PDF)
     H->>H: check the size limit
     opt PDF, with the pdf extra
@@ -162,14 +165,14 @@ sequenceDiagram
     H->>H: check the size limit, parse safely, choose the rule set by syntax, profile and version
     H->>H: XML Schema of the rule set (lxml, ADR-006)
     opt schema-valid
-        H->>S: the decoded text, the rule set
-        S-->>H: report of failed rules
+        H->>S: the decoded text, the rule set's stylesheets
+        S-->>H: report of failed rules, within the time limit
     end
     H-->>A: findings
     A->>A: archive the original unchanged, show to a person
 ```
 
-An incomplete invoice is read with what it holds, and the rules report the rest. Reading reports what it couldn't take into the model; it doesn't validate, and no finding stops an invoice from being read ([REQ-003-PRS-F008](../specs/req-003-incoming-invoices.md#req-003-prs-f008-findings-on-incoming-invoices)). What is refused is listed in [REQ-003-PRS-F006](../specs/req-003-incoming-invoices.md#req-003-prs-f006-refusals).
+When the rules don't end within the time limit, the worker is killed and the call refused; the next call starts a new worker (REQ-002-PRS-NF004). An incomplete invoice is read with what it holds, and the rules report the rest. Reading reports what it couldn't take into the model; it doesn't validate, and no finding stops an invoice from being read ([REQ-003-PRS-F008](../specs/req-003-incoming-invoices.md#req-003-prs-f008-findings-on-incoming-invoices)). What is refused is listed in [REQ-003-PRS-F006](../specs/req-003-incoming-invoices.md#req-003-prs-f006-refusals).
 
 ### Sending an invoice
 
@@ -177,7 +180,7 @@ An incomplete invoice is read with what it holds, and the rules report the rest.
 sequenceDiagram
     participant A as Caller
     participant H as haflinger
-    participant S as Saxon with official rules
+    participant S as Worker: Saxon with official rules
     A->>H: write_cii(model)
     H->>H: check the target profile and the values
     H->>H: write CII
@@ -200,27 +203,33 @@ An invalid invoice is refused with its findings and the written document; a mode
 
 ## 7. Deployment view
 
-The library is a Python package installed into the caller's Python environment. No service, no container, no network at runtime. The first host is a Frappe bench, where the ERPNext app and the library share one environment, so the library's dependencies have to fit the versions the bench pins ([ADR-002](adr/ADR-002-toolchain.md)).
+The library is a Python package installed into the caller's Python environment. No service, no container, no network at runtime. Validation starts one worker process per calling process, from the same environment, and keeps it: about 160 MB with a rule set compiled, while the caller holds no Saxon ([ADR-010](adr/ADR-010-saxon-in-a-worker-process.md)). The worker's pipes need a POSIX system (Linux, macOS). The first host is a Frappe bench, where the ERPNext app and the library share one environment, so the library's dependencies have to fit the versions the bench pins ([ADR-002](adr/ADR-002-toolchain.md)).
 
 ```mermaid
 flowchart LR
     subgraph env["The caller's Python environment<br/>(first: a Frappe bench)"]
-        caller["calling software"]
-        lib["haflinger[pdf]"]
-        saxon["saxonche<br/>(native wheel)"]
-        lxml["lxml<br/>(native wheel)"]
-        facturx["factur-x, pypdf<br/>(extra pdf)"]
+        subgraph proc["calling process"]
+            caller["calling software"]
+            lib["haflinger[pdf]"]
+            lxml["lxml<br/>(native wheel)"]
+            facturx["factur-x, pypdf<br/>(extra pdf)"]
+        end
+        subgraph wproc["worker process"]
+            worker["haflinger._worker"]
+            saxon["saxonche<br/>(native wheel)"]
+        end
     end
-    caller --> lib --> saxon
+    caller --> lib
     lib --> lxml
     lib -.-> facturx
+    lib -- "starts, pipes" --> worker --> saxon
 ```
 
 Nothing is released yet; the name is reserved on PyPI ([backlog](../backlog/backlog.md)). `saxonche` is a native wheel per platform; which platforms it covers, and its size, are in [ADR-006](adr/ADR-006-validation-with-official-rules.md).
 
 ## 8. Cross-cutting concepts
 
-- **Hostile input:** XML is parsed with `defusedxml`, DTDs forbidden, before any other component sees it, also XML embedded in a PDF. Saxon and lxml's check of an incoming invoice then get the document as received, decoded once in Python and held as text in memory, never a re-serialised tree or a file; Saxon opens only local files ([ADR-006](adr/ADR-006-validation-with-official-rules.md)). Every input, and every file unpacked from a PDF, has a size limit (REQ-001); looking for the invoice in a PDF is bounded too, in the entries of its tree of embedded files, in the bytes of the streams it decodes on the way, and in time: it stops after 3 s, which no ZUGFeRD PDF comes near (REQ-003). Rendering for people, later, needs the current KoSIT release, which fixed script injection through attachment names.
+- **Hostile input:** XML is parsed with `defusedxml`, DTDs forbidden, before any other component sees it, also XML embedded in a PDF. Saxon, in its worker process, and lxml's check of an incoming invoice then get the document as received, decoded once in Python and held as text in memory, never a re-serialised tree or a file; Saxon opens only local files ([ADR-006](adr/ADR-006-validation-with-official-rules.md)). Every input, and every file unpacked from a PDF, has a size limit (REQ-001); looking for the invoice in a PDF is bounded too, in the entries of its tree of embedded files, in the bytes of the streams it decodes on the way, and in time: it stops after 3 s, which no ZUGFeRD PDF comes near (REQ-003). The official rules run within a time limit, in a worker process that is killed when it passes, so that neither a slow invoice nor a crash in Saxon holds or ends the caller's process (REQ-002-PRS-NF004, REQ-002-PRS-NF005). Rendering for people, later, needs the current KoSIT release, which fixed script injection through attachment names.
 
 - **Exact values:** amounts, quantities, prices and rates are `Decimal` exactly as written, in XML Schema's decimal form; dates are `date`. Nothing is rounded on reading or on writing; the writer writes the digits the model holds. REQ-001 names the only three exceptions (whitespace and the notation of numbers on reading, exponent notation on writing).
 
@@ -267,6 +276,7 @@ The quality goals of section 1, made testable. The requirement column names the 
 | :- | :- | :- | :- |
 | QS-07 | An XML file declares a DTD or an entity, also inside a PDF | Refused before any stylesheet or reader sees it | [REQ-001-PRS-NF001](../specs/req-001-core.md#req-001-prs-nf001-outside-input) |
 | QS-12 | A small PDF carries an embedded file that inflates to gigabytes | Refused once the unpacked XML passes the size limit | [REQ-003-PRS-NF001](../specs/req-003-incoming-invoices.md#req-003-prs-nf001-embedded-files-within-the-limit) |
+| QS-13 | A crafted invoice makes the official rules run for minutes | Refused when the time limit passes, the worker killed and replaced, the caller's process unaffected; measured: 16,000 distinct `cbc:PaymentID` (about 5 s of rules) refused within 1.5 s at a limit of 0.5 s | [REQ-002-PRS-NF004](../specs/req-002-conformance.md#req-002-prs-nf004-time-limit) |
 
 ### Speed
 
@@ -274,7 +284,7 @@ Speed serves conformance: every invoice, received or sent, is validated.
 
 | ID | Scenario | Response and measure | Requirement |
 | :- | :- | :- | :- |
-| QS-08 | A 25.7 MB invoice with 26,813 lines arrives or is sent | Measured: reading 1.0 s with our mapping (KoSIT's stylesheet: 11 minutes in the spikes, which is why it is not the reader), validating 7.6–8.2 s with the XML Schema check first, writing 0.8 s; the 61.1 MB invoice read in 2.5 s (2026-10-31) and validated in 18.5–18.6 s, of which the XML Schema check takes 0.5 s (1.75–1.92 GiB peak memory); the first validation in a process, compiling its rules included, 0.17–0.29 s for KoSIT's scenarios, 0.09 s for Factur-X MINIMUM and 1.05 s for Factur-X EXTENDED | [REQ-002-PRS-NF002](../specs/req-002-conformance.md#req-002-prs-nf002-speed), [REQ-003-PRS-NF002](../specs/req-003-incoming-invoices.md#req-003-prs-nf002-speed), [REQ-004-PRS-NF001](../specs/req-004-outgoing-invoices.md#req-004-prs-nf001-speed) |
+| QS-08 | A 25.7 MB invoice with 26,813 lines arrives or is sent | Measured: reading 1.0 s with our mapping (KoSIT's stylesheet: 11 minutes in the spikes, which is why it is not the reader), validating 7.6–8.2 s with the XML Schema check first, writing 0.8 s; the 61.1 MB invoice read in 2.5 s (2026-10-31) and validated in 18.5–18.6 s, of which the XML Schema check takes 0.5 s (1.75–1.92 GiB peak memory); the first validation in a process, compiling its rules included, 0.17–0.29 s for KoSIT's scenarios, 0.09 s for Factur-X MINIMUM and 1.05 s for Factur-X EXTENDED; with the worker process (2026-11-02), the first validation of KoSIT's CII case 01.01a 0.31 s, starting the worker included, and each after it 5 ms | [REQ-002-PRS-NF002](../specs/req-002-conformance.md#req-002-prs-nf002-speed), [REQ-003-PRS-NF002](../specs/req-003-incoming-invoices.md#req-003-prs-nf002-speed), [REQ-004-PRS-NF001](../specs/req-004-outgoing-invoices.md#req-004-prs-nf001-speed) |
 
 ### Keeping current
 
@@ -292,11 +302,11 @@ Speed serves conformance: every invoice, received or sent, is validated.
 
 | Risk | Mitigation |
 | :- | :- |
-| Saxon: large, native, licence not yet confirmed ([ADR-006](adr/ADR-006-validation-with-official-rules.md)) | [ADR-010](adr/ADR-010-saxon-in-a-worker-process.md) moves it into a worker process, out of the caller's (not built yet); the platforms and the licence are open questions 1 and 2; without Saxon at runtime, incoming invoices couldn't be validated, so there is no fallback short of a new ADR |
+| Saxon: large, native, licence not yet confirmed ([ADR-006](adr/ADR-006-validation-with-official-rules.md)) | [ADR-010](adr/ADR-010-saxon-in-a-worker-process.md) runs it in a worker process, out of the caller's; the platforms and the licence are open questions 1 and 2; without Saxon at runtime, incoming invoices couldn't be validated, so there is no fallback short of a new ADR |
 | EN 16931-1:2026 and XRechnung 4.0, in parallel with 2017 for years ([ITEM-001](../backlog/item-001-en16931-2026.md)) | Edition-aware model from the start ([ADR-007](adr/ADR-007-model-scope-and-editions.md)); follow KoSIT's and CEN's releases |
 | The model holds a sum without its parts (BT-107 without BG-20): harmless when reading, an invalid invoice when writing | Write a profile only when the model holds its terms; the writer's tests list the rules still missed (REQ-004) |
 | Very large invoices | Our own mapping reads them; KoSIT's stylesheet only in tests; a size limit on every input (REQ-001) |
-| On hostile input the official rules take minutes (REQ-002's assumptions), and Saxon can't be stopped from within the process ([ADR-010](adr/ADR-010-saxon-in-a-worker-process.md)) | `validate` refuses the cheapest shapes before the rules (REQ-002-PRS-F001); a time limit on every call kills the worker when it passes ([ADR-010](adr/ADR-010-saxon-in-a-worker-process.md), REQ-002-PRS-NF004). Until that is built, callers validate outside input where a time limit applies, such as a background job with a timeout ([ITEM-003](../backlog/item-003-erpnext-app.md), [ITEM-007](../backlog/item-007-validation-time-limit.md)) |
+| On hostile input the official rules take minutes (REQ-002's assumptions), and Saxon can't be stopped from within the process ([ADR-010](adr/ADR-010-saxon-in-a-worker-process.md)) | `validate` refuses the cheapest shapes before the rules (REQ-002-PRS-F001); a time limit on every call kills the worker when it passes ([ADR-010](adr/ADR-010-saxon-in-a-worker-process.md), REQ-002-PRS-NF004) |
 | Upstream timing: a fix in an official artefact waits for its release | Documented patch with a test, or wait; never a silent edit |
 | Rules and their unit tests from different releases look like defects | Vendor both from the same release ([ADR-008](adr/ADR-008-vendoring-official-files.md)) |
 | Libraries with a single maintainer (`factur-x`) | Kept behind Haflinger's own interface, replaceable |

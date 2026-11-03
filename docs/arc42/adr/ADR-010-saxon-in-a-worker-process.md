@@ -11,7 +11,7 @@
 Haflinger runs the official rules with `saxonche` ([ADR-006](ADR-006-validation-with-official-rules.md)), today inside the process that calls `validate`, `write_cii` or `embed`. Three problems share that cause:
 
 - **Licence.** Most of Saxon's files are marked "incompatible with secondary licenses" under MPL-2.0; Saxonica's SaxonC page says the code "cannot be combined with code issued under a GPL license". The ERPNext app is GPL-3.0 ([ADR-009](ADR-009-licences-and-name.md)). Asked on 2026-11-02, Saxonica declined to say whether a GPL-3.0 app that loads `saxonche` in its process through Haflinger is allowed ("We are not lawyers"), and offered no extra permission, only a paid licence for Saxon-PE or Saxon-EE, which suits a closed product, not a GPL-3.0 app given away ([ITEM-008](../../backlog/item-008-saxonche-licence.md)). The Free Software Foundation counts code loaded into one process and called with shared data as one program, and separate processes that exchange data over pipes as separate programs, depending on what they exchange.
-- **Time.** On hostile input the official rules take minutes (87 s for a 2 MB UBL invoice with 64,000 `cbc:PaymentID`), Saxon holds Python's global interpreter lock meanwhile, and a running stylesheet can't be stopped from within the process; ADR-006 leaves the time limit to the caller ([ITEM-007](../../backlog/item-007-validation-time-limit.md)).
+- **Time.** On hostile input the official rules take minutes (87 s for a 2 MB UBL invoice with 64,000 `cbc:PaymentID`), Saxon holds Python's global interpreter lock meanwhile, and a running stylesheet can't be stopped from within the process; ADR-006 leaves the time limit to the caller ([ITEM-007](../../backlog/archive/item-007-validation-time-limit.md)).
 - **Crashes.** Saxon is native code built with GraalVM. `factur-x` dropped `saxonche` 13.0.0 in 2026 after it aborted the Odoo process with "Failed to enter the specified IsolateThread context"; a crash in Saxon ends the host's process with it. Saxon also prints stack traces to the process's stderr, which Python's logging can't capture.
 
 Measured on 2026-11-02 (Linux aarch64, Python 3.14, `saxonche` 13.1.1): starting a Python process and importing Haflinger takes 0.05 s and 25 MB; starting Saxon in it 0.02 s; compiling a rule set 0.25 s (CII) to 0.4 s (UBL), up to 1.05 s for FeRD's EXTENDED rules; validating an invoice with compiled rules 3 ms. With Saxon and one rule set compiled, the process holds 160 to 190 MB.
@@ -66,7 +66,7 @@ As `factur-x` does since release 6.0, with a separate Saxon server.
 ### Positive
 
 - The process that calls Haflinger never contains Saxon: the GPL-3.0 app and Saxon exchange text over a pipe instead of sharing a process.
-- Validation has a time limit, and hostile input no longer holds the caller for minutes ([ITEM-007](../../backlog/item-007-validation-time-limit.md)).
+- Validation has a time limit, and hostile input no longer holds the caller for minutes ([ITEM-007](../../backlog/archive/item-007-validation-time-limit.md)).
 - A crash in Saxon ends the worker, not the caller; Saxon's stderr reaches logging.
 - The caller's other threads run while the rules do.
 
@@ -93,5 +93,5 @@ As `factur-x` does since release 6.0, with a separate Saxon server.
 ## References
 
 - Affects: arc42 [§5](../README.md#5-building-block-view), [§6](../README.md#6-runtime-view), [§7](../README.md#7-deployment-view), [§8](../README.md#8-cross-cutting-concepts), [§11](../README.md#11-risks-and-technical-debt); REQ-002's time limit and assumptions
-- [ADR-006](ADR-006-validation-with-official-rules.md), [ADR-009](ADR-009-licences-and-name.md), [ITEM-007](../../backlog/item-007-validation-time-limit.md), [ITEM-008](../../backlog/item-008-saxonche-licence.md)
+- [ADR-006](ADR-006-validation-with-official-rules.md), [ADR-009](ADR-009-licences-and-name.md), [ITEM-007](../../backlog/archive/item-007-validation-time-limit.md), [ITEM-008](../../backlog/item-008-saxonche-licence.md)
 - [GNU GPL FAQ: separate programs or one program](https://www.gnu.org/licenses/gpl-faq.html#MereAggregation)
