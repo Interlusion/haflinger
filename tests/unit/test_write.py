@@ -12,10 +12,14 @@ import pytest
 
 from haflinger import (
     Contact,
+    CreditTransfer,
+    DirectDebit,
     Identifier,
     InvoiceReadError,
     InvoiceWriteError,
     Note,
+    PaymentCard,
+    PaymentInstructions,
     read_invoice,
     write_cii,
 )
@@ -145,10 +149,12 @@ def test_refuses_other_target_profiles(specification_id: str | None) -> None:
 
 
 def test_writes_xrechnung_with_its_rules() -> None:
-    """KoSIT's XRechnung rules run: the model lacks the payment instructions (BG-16), among
-    others."""
+    """KoSIT case 01.01a, whose terms the model holds, passes KoSIT's XRechnung rules; without
+    its payment instructions it fails BR-DE-1."""
+    invoice = replace(INVOICE, specification_id=XRECHNUNG)
+    assert read_invoice(write_cii(invoice)).invoice == invoice
     with pytest.raises(InvoiceWriteError, match="BR-DE-1") as refusal:
-        write_cii(replace(INVOICE, specification_id=XRECHNUNG))
+        write_cii(replace(invoice, payment_instructions=None))
     assert refusal.value.document is not None
 
 
@@ -348,6 +354,51 @@ def test_refuses_what_cant_be_written_sensibly(invoice: Any, reason: str) -> Non
             "BG-4 holds an electronic address without its scheme (BT-34-1)",
         ),
         (
+            replace(INVOICE, payment_instructions=PaymentInstructions(means_text="SEPA")),
+            "BG-16 holds payment instructions without their means code (BT-81)",
+        ),
+        (
+            replace(
+                INVOICE,
+                payment_instructions=PaymentInstructions(
+                    means_code="58", credit_transfers=(CreditTransfer(account_name="Example"),)
+                ),
+            ),
+            "BG-17 holds a credit transfer without its account (BT-84)",
+        ),
+        (
+            replace(
+                INVOICE,
+                payment_instructions=PaymentInstructions(
+                    means_code="48", card=PaymentCard(holder_name="Max Muster")
+                ),
+            ),
+            "BG-18 holds a card without its account number (BT-87)",
+        ),
+        (
+            replace(
+                INVOICE,
+                payment_instructions=PaymentInstructions(
+                    means_code="59", direct_debit=DirectDebit()
+                ),
+            ),
+            "BG-19 holds a direct debit without any term",
+        ),
+        (
+            replace(INVOICE, payment_instructions="58"),
+            "BG-16 is not a PaymentInstructions",
+        ),
+        (
+            replace(
+                INVOICE,
+                payment_instructions=PaymentInstructions(
+                    means_code="58",
+                    credit_transfers=[CreditTransfer(account_id="DE1")],  # pyright: ignore[reportArgumentType]
+                ),
+            ),
+            "BG-17 is not a tuple of CreditTransfer",
+        ),
+        (
             replace(INVOICE, buyer=replace(BUYER, tax_registration_id="201/113/40209")),
             "BT-32 is the seller's alone; the buyer (BG-7) has none",
         ),
@@ -365,6 +416,12 @@ def test_refuses_what_cant_be_written_sensibly(invoice: Any, reason: str) -> Non
         "identifier-without-value",
         "electronic-address-without-value",
         "electronic-address-without-scheme",
+        "instructions-without-means-code",
+        "credit-transfer-without-account",
+        "card-without-number",
+        "empty-direct-debit",
+        "str-instructions",
+        "list-credit-transfers",
         "buyer-tax-registration",
         "two-buyer-identifiers",
     ],
@@ -407,6 +464,68 @@ def test_writes_the_parties_terms_and_reads_them_back() -> None:
     back = read_invoice(document).invoice
     assert back.seller == seller
     assert back.buyer == buyer
+
+
+def test_writes_payment_terms_and_instructions_and_reads_them_back() -> None:
+    instructions = PaymentInstructions(
+        means_code="58",
+        means_text="SEPA credit transfer",
+        remittance_information="R-1",
+        credit_transfers=(
+            CreditTransfer(
+                account_id="DE16000000002345678901",
+                account_name="Example GmbH",
+                provider_id="EXMPDEFFXXX",
+            ),
+            CreditTransfer(account_id="12345678"),
+        ),
+        card=PaymentCard(account_number="1234", holder_name="Max Muster"),
+        direct_debit=DirectDebit(
+            mandate_reference="M-1",
+            creditor_id="DE98ZZZ09999999999",
+            debited_account_id="DE79000000001234567890",
+        ),
+    )
+    invoice = replace(INVOICE, payment_terms="30 days", payment_instructions=instructions)
+    document = written(invoice)
+    for expected in (
+        b"<ram:CreditorReferenceID>DE98ZZZ09999999999</ram:CreditorReferenceID>"
+        b"<ram:PaymentReference>R-1</ram:PaymentReference>",
+        b"<ram:SpecifiedTradeSettlementPaymentMeans><ram:TypeCode>58</ram:TypeCode>"
+        b"<ram:Information>SEPA credit transfer</ram:Information>"
+        b"<ram:ApplicableTradeSettlementFinancialCard><ram:ID>1234</ram:ID>"
+        b"<ram:CardholderName>Max Muster</ram:CardholderName>"
+        b"</ram:ApplicableTradeSettlementFinancialCard>"
+        b"<ram:PayerPartyDebtorFinancialAccount><ram:IBANID>DE79000000001234567890</ram:IBANID>"
+        b"</ram:PayerPartyDebtorFinancialAccount>"
+        b"<ram:PayeePartyCreditorFinancialAccount><ram:IBANID>DE16000000002345678901</ram:IBANID>"
+        b"<ram:AccountName>Example GmbH</ram:AccountName></ram:PayeePartyCreditorFinancialAccount>"
+        b"<ram:PayeeSpecifiedCreditorFinancialInstitution><ram:BICID>EXMPDEFFXXX</ram:BICID>"
+        b"</ram:PayeeSpecifiedCreditorFinancialInstitution>"
+        b"</ram:SpecifiedTradeSettlementPaymentMeans>",
+        b"<ram:SpecifiedTradeSettlementPaymentMeans><ram:TypeCode>58</ram:TypeCode>"
+        b"<ram:Information>SEPA credit transfer</ram:Information>"
+        b"<ram:PayeePartyCreditorFinancialAccount><ram:ProprietaryID>12345678</ram:ProprietaryID>"
+        b"</ram:PayeePartyCreditorFinancialAccount></ram:SpecifiedTradeSettlementPaymentMeans>",
+        b"<ram:SpecifiedTradePaymentTerms><ram:Description>30 days</ram:Description>"
+        b"<ram:DirectDebitMandateID>M-1</ram:DirectDebitMandateID>"
+        b"</ram:SpecifiedTradePaymentTerms>",
+    ):
+        assert expected in document
+    assert read_invoice(document).invoice == invoice
+
+
+def test_xrechnungs_discount_terms_end_with_a_line_feed() -> None:
+    """KoSIT case 01.10a's discount terms, whose line feed at the end reading removes."""
+    for terms, line_feed in (
+        ("#SKONTO#TAGE=7#PROZENT=2.00#\n#SKONTO#TAGE=14#PROZENT=1.00#", "\n"),
+        ("#SKONTO#TAGE=7#PROZENT=2.00#\nZahlbar netto gemaess #AGB#", "\n"),
+        ("#SKONTO#TAGE=7#PROZENT=2.00#\nZahlbar netto", ""),
+    ):
+        invoice = replace(INVOICE, specification_id=XRECHNUNG, payment_terms=terms)
+        document = write_cii(invoice)
+        assert f"<ram:Description>{terms}{line_feed}</ram:Description>".encode() in document
+        assert read_invoice(document).invoice == invoice
 
 
 def test_identifiers_in_another_order_are_written_as_the_schema_wants() -> None:

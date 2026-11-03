@@ -17,7 +17,6 @@ XRECHNUNG = "urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3
 # REQ-004-PRS-F005: the rules a written KoSIT file still fails, each with the business terms the
 # model lacks for it (ADR-007). The list shrinks as the model grows.
 MISSING_TERMS = {
-    "BR-DE-1": "BG-16 payment instructions",
     "BR-CO-11": "BG-20 document level allowances",
     "BR-CO-12": "BG-21 document level charges",
     "BR-AE-08": "BG-20 and BG-21, which enter the taxable amount (BT-116)",
