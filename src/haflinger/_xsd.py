@@ -3,7 +3,6 @@ the rules (REQ-002-PRS-F011); ADR-006."""
 
 import re
 import threading
-from functools import cache
 from pathlib import Path
 
 from lxml import etree
@@ -40,13 +39,20 @@ FACTUR_X_EN16931 = f"{_FERD}/3_Factur-X_1.09.2_EN16931/Factur-X_1.09.2_EN16931.x
 _PARSER = etree.XMLParser(resolve_entities=False, no_network=True, load_dtd=False, huge_tree=True)
 # An XML declaration, which lxml refuses in a text it gets already decoded.
 _DECLARATION = re.compile(r"<\?xml[^>]*\?>")
-# A schema's error log belongs to the last validation, whichever thread ran it.
-_LOCK = threading.Lock()
+# Each thread compiles the schemas it uses, once: a schema's error log belongs to its last
+# validation, whichever thread ran it, and a lock around it could be left held by an exception
+# that a signal handler raises, such as RQ's job timeout (REQ-002-PRS-NF005).
+_COMPILED = threading.local()
 
 
-@cache
 def _schema(path: str) -> etree.XMLSchema:
-    return etree.XMLSchema(etree.parse(_ARTEFACTS / path, _PARSER))
+    schemas: dict[str, etree.XMLSchema] | None = getattr(_COMPILED, "schemas", None)
+    if schemas is None:
+        schemas = _COMPILED.schemas = {}
+    schema = schemas.get(path)
+    if schema is None:
+        schema = schemas[path] = etree.XMLSchema(etree.parse(_ARTEFACTS / path, _PARSER))
+    return schema
 
 
 def check(document: bytes | str, *schemas: str) -> list[Finding]:
@@ -66,9 +72,8 @@ def check(document: bytes | str, *schemas: str) -> list[Finding]:
         return [_finding(SCHEMAS[schemas[0]], location, text)]
     findings: list[Finding] = []
     for path in schemas:
-        with _LOCK:
-            schema = _schema(path)
-            errors = [] if schema.validate(tree) else list(schema.error_log)
+        schema = _schema(path)
+        errors = [] if schema.validate(tree) else list(schema.error_log)
         findings.extend(
             _finding(SCHEMAS[path], error.path or f"line {error.line}", error.message)
             for error in errors
