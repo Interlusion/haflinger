@@ -10,7 +10,16 @@ from xml.etree.ElementTree import tostring
 import defusedxml.ElementTree
 import pytest
 
-from haflinger import Finding, Invoice, InvoiceReadError, Totals, cii, read_invoice, validate
+from haflinger import (
+    Finding,
+    Invoice,
+    InvoiceReadError,
+    Party,
+    Totals,
+    cii,
+    read_invoice,
+    validate,
+)
 from haflinger._xsd import check_cii
 from haflinger.pdf import extract_xml
 
@@ -190,14 +199,21 @@ MODEL = read_invoice(CII.read_bytes()).invoice
 assert MODEL.totals is not None
 assert MODEL.seller is not None
 assert MODEL.buyer is not None
-# KoSIT case 01.01a's model reduced to what MINIMUM and BASIC WL hold, so that the invoice passes
-# their XML Schemas (REQ-002-PRS-F011); BASIC and EXTENDED take the whole model.
+# KoSIT case 01.01a's model reduced to what MINIMUM, BASIC WL and BASIC hold, so that the invoice
+# passes their XML Schemas (REQ-002-PRS-F011); EN 16931 and EXTENDED take the whole model.
 WITHOUT_LINES = replace(
     MODEL,
     notes=(),
     lines=(),
     buyer_reference=None,
-    seller=replace(MODEL.seller, trading_name=None),
+    # The parties' terms that every profile's XML Schema allows.
+    seller=Party(
+        name=MODEL.seller.name,
+        legal_registration_id=MODEL.seller.legal_registration_id,
+        vat_id=MODEL.seller.vat_id,
+        country_code=MODEL.seller.country_code,
+    ),
+    buyer=Party(name=MODEL.buyer.name, country_code=MODEL.buyer.country_code),
     totals=Totals(
         total_without_vat=MODEL.totals.total_without_vat,
         vat_total=MODEL.totals.vat_total,
@@ -205,7 +221,8 @@ WITHOUT_LINES = replace(
         amount_due=MODEL.totals.amount_due,
     ),
 )
-MINIMUM = replace(WITHOUT_LINES, vat_breakdown=(), buyer=replace(MODEL.buyer, country_code=None))
+MINIMUM = replace(WITHOUT_LINES, vat_breakdown=(), buyer=Party(name=MODEL.buyer.name))
+BASIC = replace(MODEL, seller=replace(MODEL.seller, contact=None))
 BASIC_WL = replace(
     WITHOUT_LINES,
     totals=replace(WITHOUT_LINES.totals, line_net_total=MODEL.totals.line_net_total),  # type: ignore[arg-type]
@@ -218,7 +235,11 @@ def factur_x(specification_id: str, *edits: tuple[str, str], model: Invoice | No
         model = (
             MINIMUM
             if "minimum" in specification_id
-            else (BASIC_WL if "basicwl" in specification_id else MODEL)
+            else BASIC_WL
+            if "basicwl" in specification_id
+            else BASIC
+            if "basic" in specification_id
+            else MODEL
         )
     text = cii.write(replace(model, specification_id=specification_id)).decode()
     for old, new in edits:
@@ -267,7 +288,7 @@ def test_a_rule_without_an_id() -> None:
     """FeRD reports an element its profile doesn't use without a rule ID or flag: an `error`
     with an empty rule (REQ-002-PRS-F002). MINIMUM doesn't use the buyer's address."""
     findings = validate(
-        factur_x("urn:factur-x.eu:1p0:minimum", model=replace(MINIMUM, buyer=MODEL.buyer))
+        factur_x("urn:factur-x.eu:1p0:minimum", model=replace(MINIMUM, buyer=WITHOUT_LINES.buyer))
     )
     unnamed = [finding for finding in findings if finding.rule == ""]
     assert unnamed

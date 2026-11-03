@@ -18,16 +18,8 @@ XRECHNUNG = "urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3
 # model lacks for it (ADR-007). The list shrinks as the model grows.
 MISSING_TERMS = {
     "BR-DE-1": "BG-16 payment instructions",
-    "BR-DE-2": "BG-6 seller contact",
-    "BR-DE-3": "BT-37 seller city",
-    "BR-DE-4": "BT-38 seller post code",
-    "BR-DE-8": "BT-52 buyer city",
-    "BR-DE-9": "BT-53 buyer post code",
-    "PEPPOL-EN16931-R010": "BT-49 buyer electronic address",
-    "PEPPOL-EN16931-R020": "BT-34 seller electronic address",
     "BR-CO-11": "BG-20 document level allowances",
     "BR-CO-12": "BG-21 document level charges",
-    "BR-CO-26": "BT-29 seller identifier",
     "BR-AE-08": "BG-20 and BG-21, which enter the taxable amount (BT-116)",
     "BR-E-08": "BG-20 and BG-21, which enter the taxable amount (BT-116)",
     "BR-S-08": "BG-20 and BG-21, which enter the taxable amount (BT-116)",
@@ -35,9 +27,12 @@ MISSING_TERMS = {
     "BR-CO-16": "BG-DEX-09 third party payments of the XRechnung extension, which the extension"
     " allows into BT-115; outside the model by ADR-007, so the entry stays while the extension"
     " case is written as XRechnung",
+    "BR-CL-10": "BT-29-1 and BT-46-1 with the schemes XR01 and XR03 for digital health apps, which"
+    " only XRechnung's extension allows beside the ISO 6523 list; the entry stays while the"
+    " extension case is written as XRechnung",
 }
 # Rules listed above that may fail only on these files.
-ONLY_ON = {"BR-CO-16": {"05.01a-INVOICE_ubl.xml"}}
+ONLY_ON = {"BR-CO-16": {"05.01a-INVOICE_ubl.xml"}, "BR-CL-10": {"04.05a-INVOICE_uncefact.xml"}}
 EN16931 = "urn:cen.eu:en16931:2017"
 
 
