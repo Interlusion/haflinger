@@ -175,6 +175,8 @@ def factur_x(specification_id: str) -> bytes:
             preceding_invoices=(),
             delivery=None,
             invoicing_period=None,
+            allowances=(),
+            charges=(),
         )
     return cii.write(replace(model, specification_id=specification_id))
 

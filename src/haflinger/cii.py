@@ -8,6 +8,7 @@ from decimal import Decimal
 from typing import cast
 from xml.etree.ElementTree import Element, SubElement, tostring
 
+from haflinger._allowances import ALLOWANCE, CHARGE, AllowanceChargeTerms, allowances_and_charges
 from haflinger._parties import (
     BUYER,
     DELIVER_TO,
@@ -30,9 +31,11 @@ from haflinger._xml import (
     first_group,
     first_of,
     none_if_empty,
+    vat_only,
 )
 from haflinger.errors import InvoiceWriteError
 from haflinger.model import (
+    AllowanceCharge,
     Contact,
     CreditTransfer,
     Delivery,
@@ -78,6 +81,11 @@ def specification(root: Node) -> Node | None:
 def read(root: Node, specification_id: str | None) -> Invoice:
     currency_code = root.text(f"{_SETTLEMENT}/ram:InvoiceCurrencyCode", "BT-5")
     tax_currency_code = root.text(f"{_SETTLEMENT}/ram:TaxCurrencyCode", "BT-6")
+    allowances, charges = allowances_and_charges(
+        root.findall(f"{_SETTLEMENT}/ram:SpecifiedTradeAllowanceCharge"),
+        "ram:ChargeIndicator/udt:Indicator",
+        _allowance_charge,
+    )
     return Invoice(
         syntax="cii",
         number=root.text(f"{_DOCUMENT}/ram:ID", "BT-1"),
@@ -113,6 +121,8 @@ def read(root: Node, specification_id: str | None) -> Invoice:
         delivery=_delivery(root),
         invoicing_period=_period(root.group(f"{_SETTLEMENT}/ram:BillingSpecifiedPeriod", "BG-14")),
         payment_instructions=_payment_instructions(root),
+        allowances=allowances,
+        charges=charges,
         totals=_totals(
             root.group(
                 f"{_SETTLEMENT}/ram:SpecifiedTradeSettlementHeaderMonetarySummation", "BG-22"
@@ -373,6 +383,20 @@ def _totals(
     )
 
 
+def _allowance_charge(node: Node, terms: AllowanceChargeTerms) -> AllowanceCharge:
+    label = f"{terms.vat} (ram:CategoryTradeTax)"
+    tax = first_group(_vat_taxes(node, "ram:CategoryTradeTax", label), label)
+    return AllowanceCharge(
+        amount=node.decimal("ram:ActualAmount", terms.amount),
+        base_amount=node.decimal("ram:BasisAmount", terms.base_amount),
+        percentage=node.decimal("ram:CalculationPercent", terms.percentage),
+        vat_category_code=_text(tax, "ram:CategoryCode", terms.vat_category_code),
+        vat_rate=None if tax is None else tax.decimal("ram:RateApplicablePercent", terms.vat_rate),
+        reason=node.text("ram:Reason", terms.reason),
+        reason_code=node.text("ram:ReasonCode", terms.reason_code),
+    )
+
+
 def _vat_breakdown(tax: Node) -> VatBreakdown:
     return VatBreakdown(
         taxable_amount=tax.decimal("ram:BasisAmount", "BT-116"),
@@ -413,19 +437,8 @@ def _line(line: Node) -> InvoiceLine:
 
 
 def _vat_taxes(parent: Node, path: str, group: str) -> list[Node]:
-    """The elements at `path` holding a value that are VAT: of type code `VAT`, or of none. Another
-    tax, which Factur-X EXTENDED allows, is left out with a finding (REQ-003-PRS-F002)."""
-    taxes: list[Node] = []
-    for node in parent.findall(path):
-        if not node.holds_value():
-            continue
-        type_code = node.find("ram:TypeCode")
-        kind = None if type_code is None else type_code.value
-        if kind in (None, "VAT"):
-            taxes.append(node)
-        else:
-            node.drop(f"{group} of a tax other than VAT ({kind}) is left out")
-    return taxes
+    """The elements at `path` holding a value that are VAT: of type code `VAT`, or of none."""
+    return vat_only(parent.findall(path), "ram:TypeCode", group)
 
 
 def _text(node: Node | None, path: str, term: str) -> str | None:
@@ -522,6 +535,8 @@ def write(invoice: Invoice) -> bytes:
         _put_text(tax, "ram:ExemptionReasonCode", vat.exemption_reason_code, "BT-121")
         _put_amount(tax, "ram:RateApplicablePercent", vat.rate, "BT-119")
     _write_period(settlement, invoice.invoicing_period)
+    _write_allowance_charges(settlement, invoice.allowances, ALLOWANCE)
+    _write_allowance_charges(settlement, invoice.charges, CHARGE)
     terms = SubElement(settlement, "ram:SpecifiedTradePaymentTerms")
     payment_terms = _checked_text(invoice.payment_terms, "BT-20")
     if payment_terms is not None and _ends_with_discount_terms(payment_terms):
@@ -677,6 +692,27 @@ def _write_period(settlement: Element, period: object) -> None:
     element = SubElement(settlement, "ram:BillingSpecifiedPeriod")
     _put_date(element, "ram:StartDateTime", period.start, "BT-73")
     _put_date(element, "ram:EndDateTime", period.end, "BT-74")
+
+
+def _write_allowance_charges(
+    settlement: Element, values: object, terms: AllowanceChargeTerms
+) -> None:
+    """BG-20 or BG-21, each as a ram:SpecifiedTradeAllowanceCharge (REQ-004-PRS-F003)."""
+    for each in _group(values, AllowanceCharge, terms.group):
+        if each == AllowanceCharge():
+            raise InvoiceWriteError(f"{terms.group} holds {terms.kind} without any term")
+        element = SubElement(settlement, "ram:SpecifiedTradeAllowanceCharge")
+        _leaf(element, "ram:ChargeIndicator/udt:Indicator", terms.indicator, {})
+        _put_amount(element, "ram:CalculationPercent", each.percentage, terms.percentage)
+        _put_amount(element, "ram:BasisAmount", each.base_amount, terms.base_amount)
+        _put_amount(element, "ram:ActualAmount", each.amount, terms.amount)
+        _put_text(element, "ram:ReasonCode", each.reason_code, terms.reason_code)
+        _put_text(element, "ram:Reason", each.reason, terms.reason)
+        if each.vat_category_code is not None or each.vat_rate is not None:
+            tax = SubElement(element, "ram:CategoryTradeTax")
+            SubElement(tax, "ram:TypeCode").text = "VAT"
+            _put_text(tax, "ram:CategoryCode", each.vat_category_code, terms.vat_category_code)
+            _put_amount(tax, "ram:RateApplicablePercent", each.vat_rate, terms.vat_rate)
 
 
 def _preceding_invoice(invoice: Invoice) -> PrecedingInvoice | None:

@@ -147,6 +147,19 @@ class PaymentInstructions:
 
 
 @dataclass(frozen=True, kw_only=True)
+class AllowanceCharge:
+    """BG-20 document level allowance or BG-21 document level charge."""
+
+    amount: Decimal | None = None  # BT-92, BT-99
+    base_amount: Decimal | None = None  # BT-93, BT-100
+    percentage: Decimal | None = None  # BT-94, BT-101
+    vat_category_code: str | None = None  # BT-95, BT-102
+    vat_rate: Decimal | None = None  # BT-96, BT-103
+    reason: str | None = None  # BT-97, BT-104
+    reason_code: str | None = None  # BT-98, BT-105
+
+
+@dataclass(frozen=True, kw_only=True)
 class Totals:
     """BG-22."""
 
@@ -213,6 +226,8 @@ class Invoice:
     delivery: Delivery | None = None  # BG-13
     invoicing_period: Period | None = None  # BG-14
     payment_instructions: PaymentInstructions | None = None  # BG-16
+    allowances: tuple[AllowanceCharge, ...] = ()  # BG-20
+    charges: tuple[AllowanceCharge, ...] = ()  # BG-21
     totals: Totals | None = None  # BG-22
     vat_breakdown: tuple[VatBreakdown, ...] = ()  # BG-23
     lines: tuple[InvoiceLine, ...] = ()  # BG-25

@@ -4,6 +4,7 @@
 import re
 from datetime import date
 
+from haflinger._allowances import AllowanceChargeTerms, allowances_and_charges
 from haflinger._parties import (
     BUYER,
     DELIVER_TO,
@@ -25,8 +26,10 @@ from haflinger._xml import (
     first_group,
     first_of,
     none_if_empty,
+    vat_only,
 )
 from haflinger.model import (
+    AllowanceCharge,
     CreditTransfer,
     Delivery,
     DirectDebit,
@@ -74,6 +77,9 @@ def read(root: Node, specification_id: str | None, *, credit_note: bool) -> Invo
         currency_code,
         tax_currency_code,
     )
+    allowances, charges = allowances_and_charges(
+        root.findall("cac:AllowanceCharge"), "cbc:ChargeIndicator", _allowance_charge
+    )
     line, quantity = (
         ("cac:CreditNoteLine", "cbc:CreditedQuantity")
         if credit_note
@@ -114,6 +120,8 @@ def read(root: Node, specification_id: str | None, *, credit_note: bool) -> Invo
         delivery=_delivery(root.group("cac:Delivery", "BG-13", *_DELIVERY)),
         invoicing_period=_period(root.group("cac:InvoicePeriod", "BG-14", *_PERIOD)),
         payment_instructions=_payment_instructions(root),
+        allowances=allowances,
+        charges=charges,
         totals=_totals(
             root.group("cac:LegalMonetaryTotal", "BG-22"),
             _tax_amount(vat_total),
@@ -376,6 +384,22 @@ def _totals(
         prepaid_amount=total.decimal("cbc:PrepaidAmount", "BT-113"),
         rounding_amount=total.decimal("cbc:PayableRoundingAmount", "BT-114"),
         amount_due=total.decimal("cbc:PayableAmount", "BT-115"),
+    )
+
+
+def _allowance_charge(node: Node, terms: AllowanceChargeTerms) -> AllowanceCharge:
+    label = f"{terms.vat} (cac:TaxCategory)"
+    category = first_group(
+        vat_only(node.findall("cac:TaxCategory"), "cac:TaxScheme/cbc:ID", label), label
+    )
+    return AllowanceCharge(
+        amount=node.decimal("cbc:Amount", terms.amount),
+        base_amount=node.decimal("cbc:BaseAmount", terms.base_amount),
+        percentage=node.decimal("cbc:MultiplierFactorNumeric", terms.percentage),
+        vat_category_code=_text(category, "cbc:ID", terms.vat_category_code),
+        vat_rate=None if category is None else category.decimal("cbc:Percent", terms.vat_rate),
+        reason=node.text("cbc:AllowanceChargeReason", terms.reason),
+        reason_code=node.text("cbc:AllowanceChargeReasonCode", terms.reason_code),
     )
 
 
