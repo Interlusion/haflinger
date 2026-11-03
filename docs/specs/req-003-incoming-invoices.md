@@ -218,7 +218,7 @@ The findings are those of [REQ-002-PRS-F010](req-002-conformance.md#req-002-prs-
 
 - The Mustang project's PDFs of the ZUGFeRD corpus (Apache-2.0), valid and broken, are vendored with the tests ([ADR-008](../arc42/adr/ADR-008-vendoring-official-files.md)); FeRD's and FNFE-MPE's samples aren't, as no terms name them ([ITEM-002](../backlog/item-002-official-test-material.md)).
 - The official test files include a UBL credit note (Peppol BIS or CEN examples).
-- The library bounds the time of looking for the invoice in a PDF, not the time of reading the XML, which grows with its size (REQ-003-PRS-NF002). The bound on PDFs works within the thread: pypdf is pure Python, and a profile function that Python calls on every function call raises once the time is up. A caller that reads outside input still runs it where a time limit applies, such as a background job with a timeout ([ITEM-003](../backlog/item-003-erpnext-app.md)); validation has no time bound ([REQ-002](req-002-conformance.md#assumptions)).
+- The library bounds the time of looking for the invoice in a PDF, not the time of reading the XML, which grows with its size (REQ-003-PRS-NF002). The bound on PDFs works within the thread: pypdf is pure Python, and a profile function that Python calls on every function call raises once the time is up. A caller that reads outside input still runs it where a time limit applies, such as a background job with a timeout ([ITEM-003](../backlog/item-003-erpnext-app.md)); validation has its own time limit ([REQ-002-PRS-NF004](req-002-conformance.md#req-002-prs-nf004-time-limit)).
 
 ## Open Questions
 

@@ -213,7 +213,7 @@ def test_a_document_validation_refuses_is_refused_after_writing(
     """Validation's own refusals, such as the size limit, become InvoiceWriteError with the
     document."""
 
-    def refuse(data: bytes, *also: str) -> list[object]:
+    def refuse(data: bytes, *also: str, timeout: float | None = None) -> list[object]:
         raise InvoiceReadError("the input is larger than max_size")
 
     monkeypatch.setattr("haflinger.write.check_rules", refuse)
@@ -326,7 +326,7 @@ def test_en16931_runs_ferds_rules_of_the_profile_too(monkeypatch: pytest.MonkeyP
     """REQ-004-PRS-F005: for EN 16931, FeRD's Factur-X rules besides CEN's; not for XRechnung."""
     calls: list[tuple[str, ...]] = []
 
-    def rules(data: bytes, *also: str) -> list[object]:
+    def rules(data: bytes, *also: str, timeout: float | None = None) -> list[object]:
         calls.append(also)
         return []
 

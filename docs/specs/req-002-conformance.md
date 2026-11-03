@@ -3,8 +3,8 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Draft |
-| **Version** | 0.4 |
-| **Date** | 2026-11-01 |
+| **Version** | 0.5 |
+| **Date** | 2026-11-02 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Intended Use
@@ -15,7 +15,7 @@ Out of scope: Peppol BIS rules beyond those XRechnung includes; PDF/A conformanc
 
 Read [REQ-001](req-001-core.md) first: it holds the personas, stories and terms, and the rules every spec follows.
 
-Key constraints: the official rules run unchanged, with Saxon ([ADR-006](../arc42/adr/ADR-006-validation-with-official-rules.md)); official artefacts and test files are vendored, pinned and unchanged ([ADR-008](../arc42/adr/ADR-008-vendoring-official-files.md)).
+Key constraints: the official rules run unchanged, with Saxon ([ADR-006](../arc42/adr/ADR-006-validation-with-official-rules.md)), in a worker process ([ADR-010](../arc42/adr/ADR-010-saxon-in-a-worker-process.md)); official artefacts and test files are vendored, pinned and unchanged ([ADR-008](../arc42/adr/ADR-008-vendoring-official-files.md)).
 
 ## User Stories
 
@@ -24,6 +24,7 @@ The personas are [REQ-001's](req-001-core.md#personas).
 - REQ-002-P1-1. As the operator, I need an invoice judged with the official rules, as the official validators judge it, and told where Haflinger couldn't run a profile's own rules, so that what Haflinger accepts the authorities and my customers accept too.
 - REQ-002-P2-1. As the maintainer, I need to adopt a new release of the rules or test files in one step and see from the tests what changed.
 - REQ-002-P3-1. As the integrator, I need each failed rule reported with its ID and text, so that I can show it to a person or act on it.
+- REQ-002-P3-2. As the integrator, I need validation to end within a time I set and to leave my process alone, so that a hostile invoice can't hold or crash the host that validates it.
 
 ## Requirement Rules
 
@@ -77,11 +78,23 @@ The personas are [REQ-001's](req-001-core.md#personas).
 
 **Related User Stories**: REQ-002-P1-1 | **Rationale**: If validation were slow, callers would skip it, and an invoice nobody checked could reach the books or a customer. Whether a caller validates large invoices in a background job is its own choice.
 
+#### REQ-002-URS-NF004: Bounded time
+
+**Description**: Validation SHALL end within a time limit the caller can set, on any input.
+
+**Related User Stories**: REQ-002-P3-2 | **Rationale**: On hostile input the official rules take minutes, and no list of refusals can catch every such input (see the assumptions).
+
+#### REQ-002-URS-NF005: The caller's process kept apart
+
+**Description**: The engine that runs the official rules SHALL NOT run in the caller's process: a crash of it or a time limit passed SHALL NOT end or hold the caller's process.
+
+**Related User Stories**: REQ-002-P3-2 | **Rationale**: Saxon is native code, and a crash in it ends the process it runs in, and Saxonica leaves open whether the GPL-3.0 ERPNext app may load it into its own process ([ADR-010](../arc42/adr/ADR-010-saxon-in-a-worker-process.md)).
+
 ## PRS — Functional
 
 #### REQ-002-PRS-F001: One entry point
 
-**Description**: `haflinger.validate(data: bytes, *, max_size: int = …) -> list[Finding]` SHALL validate a CII or UBL invoice with the rule set of REQ-002-PRS-F003 and return its findings. It SHALL raise `haflinger.InvoiceReadError`, and no other exception, with a reason that names the problem, when the input:
+**Description**: `haflinger.validate(data: bytes, *, max_size: int = …, timeout: float = …) -> list[Finding]` SHALL validate a CII or UBL invoice with the rule set of REQ-002-PRS-F003 and return its findings. It SHALL raise `haflinger.InvoiceReadError`, and no other exception, with a reason that names the problem, when the input:
 
 - isn't `bytes` (the reason names its type);
 - is not well-formed XML, which includes a byte order mark that contradicts the encoding declaration; for a PDF the reason says to extract its XML first (REQ-003-PRS-F007);
@@ -93,7 +106,7 @@ The personas are [REQ-001's](req-001-core.md#personas).
 - holds a number of more than 1,000 digits, whose arithmetic in the rules grows with the square of its length (minutes for one of a megabyte); real amounts have fewer than 20;
 - holds a telephone number (`ram:CompleteNumber`, `cbc:Telephone`) of more than 100 characters: XRechnung's `BR-DE-27` checks it with a pattern whose time grows with the square of the length (36 s for 8,000 characters); real numbers have fewer than 40.
 
-A value the rules find wrong is a finding, not a refusal, and so is a failure of the rules themselves on an invoice that passed the XML Schema (`HAFL-RULES`, REQ-002-PRS-F010).
+A value the rules find wrong is a finding, not a refusal, and so is a failure of the rules themselves on an invoice that passed the XML Schema (`HAFL-RULES`, REQ-002-PRS-F010). Rules that don't end within `timeout`, a worker that dies and a `timeout` that isn't valid raise `InvoiceReadError` too (REQ-002-PRS-NF004, REQ-002-PRS-NF005).
 
 **Related URS**: REQ-002-URS-F001
 
@@ -228,6 +241,22 @@ A value the rules find wrong is a finding, not a refusal, and so is a failure of
 
 **Definition of Done**: inspection of the provenance of each source.
 
+#### REQ-002-PRS-NF004: Time limit
+
+**Description**: `validate`, `write_cii` and `haflinger.pdf.embed` SHALL take a keyword argument `timeout`, in seconds, an `int` or `float` greater than 0 and at most a year (31,536,000 s). Its default SHALL be the environment variable `HAFLINGER_RULES_TIMEOUT`, read on each call, or 60 s where it isn't set. The official rules of one call, waiting for another thread's call, starting the worker and compiling the rule set included, SHALL end within `timeout`. When it passes while the call's own rules run, the worker SHALL be killed; when it passes while the call still waits for its turn, the worker SHALL be left to the other call. Either way, `validate` SHALL raise `InvoiceReadError`, `write_cii` and `embed` `InvoiceWriteError` (REQ-004-PRS-F001, REQ-004-PRS-F007), with a reason that says the rules took longer than the limit and names it. A `timeout` (a `bool` included) that isn't such a number of seconds, or, where no `timeout` is given, a `HAFLINGER_RULES_TIMEOUT` that isn't one, SHALL be refused the same way, with a reason that names it, before the rules run.
+
+**Related URS**: REQ-002-URS-NF004 | **Rationale**: The default lies well above the largest real invoice's time (the 61.1 MB invoice of REQ-002-PRS-NF002 validated in 18.5 s on the development machine; a usual invoice takes milliseconds) and below what hostile input takes. A caller that validates invoices of tens of megabytes on a slower machine passes a higher one. A limit must leave room for starting the worker and compiling a rule set, up to about 1 s, which it includes; a year is longer than any validation, and the platform's own limits on waiting lie beyond it. The variable lets a host set the limit without code.
+
+**Definition of Done**: a crafted UBL invoice of 16,000 distinct `cbc:PaymentID` (about 5 s) with `timeout=0.5` is refused within 1.5 s, naming the limit, and the next call validates a KoSIT file; the same holds for `write_cii` and `embed` with a `timeout` too short for their rules; `HAFLINGER_RULES_TIMEOUT` sets the default, and an explicit `timeout` overrides it, an invalid variable included; a call that waits behind another thread's slow call past its own `timeout` is refused while the other call goes on; `0`, `-1`, `nan`, `inf`, `1e10`, `10**400`, `True` and `"60"` as `timeout`, and `abc`, `0` and `1e10` as the variable, are refused, and a year is accepted (tests).
+
+#### REQ-002-PRS-NF005: Rules in a worker process
+
+**Description**: The official rules SHALL run in a worker process that Haflinger starts as a new Python interpreter, which imports nothing of the caller's; the calling process SHALL NOT import `saxonche`. Between them SHALL pass only text, the invoice and the names of vendored stylesheets one way and their output or an error message the other, never pickled objects. Each calling process SHALL have one worker, started on its first validation and kept with its compiled rule sets; calls from several threads SHALL take turns and each get the findings of its own invoice. A call that ends early, by any exception, a signal handler's included, SHALL reach the caller as it is and leave the worker in step and no lock held; where its rules run, the worker SHALL be killed within a second: no later call SHALL take its reply for its own, wait for it, or fail because of it. The worker SHALL import the same Haflinger and `saxonche` as the caller, found on the caller's import path. A worker that dies during a call SHALL be reported as REQ-002-PRS-NF004 reports a time limit passed, with the reason saying that the worker died and holding what it wrote to stderr during that call, and SHALL be replaced on the next call. A worker that can't be started, and a vendored stylesheet that can't be compiled, SHALL be reported the same way, saying so; neither is a finding about the invoice. Calls SHALL work however many files the caller has open. What the worker writes to stderr otherwise SHALL go to Python's logging, logger `haflinger`. A process forked from the caller after its worker started SHALL start a worker of its own, also when another thread of the caller was in a call at the fork, and SHALL hold no pipe of the caller's workers, also of one being started at the fork.
+
+**Related URS**: REQ-002-URS-NF005 | **Rationale**: [ADR-010](../arc42/adr/ADR-010-saxon-in-a-worker-process.md). Background jobs end with a signal handler's exception (RQ's job timeout), which Python raises between any two steps of the calling thread. Rules left running for a call that ended early would hold up the next job for up to its time limit; killing the worker costs that job a compile instead, about 1 s at most. A worker shared across a fork would get the requests of two processes on one pipe, and a child forked during another thread's call inherits a lock that no thread of its own will release; a child that holds a worker's stdin keeps it from ending with the caller. A broken installation reported as `HAFL-RULES` would make every invoice look invalid.
+
+**Definition of Done**: in a fresh interpreter, `saxonche` isn't in `sys.modules` after `validate`, `write_cii` and `embed`; a worker killed between calls is replaced, and the next call validates; a worker killed during a call gives the refusal saying that it died; a child forked after a validation validates with the same findings and with a worker of its own, and so does a child forked while another thread waits on the worker; a child forked while the worker starts holds none of its pipes; 8 threads validating different KoSIT files at once each get their own file's findings; an invoice that makes Saxon print to stderr leaves the text in the `haflinger` log; a call interrupted by a signal handler's exception, at any moment of hundreds tried, in the XML Schema check (REQ-002-PRS-F011) too, leaves the next call its own findings within its time limit; so does an exception at any step of a process's first call, threading's own code included, which reaches the caller as it is; a slow call interrupted after 1 s leaves the next call its findings within 2 s; a call whose helper thread ended before taking its request gets its findings; a worker killed while it takes a request is reported as having died; a helper thread that can't be started is refused; a stylesheet that doesn't compile and a worker that can't be started are refused, not findings; a call whose deadline has passed before it sends anything leaves the worker running; validation works with more than 1,024 files open; a caller that finds Haflinger on an import path of its own has a worker that uses the same (tests); inspection that no `pickle` crosses the boundary.
+
 ## Acceptance Criteria
 
 - Every KoSIT test file is valid; a one-cent error fails `BR-CO-15` and `BR-CO-16`.
@@ -237,6 +266,7 @@ A value the rules find wrong is a finding, not a refusal, and so is a failure of
 - Only EN 16931-1:2017 is handled; other editions are refused.
 - Haflinger's own findings are the five of REQ-002-PRS-F010.
 - Validation works offline and within the speed limits.
+- Validation ends within its time limit, and the rules run in a worker process, never in the caller's.
 - Every artefact and test file set carries its provenance.
 
 ## Assumptions
@@ -244,7 +274,9 @@ A value the rules find wrong is a finding, not a refusal, and so is a failure of
 - XRechnung 3.0 is the only XRechnung version the authorities accept today; earlier versions need no rules of their own.
 - The Factur-X rules and XML Schemas for MINIMUM, BASIC WL, BASIC, EN 16931 and EXTENDED come from FeRD's ZUGFeRD package, whose rights of use put the schemas and Schematron under Apache-2.0, so that Haflinger can vendor them under [ADR-008](../arc42/adr/ADR-008-vendoring-official-files.md) ([ITEM-002](../backlog/item-002-official-test-material.md)). The rights of use don't name the XSLT the package also holds; Haflinger compiles the Schematron itself ([ADR-006](../arc42/adr/ADR-006-validation-with-official-rules.md)).
 - KoSIT's scenario file, which sets the rule levels of REQ-002-PRS-F005, is vendored with KoSIT's stylesheets.
-- The library doesn't bound the time validation takes, and on hostile input it can take minutes. Some official rules grow with the square of what they count: the location of each finding is computed by counting its preceding siblings, and CEN's `UBL-SR-44` compares every `cbc:PaymentID` with every one before it. Saxon holds the Python process while it runs. `validate` refuses the cheapest shapes before the rules (REQ-002-PRS-F001): thousands of empty elements, a number of hundreds of thousands of digits, a telephone number of thousands of characters. Others remain, and they needn't look like real invoices: 64,000 distinct `cbc:PaymentID` in 2 MB take 87 s, 32,000 notes that each fail `BR-CL-08` in 2 MB take 22 s, and 10,000 invoice lines that each fail a rule in 3.2 MB take 15 s. No list of refusals can be complete. A caller that validates invoices from outside runs `validate` where a time limit applies, such as a background job with a timeout ([ITEM-003](../backlog/item-003-erpnext-app.md)); a time limit inside the library is [ITEM-007](../backlog/item-007-validation-time-limit.md).
+- On hostile input the official rules take minutes. Some of them grow with the square of what they count: the location of each finding is computed by counting its preceding siblings, and CEN's `UBL-SR-44` compares every `cbc:PaymentID` with every one before it. Such invoices needn't look like real ones. Measured on 2026-11-01: 16,000, 32,000 and 64,000 distinct `cbc:PaymentID` (0.5, 1 and 2 MB) take 5.1, 20.4 and 87.0 s; 32,000 notes that each fail `BR-CL-08` in 2 MB take 22.5 s; 10,000 invoice lines that each fail a rule in 3.2 MB take 15 s. No list of refusals can be complete, so the time limit (REQ-002-PRS-NF004) bounds every case; `validate` still refuses the cheapest shapes before the rules (REQ-002-PRS-F001), within milliseconds instead of after the limit.
+- The worker costs a process per calling process: 0.07 s to start, 0.25 s (CII) to 1.05 s (Factur-X EXTENDED) to compile a rule set the first time, 160 to 190 MB with a rule set compiled (measured on 2026-11-02).
+- Haflinger's hosts run Python as a program (gunicorn and RQ workers in a Frappe bench, a script), so `sys.executable` starts an interpreter of the caller's environment. Where Python is embedded in another program (uWSGI, mod_wsgi), `sys.executable` may name that program; such hosts would need a setting for the interpreter, which Haflinger doesn't have yet. The worker's pipes need a POSIX system (Linux, macOS); elsewhere Haflinger imports and reads invoices, and validation is refused.
 
 ## Open Questions
 

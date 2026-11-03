@@ -107,13 +107,15 @@ def _deadline(seconds: float) -> Generator[None]:
         sys.setprofile(previous)
 
 
-def embed(pdf: bytes, xml: bytes) -> bytes:
+def embed(pdf: bytes, xml: bytes, *, timeout: float | None = None) -> bytes:
     """`pdf`, a PDF/A file, as a PDF/A-3 ZUGFeRD PDF with `xml` embedded, when `xml` is a CII
-    invoice of the target profile embed writes and passes the XML Schema and the official rules.
-    Raises `InvoiceWriteError` otherwise (REQ-004-PRS-F007)."""
+    invoice of the target profile embed writes and passes the XML Schema and the official rules,
+    which end within `timeout` seconds, by default `HAFLINGER_RULES_TIMEOUT` or 60
+    (REQ-002-PRS-NF004). Raises `InvoiceWriteError` otherwise (REQ-004-PRS-F007)."""
     for argument, value in (("PDF", cast(object, pdf)), ("XML", cast(object, xml))):
         if not isinstance(value, bytes):
             raise InvoiceWriteError(f"the {argument} is not bytes but {type(value).__name__}")
+    limit = write.rules_timeout(timeout)
     try:
         opened = open_invoice(xml, MAX_SIZE, pdf="the XML is a PDF")
     except InvoiceReadError as error:
@@ -127,7 +129,7 @@ def embed(pdf: bytes, xml: bytes) -> bytes:
             f" this is {opened.document} with BT-24 {specification_id!r}"
         )
     _check_pdf(pdf)
-    write.refuse_if_invalid(write.check_written(xml, specification_id), xml)
+    write.refuse_if_invalid(write.check_written(xml, specification_id, limit), xml)
     invoice = cii.read(opened.reading.root, specification_id)
     result = _embed(pdf, xml, level, _metadata(invoice))
     try:

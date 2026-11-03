@@ -3,8 +3,8 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Draft |
-| **Version** | 0.5 |
-| **Date** | 2026-11-01 |
+| **Version** | 0.6 |
+| **Date** | 2026-11-02 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Intended Use
@@ -83,10 +83,10 @@ The personas are [REQ-001's](req-001-core.md#personas).
 
 #### REQ-004-PRS-F001: One entry point
 
-**Description**: `haflinger.write_cii(invoice: Invoice) -> bytes` SHALL return a CII D16B document, UTF-8 with an XML declaration, when it passes REQ-004-PRS-F004 and REQ-004-PRS-F005. Otherwise it SHALL raise `haflinger.InvoiceWriteError`, and no other exception, with a reason that names the business term where there is one ([REQ-001-PRS-F005](req-001-core.md#req-001-prs-f005-refusals-and-findings-name-their-subject)). `InvoiceWriteError` SHALL carry `findings` and `document`:
+**Description**: `haflinger.write_cii(invoice: Invoice, *, timeout: float = …) -> bytes` SHALL return a CII D16B document, UTF-8 with an XML declaration, when it passes REQ-004-PRS-F004 and REQ-004-PRS-F005. Otherwise it SHALL raise `haflinger.InvoiceWriteError`, and no other exception, with a reason that names the business term where there is one ([REQ-001-PRS-F005](req-001-core.md#req-001-prs-f005-refusals-and-findings-name-their-subject)). `InvoiceWriteError` SHALL carry `findings` and `document`:
 
-- **Before writing**, with no findings and no document, when the argument isn't an `Invoice`; the model's BT-24 is no supported target profile (REQ-004-PRS-F002); a value has the wrong type (an amount, quantity, price or rate that isn't a finite `Decimal`, a date that isn't a `date`, a text that isn't a `str`, a group that isn't of its class or a tuple of it); a number has more than 1,000 digits in plain notation; a text is empty, has surrounding whitespace, or holds a character XML 1.0 doesn't allow; a note (BG-1) holds neither subject code nor text; or the model holds a term without one it needs to be written (BT-111 without BT-6, BT-130 without BT-129).
-- **After writing**, with the findings and the written document, when it fails REQ-004-PRS-F004 or REQ-004-PRS-F005, or can't be checked by them (for example, larger than the size limit validation accepts).
+- **Before writing**, with no findings and no document, when the argument isn't an `Invoice`; the `timeout` isn't valid ([REQ-002-PRS-NF004](req-002-conformance.md#req-002-prs-nf004-time-limit)); the model's BT-24 is no supported target profile (REQ-004-PRS-F002); a value has the wrong type (an amount, quantity, price or rate that isn't a finite `Decimal`, a date that isn't a `date`, a text that isn't a `str`, a group that isn't of its class or a tuple of it); a number has more than 1,000 digits in plain notation; a text is empty, has surrounding whitespace, or holds a character XML 1.0 doesn't allow; a note (BG-1) holds neither subject code nor text; or the model holds a term without one it needs to be written (BT-111 without BT-6, BT-130 without BT-129).
+- **After writing**, with the findings and the written document, when it fails REQ-004-PRS-F004 or REQ-004-PRS-F005, or can't be checked by them (for example, larger than the size limit validation accepts, or when the rules don't end within `timeout` or their worker dies, [REQ-002-PRS-NF004](req-002-conformance.md#req-002-prs-nf004-time-limit), [REQ-002-PRS-NF005](req-002-conformance.md#req-002-prs-nf005-rules-in-a-worker-process)).
 
 **Related URS**: REQ-004-URS-F001, REQ-004-URS-F002
 
@@ -144,11 +144,11 @@ The personas are [REQ-001's](req-001-core.md#personas).
 
 #### REQ-004-PRS-F007: ZUGFeRD PDF
 
-**Description**: With the extra `pdf` installed, `haflinger.pdf.embed(pdf: bytes, xml: bytes) -> bytes` SHALL return the given PDF as PDF/A-3 with the XML embedded as `factur-x.xml`, with the relationship `/Alternative` and the XMP metadata (profile, version) that ZUGFeRD and Factur-X require, and the pages unchanged. The PDF's XMP metadata and document information are replaced by those of the invoice (title and subject from BT-1, BT-2 and BT-27, author BT-27), and a reader opening it shows its attachments (`/PageMode /UseAttachments`). It SHALL raise `InvoiceWriteError`, and no other exception, when:
+**Description**: With the extra `pdf` installed, `haflinger.pdf.embed(pdf: bytes, xml: bytes, *, timeout: float = …) -> bytes` SHALL return the given PDF as PDF/A-3 with the XML embedded as `factur-x.xml`, with the relationship `/Alternative` and the XMP metadata (profile, version) that ZUGFeRD and Factur-X require, and the pages unchanged. The PDF's XMP metadata and document information are replaced by those of the invoice (title and subject from BT-1, BT-2 and BT-27, author BT-27), and a reader opening it shows its attachments (`/PageMode /UseAttachments`). It SHALL raise `InvoiceWriteError`, and no other exception, when:
 
-- either argument isn't `bytes`; the PDF isn't readable, or its XMP metadata declares no conformance to PDF/A-1, -2 or -3 (the reason says that the input must be PDF/A); or the PDF holds what embedding would drop: a name tree (`/Names`: embedded files, named destinations and the others) or associated files of the document (`/AF`);
+- either argument isn't `bytes`, or the `timeout` isn't valid; the PDF isn't readable, or its XMP metadata declares no conformance to PDF/A-1, -2 or -3 (the reason says that the input must be PDF/A); or the PDF holds what embedding would drop: a name tree (`/Names`: embedded files, named destinations and the others) or associated files of the document (`/AF`);
 - the XML isn't a CII invoice whose BT-24 is exactly `urn:cen.eu:en16931:2017`, with no whitespace around it, the ZUGFeRD / Factur-X EN 16931 profile; XRechnung, the other target profile of REQ-004-PRS-F002, is sent as XML;
-- the XML fails REQ-004-PRS-F004 or REQ-004-PRS-F005, with the findings.
+- the XML fails REQ-004-PRS-F004 or REQ-004-PRS-F005, with the findings, or can't be checked by them because the rules don't end within `timeout` or their worker dies ([REQ-002-PRS-NF004](req-002-conformance.md#req-002-prs-nf004-time-limit), [REQ-002-PRS-NF005](req-002-conformance.md#req-002-prs-nf005-rules-in-a-worker-process)).
 
 **Related URS**: REQ-004-URS-F002, REQ-004-URS-F004 | **Rationale**: ZUGFeRD PDFs go to businesses, XRechnung to public authorities as XML (Intended Use). ZUGFeRD 2.5.2 allows only `/Alternative` for the EN 16931 profile in Germany, and Factur-X allows it in France: the PDF shows the same invoice as the XML, which is up to the caller, who renders the PDF. ZUGFeRD's XRECHNUNG profile in a PDF (`xrechnung.xml`) is an open question; `factur-x` doesn't write it.
 

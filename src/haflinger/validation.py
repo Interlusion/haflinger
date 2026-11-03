@@ -6,6 +6,7 @@ levels of some rules. The Factur-X profiles have FeRD's Schematron, compiled wit
 """
 
 import re
+import time
 from dataclasses import dataclass
 from functools import cache
 from xml.etree.ElementTree import Element
@@ -123,10 +124,14 @@ class _Scenario:
     levels: dict[str, Flag]  # KoSIT's level by rule ID, where it sets one
 
 
-def validate(data: bytes, *, max_size: int = MAX_SIZE) -> list[Finding]:
+def validate(
+    data: bytes, *, max_size: int = MAX_SIZE, timeout: float | None = None
+) -> list[Finding]:
     """Validate a CII invoice or a UBL invoice or credit note with the rule set its syntax and
-    BT-24 call for. Raises `InvoiceReadError` for input that can't be read
-    (REQ-002-PRS-F001)."""
+    BT-24 call for. Raises `InvoiceReadError` for input that can't be read (REQ-002-PRS-F001),
+    and where the rules don't end within `timeout` seconds, by default `HAFLINGER_RULES_TIMEOUT`
+    or 60 (REQ-002-PRS-NF004)."""
+    limit = _saxon.time_limit(timeout)
     opened = open_invoice(
         data,
         max_size,
@@ -138,7 +143,7 @@ def validate(data: bytes, *, max_size: int = MAX_SIZE) -> list[Finding]:
     schema = _xsd.check(decode(data), _scenarios()[name].schema)
     if schema:
         return [*findings, *schema]
-    return [*findings, *_rules(data, name, opened)]
+    return [*findings, *_rules(data, name, opened, limit, time.monotonic())]
 
 
 def _refuse_costly(opened: Opened) -> None:
@@ -172,24 +177,28 @@ def _refuse_costly(opened: Opened) -> None:
         )
 
 
-def check_rules(data: bytes, *also: str) -> list[Finding]:
+def check_rules(data: bytes, *also: str, timeout: float | None = None) -> list[Finding]:
     """Like `validate`, without the XML Schema check: for fragments that aren't whole invoices,
     as in CEN's per-rule unit tests, and for written invoices, whose schemas `write` checks.
-    `also` names further rule sets to run, such as `FACTUR_X_EN16931`."""
+    `also` names further rule sets to run, such as `FACTUR_X_EN16931`; `timeout` bounds them
+    together."""
+    limit = _saxon.time_limit(timeout)
+    started = time.monotonic()
     opened = open_invoice(data, MAX_SIZE, pdf="the input is a PDF")
     name, no_profile = rule_set(opened)
     findings = [] if no_profile is None else [no_profile]
     for each in (name, *also):
-        findings.extend(_rules(data, each, opened))
+        findings.extend(_rules(data, each, opened, limit, started))
     return findings
 
 
-def _rules(data: bytes, name: str, opened: Opened) -> list[Finding]:
+def _rules(data: bytes, name: str, opened: Opened, timeout: float, started: float) -> list[Finding]:
     """The findings of a rule set; where the rules themselves fail on the invoice, `HAFL-RULES`,
-    as KoSIT's validator reports a processing error (REQ-002-PRS-F010)."""
+    as KoSIT's validator reports a processing error (REQ-002-PRS-F010). Rules that don't end
+    within `timeout` from `started`, and a worker that dies, raise `_saxon.WorkerError`."""
     scenario = _scenarios()[name]
     try:
-        reports = _saxon.transform(data, *scenario.stylesheets)
+        reports = _saxon.transform(data, *scenario.stylesheets, timeout=timeout, started=started)
     except _saxon.TransformError as error:
         return [
             Finding(

@@ -27,13 +27,15 @@ from haflinger import read_invoice, validate, write_cii
 
 data = Path("invoice.xml").read_bytes()  # CII or UBL
 result = read_invoice(data)  # the model, and what reading couldn't take in
-findings = validate(data)  # the XML Schema's and the official rules' verdict
+findings = validate(data)  # the XML Schema's and the official rules' verdict, within 60 s
 invoice = result.invoice
 print(invoice.number, invoice.totals and invoice.totals.amount_due, len(findings))
 
 # CII, handed out only when it passes the XML Schema and the official rules
 xml = write_cii(replace(invoice, specification_id="urn:cen.eu:en16931:2017"))
 ```
+
+The official rules run in a worker process that Haflinger starts, within a time limit: `timeout=` on `validate`, `write_cii` and `embed`, by default the environment variable `HAFLINGER_RULES_TIMEOUT` or 60 seconds.
 
 A ZUGFeRD PDF, with the extra `pdf`: `read_invoice` reads it directly; validate the invoice embedded in it.
 
