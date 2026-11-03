@@ -4,7 +4,19 @@
 import re
 from datetime import date
 
-from haflinger._parties import BUYER, SELLER, PartyTerms, contact, identifier, identifiers
+from haflinger._parties import (
+    BUYER,
+    DELIVER_TO,
+    LOCATION,
+    SELLER,
+    Address,
+    AddressTerms,
+    PartyTerms,
+    contact,
+    identifier,
+    identifiers,
+    location,
+)
 from haflinger._payments import one_value, payment_means
 from haflinger._xml import (
     XML_WHITESPACE,
@@ -16,6 +28,7 @@ from haflinger._xml import (
 )
 from haflinger.model import (
     CreditTransfer,
+    Delivery,
     DirectDebit,
     Invoice,
     InvoiceLine,
@@ -23,6 +36,8 @@ from haflinger.model import (
     Party,
     PaymentCard,
     PaymentInstructions,
+    Period,
+    PrecedingInvoice,
     Totals,
     VatBreakdown,
 )
@@ -81,8 +96,23 @@ def read(root: Node, specification_id: str | None, *, credit_note: bool) -> Invo
         business_process=root.text("cbc:ProfileID", "BT-23"),
         specification_id=specification_id,
         notes=tuple(note for node in root.findall("cbc:Note") if (note := _note(node)) is not None),
+        preceding_invoices=tuple(
+            reference
+            for node in root.findall("cac:BillingReference/cac:InvoiceDocumentReference")
+            if (
+                reference := none_if_empty(
+                    PrecedingInvoice(
+                        number=node.text("cbc:ID", "BT-25"),
+                        issue_date=_date(node, "cbc:IssueDate", "BT-26"),
+                    )
+                )
+            )
+            is not None
+        ),
         seller=_party(root.group("cac:AccountingSupplierParty/cac:Party", "BG-4"), SELLER),
         buyer=_party(root.group("cac:AccountingCustomerParty/cac:Party", "BG-7"), BUYER),
+        delivery=_delivery(root.group("cac:Delivery", "BG-13", *_DELIVERY)),
+        invoicing_period=_period(root.group("cac:InvoicePeriod", "BG-14", *_PERIOD)),
         payment_instructions=_payment_instructions(root),
         totals=_totals(
             root.group("cac:LegalMonetaryTotal", "BG-22"),
@@ -142,7 +172,7 @@ def _party(party: Node | None, terms: PartyTerms) -> Party | None:
         "cac:PartyLegalEntity",
         f"{terms.name}, {terms.legal_registration_id} (cac:PartyLegalEntity)",
     )
-    address = party.group("cac:PostalAddress", terms.address)
+    address = party.group("cac:PostalAddress", terms.address.group)
     contact_element = party.group("cac:Contact", terms.contact, *_CONTACT)
     # A tax scheme `VAT` gives the VAT identifier, another the seller's tax registration
     # identifier, which the buyer lacks.
@@ -168,18 +198,12 @@ def _party(party: Node | None, terms: PartyTerms) -> Party | None:
     return Party(
         name=_text(entity, "cbc:RegistrationName", terms.name),
         trading_name=party.text("cac:PartyName/cbc:Name", terms.trading_name),
-        identifiers=identifiers(ids, terms),
+        identifiers=identifiers(ids, terms.identifier, one=terms.one_identifier),
         legal_registration_id=_text(entity, "cbc:CompanyID", terms.legal_registration_id),
         vat_id=None if vat_id is None else vat_id.value,
         tax_registration_id=None if tax_id is None else tax_id.value,
         electronic_address=identifier(party.first("cbc:EndpointID", terms.electronic_address)),
-        address_line_1=_text(address, "cbc:StreetName", terms.address_line_1),
-        address_line_2=_text(address, "cbc:AdditionalStreetName", terms.address_line_2),
-        address_line_3=_text(address, "cac:AddressLine/cbc:Line", terms.address_line_3),
-        city=_text(address, "cbc:CityName", terms.city),
-        post_code=_text(address, "cbc:PostalZone", terms.post_code),
-        country_subdivision=_text(address, "cbc:CountrySubentity", terms.country_subdivision),
-        country_code=_text(address, "cac:Country/cbc:IdentificationCode", terms.country_code),
+        **_address(address, terms.address),
         contact=None
         if contact_element is None
         else contact(
@@ -187,6 +211,65 @@ def _party(party: Node | None, terms: PartyTerms) -> Party | None:
             telephone=contact_element.text(telephone, terms.telephone),
             email=contact_element.text(email, terms.email),
         ),
+    )
+
+
+def _address(address: Node | None, terms: AddressTerms) -> Address:
+    return Address(
+        address_line_1=_text(address, "cbc:StreetName", terms.address_line_1),
+        address_line_2=_text(address, "cbc:AdditionalStreetName", terms.address_line_2),
+        address_line_3=_text(address, "cac:AddressLine/cbc:Line", terms.address_line_3),
+        city=_text(address, "cbc:CityName", terms.city),
+        post_code=_text(address, "cbc:PostalZone", terms.post_code),
+        country_subdivision=_text(address, "cbc:CountrySubentity", terms.country_subdivision),
+        country_code=_text(address, "cac:Country/cbc:IdentificationCode", terms.country_code),
+    )
+
+
+# The elements of BG-13's and BG-14's terms, which make a cac:Delivery or a cac:InvoicePeriod
+# the group (REQ-003-PRS-F002).
+_DELIVERY = (
+    "cac:DeliveryParty/cac:PartyName/cbc:Name",
+    "cac:DeliveryLocation/cbc:ID",
+    "cbc:ActualDeliveryDate",
+    *(
+        f"cac:DeliveryLocation/cac:Address/{path}"
+        for path in (
+            "cbc:StreetName",
+            "cbc:AdditionalStreetName",
+            "cac:AddressLine/cbc:Line",
+            "cbc:CityName",
+            "cbc:PostalZone",
+            "cbc:CountrySubentity",
+            "cac:Country/cbc:IdentificationCode",
+        )
+    ),
+)
+_PERIOD = ("cbc:StartDate", "cbc:EndDate")
+
+
+def _delivery(delivery: Node | None) -> Delivery | None:
+    if delivery is None:
+        return None
+    address = delivery.group("cac:DeliveryLocation/cac:Address", DELIVER_TO.group)
+    return none_if_empty(
+        Delivery(
+            party_name=delivery.text("cac:DeliveryParty/cac:PartyName/cbc:Name", "BT-70"),
+            location=location(delivery.holding(LOCATION, "cac:DeliveryLocation/cbc:ID")),
+            date=_date(delivery, "cbc:ActualDeliveryDate", "BT-72"),
+            **_address(address, DELIVER_TO),
+        )
+    )
+
+
+def _period(period: Node | None) -> Period | None:
+    if period is None:
+        return None
+    return none_if_empty(
+        Period(
+            start=_date(period, "cbc:StartDate", "BT-73"),
+            end=_date(period, "cbc:EndDate", "BT-74"),
+        )
     )
 
 

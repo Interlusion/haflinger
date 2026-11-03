@@ -2,6 +2,7 @@
 (REQ-003-PRS-F002, REQ-004-PRS-F003)."""
 
 import re
+from dataclasses import replace
 from datetime import date, datetime
 from decimal import Decimal
 from typing import cast
@@ -9,12 +10,17 @@ from xml.etree.ElementTree import Element, SubElement, tostring
 
 from haflinger._parties import (
     BUYER,
+    DELIVER_TO,
+    LOCATION,
     SELLER,
     TAX_REGISTRATION,
+    Address,
+    AddressTerms,
     PartyTerms,
     contact,
     identifier,
     identifiers,
+    location,
 )
 from haflinger._payments import one_value, payment_means
 from haflinger._xml import (
@@ -29,6 +35,7 @@ from haflinger.errors import InvoiceWriteError
 from haflinger.model import (
     Contact,
     CreditTransfer,
+    Delivery,
     DirectDebit,
     Identifier,
     Invoice,
@@ -37,6 +44,8 @@ from haflinger.model import (
     Party,
     PaymentCard,
     PaymentInstructions,
+    Period,
+    PrecedingInvoice,
     Totals,
     VatBreakdown,
 )
@@ -46,6 +55,7 @@ NAMESPACES = {
     "rsm": NAMESPACE,
     "ram": "urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100",
     "udt": "urn:un:unece:uncefact:data:standard:UnqualifiedDataType:100",
+    "qdt": "urn:un:unece:uncefact:data:standard:QualifiedDataType:100",
 }
 ROOT = "CrossIndustryInvoice"
 TAG = f"{{{NAMESPACE}}}{ROOT}"
@@ -57,6 +67,7 @@ _DOCUMENT = "rsm:ExchangedDocument"
 _TRANSACTION = "rsm:SupplyChainTradeTransaction"
 _AGREEMENT = f"{_TRANSACTION}/ram:ApplicableHeaderTradeAgreement"
 _SETTLEMENT = f"{_TRANSACTION}/ram:ApplicableHeaderTradeSettlement"
+_DELIVERY = f"{_TRANSACTION}/ram:ApplicableHeaderTradeDelivery"
 
 
 def specification(root: Node) -> Node | None:
@@ -92,8 +103,15 @@ def read(root: Node, specification_id: str | None) -> Invoice:
             for node in root.findall(f"{_DOCUMENT}/ram:IncludedNote")
             if (note := _note(node)) is not None
         ),
+        preceding_invoices=tuple(
+            reference
+            for node in root.findall(f"{_SETTLEMENT}/ram:InvoiceReferencedDocument")
+            if (reference := _preceding_invoice_of(node)) is not None
+        ),
         seller=_party(root.group(f"{_AGREEMENT}/ram:SellerTradeParty", "BG-4"), SELLER),
         buyer=_party(root.group(f"{_AGREEMENT}/ram:BuyerTradeParty", "BG-7"), BUYER),
+        delivery=_delivery(root),
+        invoicing_period=_period(root.group(f"{_SETTLEMENT}/ram:BillingSpecifiedPeriod", "BG-14")),
         payment_instructions=_payment_instructions(root),
         totals=_totals(
             root.group(
@@ -142,22 +160,17 @@ def _party(party: Node | None, terms: PartyTerms) -> Party | None:
         "ram:SpecifiedLegalOrganization",
         f"{terms.legal_registration_id}, {terms.trading_name} (ram:SpecifiedLegalOrganization)",
     )
-    address = party.group("ram:PostalTradeAddress", terms.address)
+    address = party.group("ram:PostalTradeAddress", terms.address.group)
     contact_element = party.group("ram:DefinedTradeContact", terms.contact, *_CONTACT)
     registrations = party.findall("ram:SpecifiedTaxRegistration/ram:ID")
-    # A ram:GlobalID identifies only with its scheme (REQ-003-PRS-F002).
-    ids = party.holding(terms.identifier, "ram:ID")
-    for node in party.holding(terms.identifier, "ram:GlobalID"):
-        if node.attribute("schemeID") is None:
-            node.drop(
-                f"{terms.identifier} in a ram:GlobalID without schemeID is left out: {node.value!r}"
-            )
-        else:
-            ids.append(node)
     return Party(
         name=party.text("ram:Name", terms.name),
         trading_name=_text(organization, "ram:TradingBusinessName", terms.trading_name),
-        identifiers=identifiers(ids, terms),
+        identifiers=identifiers(
+            _identifier_nodes(party, terms.identifier),
+            terms.identifier,
+            one=terms.one_identifier,
+        ),
         legal_registration_id=_text(organization, "ram:ID", terms.legal_registration_id),
         vat_id=_registration(registrations, "VA", terms.vat_id),
         tax_registration_id=(
@@ -168,6 +181,25 @@ def _party(party: Node | None, terms: PartyTerms) -> Party | None:
         electronic_address=identifier(
             party.first("ram:URIUniversalCommunication/ram:URIID", terms.electronic_address)
         ),
+        **_address(address, terms.address),
+        contact=None if contact_element is None else _contact(contact_element, terms),
+    )
+
+
+def _identifier_nodes(party: Node, term: str) -> list[Node]:
+    """A party's identifiers: each ram:ID, and each ram:GlobalID with its scheme, without which it
+    identifies nothing and is left out with a finding (REQ-003-PRS-F002)."""
+    nodes = party.holding(term, "ram:ID")
+    for node in party.holding(term, "ram:GlobalID"):
+        if node.attribute("schemeID") is None:
+            node.drop(f"{term} in a ram:GlobalID without schemeID is left out: {node.value!r}")
+        else:
+            nodes.append(node)
+    return nodes
+
+
+def _address(address: Node | None, terms: AddressTerms) -> Address:
+    return Address(
         address_line_1=_text(address, "ram:LineOne", terms.address_line_1),
         address_line_2=_text(address, "ram:LineTwo", terms.address_line_2),
         address_line_3=_text(address, "ram:LineThree", terms.address_line_3),
@@ -175,7 +207,44 @@ def _party(party: Node | None, terms: PartyTerms) -> Party | None:
         post_code=_text(address, "ram:PostcodeCode", terms.post_code),
         country_subdivision=_text(address, "ram:CountrySubDivisionName", terms.country_subdivision),
         country_code=_text(address, "ram:CountryID", terms.country_code),
-        contact=None if contact_element is None else _contact(contact_element, terms),
+    )
+
+
+def _preceding_invoice_of(node: Node) -> PrecedingInvoice | None:
+    return none_if_empty(
+        PrecedingInvoice(
+            number=node.text("ram:IssuerAssignedID", "BT-25"),
+            issue_date=_date(node, "ram:FormattedIssueDateTime/qdt:DateTimeString", "BT-26"),
+        )
+    )
+
+
+def _delivery(root: Node) -> Delivery | None:
+    """BG-13 from the deliver to party and the delivery event (REQ-003-PRS-F002)."""
+    ship_to = root.group(f"{_DELIVERY}/ram:ShipToTradeParty", "BT-70, BT-71, BG-15")
+    address = None if ship_to is None else ship_to.group("ram:PostalTradeAddress", DELIVER_TO.group)
+    return none_if_empty(
+        Delivery(
+            party_name=_text(ship_to, "ram:Name", "BT-70"),
+            location=None if ship_to is None else location(_identifier_nodes(ship_to, LOCATION)),
+            date=_date(
+                root,
+                f"{_DELIVERY}/ram:ActualDeliverySupplyChainEvent/ram:OccurrenceDateTime/udt:DateTimeString",
+                "BT-72",
+            ),
+            **_address(address, DELIVER_TO),
+        )
+    )
+
+
+def _period(period: Node | None) -> Period | None:
+    if period is None:
+        return None
+    return none_if_empty(
+        Period(
+            start=_date(period, "ram:StartDateTime/udt:DateTimeString", "BT-73"),
+            end=_date(period, "ram:EndDateTime/udt:DateTimeString", "BT-74"),
+        )
     )
 
 
@@ -422,8 +491,9 @@ def write(invoice: Invoice) -> bytes:
     _put_text(agreement, "ram:BuyerReference", invoice.buyer_reference, "BT-10")
     _write_party(agreement, "ram:SellerTradeParty", invoice.seller, SELLER)
     _write_party(agreement, "ram:BuyerTradeParty", invoice.buyer, BUYER)
-    SubElement(transaction, "ram:ApplicableHeaderTradeDelivery")
+    _write_delivery(SubElement(transaction, "ram:ApplicableHeaderTradeDelivery"), invoice.delivery)
     payment = _checked_instructions(invoice.payment_instructions)
+    preceding = _preceding_invoice(invoice)
     debit = None if payment is None else payment.direct_debit
     settlement = SubElement(transaction, "ram:ApplicableHeaderTradeSettlement")
     _put_text(
@@ -451,6 +521,7 @@ def write(invoice: Invoice) -> bytes:
         _put_text(tax, "ram:CategoryCode", vat.category_code, "BT-118")
         _put_text(tax, "ram:ExemptionReasonCode", vat.exemption_reason_code, "BT-121")
         _put_amount(tax, "ram:RateApplicablePercent", vat.rate, "BT-119")
+    _write_period(settlement, invoice.invoicing_period)
     terms = SubElement(settlement, "ram:SpecifiedTradePaymentTerms")
     payment_terms = _checked_text(invoice.payment_terms, "BT-20")
     if payment_terms is not None and _ends_with_discount_terms(payment_terms):
@@ -464,6 +535,10 @@ def write(invoice: Invoice) -> bytes:
         "BT-89",
     )
     _write_totals(settlement, invoice)
+    if preceding is not None:
+        reference = SubElement(settlement, "ram:InvoiceReferencedDocument")
+        _put_text(reference, "ram:IssuerAssignedID", preceding.number, "BT-25")
+        _put_date(reference, "ram:FormattedIssueDateTime", preceding.issue_date, "BT-26", "qdt")
 
     _remove_empty(root)
     # ElementTree writes a carriage return in text as it is, and XML parsers turn it into a line
@@ -487,31 +562,13 @@ def _write_party(parent: Element, tag: str, party: object, terms: PartyTerms) ->
             f"{TAX_REGISTRATION} is the seller's alone; the buyer ({terms.party}) has none"
         )
     element = SubElement(parent, tag)
-    # The XML Schema wants every ram:ID before the first ram:GlobalID (REQ-004-PRS-F003).
-    for each in sorted(ids, key=lambda each: each.scheme is not None):
-        value, scheme = _identifier_parts(each, terms, "an identifier", terms.identifier)
-        _put_text(
-            element,
-            "ram:ID" if scheme is None else "ram:GlobalID",
-            value,
-            terms.identifier,
-            schemeID=scheme,
-        )
+    _write_identifiers(element, ids, terms.party, terms.identifier)
     _put_text(element, "ram:Name", party.name, terms.name)
     organization = SubElement(element, "ram:SpecifiedLegalOrganization")
     _put_text(organization, "ram:ID", party.legal_registration_id, terms.legal_registration_id)
     _put_text(organization, "ram:TradingBusinessName", party.trading_name, terms.trading_name)
     _write_contact(element, party.contact, terms)
-    address = SubElement(element, "ram:PostalTradeAddress")
-    _put_text(address, "ram:PostcodeCode", party.post_code, terms.post_code)
-    _put_text(address, "ram:LineOne", party.address_line_1, terms.address_line_1)
-    _put_text(address, "ram:LineTwo", party.address_line_2, terms.address_line_2)
-    _put_text(address, "ram:LineThree", party.address_line_3, terms.address_line_3)
-    _put_text(address, "ram:CityName", party.city, terms.city)
-    _put_text(address, "ram:CountryID", party.country_code, terms.country_code)
-    _put_text(
-        address, "ram:CountrySubDivisionName", party.country_subdivision, terms.country_subdivision
-    )
+    _write_address(element, party, terms.address)
     electronic_address = cast(object, party.electronic_address)
     if electronic_address is not None:
         if not isinstance(electronic_address, Identifier):
@@ -520,7 +577,7 @@ def _write_party(parent: Element, tag: str, party: object, terms: PartyTerms) ->
             )
         value, scheme = _identifier_parts(
             electronic_address,
-            terms,
+            terms.party,
             "an electronic address",
             terms.electronic_address,
             scheme_required=True,
@@ -547,7 +604,7 @@ def _write_party(parent: Element, tag: str, party: object, terms: PartyTerms) ->
 
 def _identifier_parts(
     identifier: Identifier,
-    terms: PartyTerms,
+    group: str,
     kind: str,
     term: str,
     *,
@@ -557,11 +614,87 @@ def _identifier_parts(
     a scheme where the group requires one (REQ-001-PRS-F001)."""
     value = _checked_text(identifier.value, term)
     if value is None:
-        raise InvoiceWriteError(f"{terms.party} holds {kind} without its value ({term})")
+        raise InvoiceWriteError(f"{group} holds {kind} without its value ({term})")
     scheme = _checked_text(identifier.scheme, f"{term}-1")
     if scheme is None and scheme_required:
-        raise InvoiceWriteError(f"{terms.party} holds {kind} without its scheme ({term}-1)")
+        raise InvoiceWriteError(f"{group} holds {kind} without its scheme ({term}-1)")
     return value, scheme
+
+
+def _write_identifiers(
+    element: Element, identifiers: list[Identifier], group: str, term: str
+) -> None:
+    """Each identifier with a scheme as ram:GlobalID, one without as ram:ID; the XML Schema wants
+    every ram:ID before the first ram:GlobalID (REQ-004-PRS-F003)."""
+    for each in sorted(identifiers, key=lambda each: each.scheme is not None):
+        value, scheme = _identifier_parts(each, group, "an identifier", term)
+        _put_text(
+            element, "ram:ID" if scheme is None else "ram:GlobalID", value, term, schemeID=scheme
+        )
+
+
+def _write_address(element: Element, holder: Party | Delivery, terms: AddressTerms) -> None:
+    address = SubElement(element, "ram:PostalTradeAddress")
+    _put_text(address, "ram:PostcodeCode", holder.post_code, terms.post_code)
+    _put_text(address, "ram:LineOne", holder.address_line_1, terms.address_line_1)
+    _put_text(address, "ram:LineTwo", holder.address_line_2, terms.address_line_2)
+    _put_text(address, "ram:LineThree", holder.address_line_3, terms.address_line_3)
+    _put_text(address, "ram:CityName", holder.city, terms.city)
+    _put_text(address, "ram:CountryID", holder.country_code, terms.country_code)
+    _put_text(
+        address, "ram:CountrySubDivisionName", holder.country_subdivision, terms.country_subdivision
+    )
+
+
+def _write_delivery(element: Element, delivery: object) -> None:
+    """BG-13 in ram:ApplicableHeaderTradeDelivery (REQ-004-PRS-F003)."""
+    if delivery is None:
+        return
+    if not isinstance(delivery, Delivery):
+        raise InvoiceWriteError(f"BG-13 is not a Delivery: {delivery!r}")
+    if delivery == Delivery():
+        raise InvoiceWriteError("BG-13 holds delivery information without any term")
+    location = cast(object, delivery.location)
+    if location is not None and not isinstance(location, Identifier):
+        raise InvoiceWriteError(f"{LOCATION} is not an Identifier: {location!r}")
+    ship_to = SubElement(element, "ram:ShipToTradeParty")
+    if location is not None:
+        _write_identifiers(ship_to, [location], "BG-13", LOCATION)
+    _put_text(ship_to, "ram:Name", delivery.party_name, "BT-70")
+    _write_address(ship_to, delivery, DELIVER_TO)
+    _put_date(
+        element, "ram:ActualDeliverySupplyChainEvent/ram:OccurrenceDateTime", delivery.date, "BT-72"
+    )
+
+
+def _write_period(settlement: Element, period: object) -> None:
+    if period is None:
+        return
+    if not isinstance(period, Period):
+        raise InvoiceWriteError(f"BG-14 is not a Period: {period!r}")
+    if period == Period():
+        raise InvoiceWriteError("BG-14 holds a period without any term")
+    element = SubElement(settlement, "ram:BillingSpecifiedPeriod")
+    _put_date(element, "ram:StartDateTime", period.start, "BT-73")
+    _put_date(element, "ram:EndDateTime", period.end, "BT-74")
+
+
+def _preceding_invoice(invoice: Invoice) -> PrecedingInvoice | None:
+    """BG-3, of which CII D16B holds one (REQ-004-PRS-F001)."""
+    references = _group(invoice.preceding_invoices, PrecedingInvoice, "BG-3")
+    if len(references) > 1:
+        raise InvoiceWriteError(
+            "BG-3 holds more preceding invoices than CII D16B can, which is one"
+        )
+    if references and references[0] == PrecedingInvoice():
+        raise InvoiceWriteError("BG-3 holds a preceding invoice without any term")
+    return references[0] if references else None
+
+
+def with_one_preceding_invoice(invoice: Invoice) -> Invoice:
+    """The model with its first preceding invoice where it holds more than CII D16B can, as the
+    round trip and the benchmark write a model read from UBL (REQ-004-PRS-F006)."""
+    return replace(invoice, preceding_invoices=invoice.preceding_invoices[:1])
 
 
 def _write_contact(party: Element, contact: object, terms: PartyTerms) -> None:
@@ -778,13 +911,15 @@ def _put_amount(
     _leaf(parent, path, format(value, "f"), attributes)
 
 
-def _put_date(parent: Element, path: str, value: object, term: str) -> None:
+def _put_date(parent: Element, path: str, value: object, term: str, data_type: str = "udt") -> None:
+    """A date as `DateTimeString` with `format="102"`, of the unqualified data type or, where
+    the XML Schema wants it, the qualified one (`qdt`)."""
     if value is None:
         return
     if not isinstance(value, date) or isinstance(value, datetime):
         raise InvoiceWriteError(f"{term} is not a date: {value!r}")
     text = f"{value.year:04}{value.month:02}{value.day:02}"
-    _leaf(parent, f"{path}/udt:DateTimeString", text, {"format": "102"})
+    _leaf(parent, f"{path}/{data_type}:DateTimeString", text, {"format": "102"})
 
 
 def _leaf(parent: Element, path: str, text: str | None, attributes: dict[str, str | None]) -> None:

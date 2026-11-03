@@ -43,7 +43,7 @@ start = time.perf_counter()
 from haflinger import cii, read_invoice, validate
 data = path.read_bytes()
 if step == "write":
-    invoice = read_invoice(data).invoice
+    invoice = cii.with_one_preceding_invoice(read_invoice(data).invoice)
     start = time.perf_counter()
     cii.write(invoice)
 elif step == "read":
@@ -172,6 +172,9 @@ def factur_x(specification_id: str) -> bytes:
             buyer=Party(name=buyer.name),
             payment_terms=None,
             payment_instructions=None,
+            preceding_invoices=(),
+            delivery=None,
+            invoicing_period=None,
         )
     return cii.write(replace(model, specification_id=specification_id))
 
@@ -191,7 +194,7 @@ def main(arguments: list[str]) -> int:
 def measure(corpus: Path | None, scratch: Path) -> int:
     rows: list[tuple[str, str, str, str]] = []
 
-    models = [read_invoice(path.read_bytes()).invoice for path in SUITE]
+    models = [cii.with_one_preceding_invoice(read_invoice(p.read_bytes()).invoice) for p in SUITE]
     rows.append(
         ("REQ-003-PRS-NF002", "Read a KoSIT file", "20 ms", ms(per_file(read_invoice, SUITE)))
     )

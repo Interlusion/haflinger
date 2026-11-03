@@ -15,11 +15,24 @@ from datetime import date
 from decimal import Decimal
 
 from haflinger import _saxon, cii, ubl
-from haflinger._parties import BUYER, SELLER, PartyTerms, contact, identifier, identifiers
+from haflinger._parties import (
+    BUYER,
+    DELIVER_TO,
+    LOCATION,
+    SELLER,
+    Address,
+    AddressTerms,
+    PartyTerms,
+    contact,
+    identifier,
+    identifiers,
+    location,
+)
 from haflinger._xml import XML_WHITESPACE, Node, Reading, none_if_empty, parse
 from haflinger.errors import InvoiceReadError
 from haflinger.model import (
     CreditTransfer,
+    Delivery,
     DirectDebit,
     Invoice,
     InvoiceLine,
@@ -27,6 +40,8 @@ from haflinger.model import (
     Party,
     PaymentCard,
     PaymentInstructions,
+    Period,
+    PrecedingInvoice,
     Syntax,
     Totals,
     VatBreakdown,
@@ -121,8 +136,14 @@ def _invoice(invoice: Node, syntax: Syntax) -> Invoice:
             Note(subject_code=_text(note, "BT-21"), text=_text(note, "BT-22"))
             for note in invoice.findall(_term("BG-1"))
         ),
+        preceding_invoices=tuple(
+            PrecedingInvoice(number=_text(reference, "BT-25"), issue_date=_date(reference, "BT-26"))
+            for reference in invoice.findall(_term("BG-3"))
+        ),
         seller=_party(invoice.find(_term("BG-4")), SELLER),
         buyer=_party(invoice.find(_term("BG-7")), BUYER),
+        delivery=_delivery(invoice.group(_term("BG-13"), "BG-13")),
+        invoicing_period=_period(invoice.group(_term("BG-14"), "BG-14")),
         payment_instructions=_payment_instructions(invoice.group(_term("BG-16"), "BG-16")),
         totals=_totals(invoice.find(_term("BG-22"))),
         vat_breakdown=tuple(_vat_breakdown(vat) for vat in invoice.findall(_term("BG-23"))),
@@ -139,7 +160,10 @@ def _party(party: Node | None, terms: PartyTerms) -> Party | None:
         trading_name=_text(party, terms.trading_name),
         # KoSIT's stylesheets give an identifier's scheme as `scheme_identifier`.
         identifiers=identifiers(
-            party.holding(terms.identifier, _term(terms.identifier)), terms, "scheme_identifier"
+            party.holding(terms.identifier, _term(terms.identifier)),
+            terms.identifier,
+            one=terms.one_identifier,
+            scheme="scheme_identifier",
         ),
         legal_registration_id=_text(party, terms.legal_registration_id),
         vat_id=_text(party, terms.vat_id),
@@ -150,13 +174,7 @@ def _party(party: Node | None, terms: PartyTerms) -> Party | None:
             party.first(_term(terms.electronic_address), terms.electronic_address),
             "scheme_identifier",
         ),
-        address_line_1=_text(party, terms.address, terms.address_line_1),
-        address_line_2=_text(party, terms.address, terms.address_line_2),
-        address_line_3=_text(party, terms.address, terms.address_line_3),
-        city=_text(party, terms.address, terms.city),
-        post_code=_text(party, terms.address, terms.post_code),
-        country_subdivision=_text(party, terms.address, terms.country_subdivision),
-        country_code=_text(party, terms.address, terms.country_code),
+        **_address(party, terms.address),
         contact=None
         if contact_group is None
         else contact(
@@ -165,6 +183,38 @@ def _party(party: Node | None, terms: PartyTerms) -> Party | None:
             email=_text(contact_group, terms.email),
         ),
     )
+
+
+def _address(holder: Node, terms: AddressTerms) -> Address:
+    """The address group within `holder`: a party, or the delivery information."""
+    return Address(
+        address_line_1=_text(holder, terms.group, terms.address_line_1),
+        address_line_2=_text(holder, terms.group, terms.address_line_2),
+        address_line_3=_text(holder, terms.group, terms.address_line_3),
+        city=_text(holder, terms.group, terms.city),
+        post_code=_text(holder, terms.group, terms.post_code),
+        country_subdivision=_text(holder, terms.group, terms.country_subdivision),
+        country_code=_text(holder, terms.group, terms.country_code),
+    )
+
+
+def _delivery(delivery: Node | None) -> Delivery | None:
+    if delivery is None:
+        return None
+    return none_if_empty(
+        Delivery(
+            party_name=_text(delivery, "BT-70"),
+            location=location(delivery.holding(LOCATION, _term(LOCATION)), "scheme_identifier"),
+            date=_date(delivery, "BT-72"),
+            **_address(delivery, DELIVER_TO),
+        )
+    )
+
+
+def _period(period: Node | None) -> Period | None:
+    if period is None:
+        return None
+    return none_if_empty(Period(start=_date(period, "BT-73"), end=_date(period, "BT-74")))
 
 
 def _payment_instructions(payment: Node | None) -> PaymentInstructions | None:
