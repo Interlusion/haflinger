@@ -358,17 +358,17 @@ def test_refuses_what_cant_be_written_sensibly(invoice: Any, reason: str) -> Non
             "BG-4 holds an electronic address without its scheme (BT-34-1)",
         ),
         (
-            replace(INVOICE, payment_instructions=PaymentInstructions(means_text="SEPA")),
-            "BG-16 holds payment instructions without their means code (BT-81)",
+            replace(INVOICE, payment_instructions=PaymentInstructions()),
+            "BG-16 holds payment instructions without any term",
         ),
         (
             replace(
                 INVOICE,
                 payment_instructions=PaymentInstructions(
-                    means_code="58", credit_transfers=(CreditTransfer(account_name="Example"),)
+                    means_code="58", credit_transfers=(CreditTransfer(),)
                 ),
             ),
-            "BG-17 holds a credit transfer without its account (BT-84)",
+            "BG-17 holds a credit transfer without any term",
         ),
         (
             replace(
@@ -446,8 +446,8 @@ def test_refuses_what_cant_be_written_sensibly(invoice: Any, reason: str) -> Non
         "identifier-without-value",
         "electronic-address-without-value",
         "electronic-address-without-scheme",
-        "instructions-without-means-code",
-        "credit-transfer-without-account",
+        "empty-instructions",
+        "empty-credit-transfer",
         "card-without-number",
         "empty-direct-debit",
         "str-instructions",
@@ -609,6 +609,24 @@ def test_writes_preceding_invoice_delivery_and_period_and_reads_them_back() -> N
     ("invoice", "rule"),
     [
         (
+            replace(
+                INVOICE,
+                payment_instructions=PaymentInstructions(means_text="SEPA"),
+                specification_id=XRECHNUNG,
+            ),
+            "BR-49",
+        ),
+        (replace(INVOICE, payment_instructions=PaymentInstructions(means_text="SEPA")), "HAFL-XSD"),
+        (
+            replace(
+                INVOICE,
+                payment_instructions=PaymentInstructions(
+                    means_code="58", credit_transfers=(CreditTransfer(account_name="Example"),)
+                ),
+            ),
+            "BR-50",
+        ),
+        (
             replace(INVOICE, preceding_invoices=(PrecedingInvoice(issue_date=date(2016, 3, 1)),)),
             "BR-55",
         ),
@@ -619,6 +637,9 @@ def test_writes_preceding_invoice_delivery_and_period_and_reads_them_back() -> N
         (replace(INVOICE, delivery=Delivery(city="Example City")), "HAFL-XSD"),
     ],
     ids=[
+        "instructions-without-means-code",
+        "instructions-without-means-code-factur-x",
+        "credit-transfer-without-account",
         "preceding-invoice-without-number",
         "deliver-to-address-without-country",
         "deliver-to-address-without-country-factur-x",
@@ -627,9 +648,11 @@ def test_writes_preceding_invoice_delivery_and_period_and_reads_them_back() -> N
 def test_the_official_artefacts_refuse_a_group_without_a_term_it_needs(
     invoice: Invoice, rule: str
 ) -> None:
-    """Written, since CII D16B can hold the rest, and refused after writing: a preceding invoice
-    without its number (BT-25) by BR-55, a deliver to address without its country code (BT-80)
-    by BR-57 or, for EN 16931, by Factur-X's XML Schema, which requires it (REQ-004-PRS-F001)."""
+    """Written, since CII D16B can hold the rest, and refused after writing: payment
+    instructions without their means code (BT-81) by BR-49, a credit transfer without its
+    account (BT-84) by BR-50, a preceding invoice without its number (BT-25) by BR-55, a deliver
+    to address without its country code (BT-80) by BR-57; for EN 16931, Factur-X's XML Schema
+    requires BT-81 and BT-80 (REQ-004-PRS-F001)."""
     with pytest.raises(InvoiceWriteError, match=rule) as refusal:
         write_cii(invoice)
     assert rule in {finding.rule for finding in refusal.value.findings}
