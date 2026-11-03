@@ -726,20 +726,22 @@ def _ends_with_discount_terms(payment_terms: str) -> bool:
 
 
 def _checked_instructions(payment: object) -> PaymentInstructions | None:
-    """BG-16, with the groups in it of their classes and holding the terms they require."""
+    """BG-16, with the groups in it of their classes, none of them empty, and the card with its
+    number (BT-87)."""
     if payment is None:
         return None
     if not isinstance(payment, PaymentInstructions):
         raise InvoiceWriteError(f"BG-16 is not a PaymentInstructions: {payment!r}")
-    if payment.means_code is None:
-        raise InvoiceWriteError("BG-16 holds payment instructions without their means code (BT-81)")
+    if payment == PaymentInstructions():
+        raise InvoiceWriteError("BG-16 holds payment instructions without any term")
     for transfer in _group(payment.credit_transfers, CreditTransfer, "BG-17"):
-        if transfer.account_id is None:
-            raise InvoiceWriteError("BG-17 holds a credit transfer without its account (BT-84)")
+        if transfer == CreditTransfer():
+            raise InvoiceWriteError("BG-17 holds a credit transfer without any term")
     card = cast(object, payment.card)
     if card is not None:
         if not isinstance(card, PaymentCard):
             raise InvoiceWriteError(f"BG-18 is not a PaymentCard: {card!r}")
+        # EN 16931 requires BT-87 in BG-18, and no official rule checks it in CII D16B.
         if card.account_number is None:
             raise InvoiceWriteError("BG-18 holds a card without its account number (BT-87)")
     debit = cast(object, payment.direct_debit)
