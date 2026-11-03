@@ -3,7 +3,7 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Draft |
-| **Version** | 0.6 |
+| **Version** | 0.7 |
 | **Date** | 2026-11-03 |
 | **Author** | loxy (drafted with Claude) |
 
@@ -144,6 +144,7 @@ General vocabulary (CIUS, Leitweg-ID, Peppol …): the [E-Invoicing 101 glossary
 | `Invoice.buyer_reference` | BT-10 | Buyer reference (Leitweg-ID) |  |
 | `Invoice.business_process` | BT-23 | Business process type |  |
 | `Invoice.specification_id` | BT-24 | Specification identifier | required |
+| `Invoice.payment_terms` | BT-20 | Payment terms |  |
 | `Invoice.notes` | BG-1 | Invoice note: `subject_code` BT-21, `text` BT-22 (required in the group) |  |
 | `Invoice.seller` | BG-4 | Seller | required |
 | `Invoice.buyer` | BG-7 | Buyer | required |
@@ -162,6 +163,10 @@ General vocabulary (CIUS, Leitweg-ID, Peppol …): the [E-Invoicing 101 glossary
 | `Party.country_subdivision` | BT-39, BT-54 | Country subdivision |  |
 | `Party.country_code` | BT-40, BT-55 | Country code | required |
 | `Party.contact` | BG-6, BG-9 | Contact: `point` BT-41, BT-56, `telephone` BT-42, BT-57, `email` BT-43, BT-58 |  |
+| `Invoice.payment_instructions` | BG-16 | Payment instructions: `means_code` BT-81 (required in the group), `means_text` BT-82, `remittance_information` BT-83 |  |
+| `PaymentInstructions.credit_transfers` | BG-17 | Credit transfers, any number: `account_id` BT-84 (required in the group), `account_name` BT-85, `provider_id` BT-86 |  |
+| `PaymentInstructions.card` | BG-18 | Payment card information: `account_number` BT-87 (required in the group), `holder_name` BT-88 |  |
+| `PaymentInstructions.direct_debit` | BG-19 | Direct debit: `mandate_reference` BT-89, `creditor_id` BT-90, `debited_account_id` BT-91 |  |
 | `Invoice.totals` | BG-22 | Document totals | required |
 | `Totals.line_net_total` | BT-106 | Sum of invoice line net amounts | required |
 | `Totals.allowance_total` | BT-107 | Sum of allowances on document level |  |
