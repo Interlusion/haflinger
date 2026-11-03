@@ -35,14 +35,43 @@ class Note:
 
 
 @dataclass(frozen=True, kw_only=True)
+class Identifier:
+    """An identifier with the scheme it belongs to: BT-29 and BT-29-1, BT-34 and BT-34-1, BT-46
+    and BT-46-1, BT-49 and BT-49-1."""
+
+    value: str | None = None
+    scheme: str | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class Contact:
+    """BG-6 seller contact or BG-9 buyer contact."""
+
+    point: str | None = None  # BT-41, BT-56
+    telephone: str | None = None  # BT-42, BT-57
+    email: str | None = None  # BT-43, BT-58
+
+
+@dataclass(frozen=True, kw_only=True)
 class Party:
-    """BG-4 seller or BG-7 buyer."""
+    """BG-4 seller or BG-7 buyer, with its postal address (BG-5, BG-8). BT-32 is the seller's
+    alone, and the buyer has at most one identifier (BT-46)."""
 
     name: str | None = None  # BT-27, BT-44
     trading_name: str | None = None  # BT-28, BT-45
+    identifiers: tuple[Identifier, ...] = ()  # BT-29, BT-46
     legal_registration_id: str | None = None  # BT-30, BT-47
     vat_id: str | None = None  # BT-31, BT-48
+    tax_registration_id: str | None = None  # BT-32
+    electronic_address: Identifier | None = None  # BT-34, BT-49
+    address_line_1: str | None = None  # BT-35, BT-50
+    address_line_2: str | None = None  # BT-36, BT-51
+    address_line_3: str | None = None  # BT-162, BT-163
+    city: str | None = None  # BT-37, BT-52
+    post_code: str | None = None  # BT-38, BT-53
+    country_subdivision: str | None = None  # BT-39, BT-54
     country_code: str | None = None  # BT-40, BT-55
+    contact: Contact | None = None  # BG-6, BG-9
 
 
 @dataclass(frozen=True, kw_only=True)

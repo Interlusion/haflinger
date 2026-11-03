@@ -13,9 +13,18 @@ from datetime import date
 from decimal import Decimal
 
 from haflinger import _saxon, cii, ubl
+from haflinger._parties import BUYER, SELLER, PartyTerms, contact, identifier, identifiers
 from haflinger._xml import XML_WHITESPACE, Node, Reading, parse
 from haflinger.errors import InvoiceReadError
-from haflinger.model import Invoice, InvoiceLine, Note, Party, Syntax, Totals, VatBreakdown
+from haflinger.model import (
+    Invoice,
+    InvoiceLine,
+    Note,
+    Party,
+    Syntax,
+    Totals,
+    VatBreakdown,
+)
 from haflinger.read import ReadResult
 
 XR = "urn:ce.eu:en16931:2017:xoev-de:kosit:standard:xrechnung-1"
@@ -103,25 +112,48 @@ def _invoice(invoice: Node, syntax: Syntax) -> Invoice:
             Note(subject_code=_text(note, "BT-21"), text=_text(note, "BT-22"))
             for note in invoice.findall(_term("BG-1"))
         ),
-        seller=_party(invoice.find(_term("BG-4")), ("BT-27", "BT-28", "BT-30", "BT-31"), "BG-5"),
-        buyer=_party(invoice.find(_term("BG-7")), ("BT-44", "BT-45", "BT-47", "BT-48"), "BG-8"),
+        seller=_party(invoice.find(_term("BG-4")), SELLER),
+        buyer=_party(invoice.find(_term("BG-7")), BUYER),
         totals=_totals(invoice.find(_term("BG-22"))),
         vat_breakdown=tuple(_vat_breakdown(vat) for vat in invoice.findall(_term("BG-23"))),
         lines=tuple(_line(line) for line in invoice.findall(_term("BG-25"))),
     )
 
 
-def _party(party: Node | None, terms: tuple[str, str, str, str], address: str) -> Party | None:
+def _party(party: Node | None, terms: PartyTerms) -> Party | None:
     if party is None:
         return None
-    name, trading_name, registration, vat_id = terms
-    country = {"BG-5": "BT-40", "BG-8": "BT-55"}[address]
+    contact_group = party.find(_term(terms.contact))
     return Party(
-        name=_text(party, name),
-        trading_name=_text(party, trading_name),
-        legal_registration_id=_text(party, registration),
-        vat_id=_text(party, vat_id),
-        country_code=_text(party, address, country),
+        name=_text(party, terms.name),
+        trading_name=_text(party, terms.trading_name),
+        # KoSIT's stylesheets give an identifier's scheme as `scheme_identifier`.
+        identifiers=identifiers(
+            party.holding(terms.identifier, _term(terms.identifier)), terms, "scheme_identifier"
+        ),
+        legal_registration_id=_text(party, terms.legal_registration_id),
+        vat_id=_text(party, terms.vat_id),
+        tax_registration_id=(
+            None if terms.tax_registration is None else _text(party, terms.tax_registration)
+        ),
+        electronic_address=identifier(
+            party.first(_term(terms.electronic_address), terms.electronic_address),
+            "scheme_identifier",
+        ),
+        address_line_1=_text(party, terms.address, terms.address_line_1),
+        address_line_2=_text(party, terms.address, terms.address_line_2),
+        address_line_3=_text(party, terms.address, terms.address_line_3),
+        city=_text(party, terms.address, terms.city),
+        post_code=_text(party, terms.address, terms.post_code),
+        country_subdivision=_text(party, terms.address, terms.country_subdivision),
+        country_code=_text(party, terms.address, terms.country_code),
+        contact=None
+        if contact_group is None
+        else contact(
+            point=_text(contact_group, terms.contact_point),
+            telephone=_text(contact_group, terms.telephone),
+            email=_text(contact_group, terms.email),
+        ),
     )
 
 

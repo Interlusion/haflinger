@@ -4,8 +4,16 @@
 import re
 from datetime import date
 
-from haflinger._xml import XML_WHITESPACE, Node, choose_vat_totals
-from haflinger.model import Invoice, InvoiceLine, Note, Party, Totals, VatBreakdown
+from haflinger._parties import BUYER, SELLER, PartyTerms, contact, identifier, identifiers
+from haflinger._xml import XML_WHITESPACE, Node, choose_vat_totals, first_of
+from haflinger.model import (
+    Invoice,
+    InvoiceLine,
+    Note,
+    Party,
+    Totals,
+    VatBreakdown,
+)
 
 INVOICE = "urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"
 CREDIT_NOTE = "urn:oasis:names:specification:ubl:schema:xsd:CreditNote-2"
@@ -60,16 +68,8 @@ def read(root: Node, specification_id: str | None, *, credit_note: bool) -> Invo
         business_process=root.text("cbc:ProfileID", "BT-23"),
         specification_id=specification_id,
         notes=tuple(note for node in root.findall("cbc:Note") if (note := _note(node)) is not None),
-        seller=_party(
-            root.group("cac:AccountingSupplierParty/cac:Party", "BG-4"),
-            ("BT-27", "BT-28", "BT-30", "BT-31", "BT-40"),
-            "BG-5",
-        ),
-        buyer=_party(
-            root.group("cac:AccountingCustomerParty/cac:Party", "BG-7"),
-            ("BT-44", "BT-45", "BT-47", "BT-48", "BT-55"),
-            "BG-8",
-        ),
+        seller=_party(root.group("cac:AccountingSupplierParty/cac:Party", "BG-4"), SELLER),
+        buyer=_party(root.group("cac:AccountingCustomerParty/cac:Party", "BG-7"), BUYER),
         totals=_totals(
             root.group("cac:LegalMonetaryTotal", "BG-22"),
             _tax_amount(vat_total),
@@ -120,30 +120,64 @@ def _note(node: Node) -> Note | None:
     return Note(subject_code=match[1], text=match[2].strip(XML_WHITESPACE) or None)
 
 
-def _party(
-    party: Node | None, terms: tuple[str, str, str, str, str], address_group: str
-) -> Party | None:
+def _party(party: Node | None, terms: PartyTerms) -> Party | None:
     if party is None:
         return None
-    name, trading_name, registration, vat, country = terms
-    # The terms of one legal entity and one address come from one element each.
-    entity = party.group("cac:PartyLegalEntity", f"{name}, {registration} (cac:PartyLegalEntity)")
-    address = party.group("cac:PostalAddress", address_group)
-    vat_ids = [
-        node
-        for scheme in party.findall("cac:PartyTaxScheme")
-        if scheme.text("cac:TaxScheme/cbc:ID", f"{vat} (cac:TaxScheme)") == "VAT"
-        and (node := scheme.first("cbc:CompanyID", vat)) is not None
-    ]
-    for node in vat_ids[1:]:
-        node.drop(f"{vat} appears more than once; this one is left out: {node.value!r}")
-    return Party(
-        name=_text(entity, "cbc:RegistrationName", name),
-        trading_name=party.text("cac:PartyName/cbc:Name", trading_name),
-        legal_registration_id=_text(entity, "cbc:CompanyID", registration),
-        vat_id=vat_ids[0].value if vat_ids else None,
-        country_code=_text(address, "cac:Country/cbc:IdentificationCode", country),
+    # The terms of one legal entity, one address and one contact come from one element each.
+    entity = party.group(
+        "cac:PartyLegalEntity",
+        f"{terms.name}, {terms.legal_registration_id} (cac:PartyLegalEntity)",
     )
+    address = party.group("cac:PostalAddress", terms.address)
+    contact_element = party.group("cac:Contact", terms.contact, *_CONTACT)
+    # A tax scheme `VAT` gives the VAT identifier, another the seller's tax registration
+    # identifier, which the buyer lacks.
+    taxes = ", ".join(term for term in (terms.vat_id, terms.tax_registration) if term)
+    vat_ids: list[Node] = []
+    tax_ids: list[Node] = []
+    for scheme in party.findall("cac:PartyTaxScheme"):
+        kind = scheme.text("cac:TaxScheme/cbc:ID", f"{taxes} (cac:TaxScheme)")
+        if kind == "VAT":
+            vat_ids += scheme.holding(terms.vat_id, "cbc:CompanyID")
+        elif kind is not None and terms.tax_registration is not None:
+            tax_ids += scheme.holding(terms.tax_registration, "cbc:CompanyID")
+    vat_id = first_of(vat_ids, terms.vat_id)
+    tax_id = None if terms.tax_registration is None else first_of(tax_ids, terms.tax_registration)
+    # The seller's identifier with scheme SEPA is the bank assigned creditor identifier (BT-90).
+    ids = [
+        node
+        for node in party.findall("cac:PartyIdentification/cbc:ID")
+        if not (terms.creditor_identifier and node.attribute("schemeID") == "SEPA")
+        and node.plain(terms.identifier) is not None
+    ]
+    point, telephone, email = _CONTACT
+    return Party(
+        name=_text(entity, "cbc:RegistrationName", terms.name),
+        trading_name=party.text("cac:PartyName/cbc:Name", terms.trading_name),
+        identifiers=identifiers(ids, terms),
+        legal_registration_id=_text(entity, "cbc:CompanyID", terms.legal_registration_id),
+        vat_id=None if vat_id is None else vat_id.value,
+        tax_registration_id=None if tax_id is None else tax_id.value,
+        electronic_address=identifier(party.first("cbc:EndpointID", terms.electronic_address)),
+        address_line_1=_text(address, "cbc:StreetName", terms.address_line_1),
+        address_line_2=_text(address, "cbc:AdditionalStreetName", terms.address_line_2),
+        address_line_3=_text(address, "cac:AddressLine/cbc:Line", terms.address_line_3),
+        city=_text(address, "cbc:CityName", terms.city),
+        post_code=_text(address, "cbc:PostalZone", terms.post_code),
+        country_subdivision=_text(address, "cbc:CountrySubentity", terms.country_subdivision),
+        country_code=_text(address, "cac:Country/cbc:IdentificationCode", terms.country_code),
+        contact=None
+        if contact_element is None
+        else contact(
+            point=contact_element.text(point, terms.contact_point),
+            telephone=contact_element.text(telephone, terms.telephone),
+            email=contact_element.text(email, terms.email),
+        ),
+    )
+
+
+# The elements of a contact's terms, which make a cac:Contact the contact.
+_CONTACT = ("cbc:Name", "cbc:Telephone", "cbc:ElectronicMail")
 
 
 def _totals(
