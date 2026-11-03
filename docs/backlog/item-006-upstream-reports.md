@@ -14,18 +14,21 @@ Report upstream the differences between the CII and UBL files of the KoSIT test 
 
 ## Context / Motivation
 
-The spikes compared what KoSIT's reading stylesheet makes of the CII and UBL file of each business case, over every business term in them, in the KoSIT test suite `v2026-08-31`. Apart from differences in the files themselves, both agree. Those differences, with the technical cases' found by Haflinger's reading in the rebuild:
+The spikes compared what KoSIT's reading stylesheet makes of the CII and UBL file of each business case, over every business term in them, in the KoSIT test suite `v2026-08-31`. Apart from differences in the files themselves, both agree. Those differences, with the technical cases' found by Haflinger's reading in the rebuild, and a limit of KoSIT's reading stylesheet itself (the last row):
 
 | Business term | Cases | Difference | Report? |
 | :- | :- | :- | :- |
 | BT-107, BT-108, BT-113, BT-114 | 6 | CII writes 0, UBL leaves the sum out | No: the standard allows both ([REQ-003-PRS-F004](../specs/req-003-incoming-invoices.md#req-003-prs-f004-cii-and-ubl-agree)) |
-| BT-35, BT-37, BT-38, BT-52, BT-53 | 2 | Different placeholder texts in addresses | No: placeholders |
+| BT-35, BT-37 | 01.20a | Different placeholder texts in the seller's address | No: placeholders |
+| BT-37, BT-38, BT-52, BT-53 | 03.06a | The UBL file swaps city and post code | Yes |
 | BT-13 | 7 | Only the UBL files have a purchase order reference (`Dummywert`) | Ask whether it is deliberate |
 | BT-31, BT-82, BT-120 | 01.21a | Different values (BT-107 too, but as 0 against absent, which the standard allows) | Yes |
 | BT-45 | 03.01a | Only in UBL | Yes |
-| BT-29, BT-61, BT-122 | 03.07a | Only in one of the two files | Yes |
+| BT-29, BT-61, BT-122 | 03.07a | Only in one of the two files; BT-29 also in technical 01.01 and CVD 02.01a, three seller identifiers in CII and one in UBL | Yes |
+| BT-41 | technical 01.03, 01.04 | The department name Testorganisation in CII, the person Tim Tester in UBL | Yes |
 | BT-44, BT-45 | technical 01.01 to 01.04 | The UBL files swap the buyer's name and trading name placeholders | Yes |
 | BT-110 | technical 01.05 | Absent in CII, 0 in UBL | No: the term is optional, and UBL's `cac:TaxTotal` needs an amount |
+| BT-41, BT-56 | none in the suite | KoSIT's reading stylesheet gives two contact points for a CII contact with both a person and a department name, where EN 16931 allows one; Haflinger reads the person name (REQ-003-PRS-F002) | No: CEN's `CII-SR-465` and `CII-SR-466` already warn against such an input |
 
 ## Open Questions
 

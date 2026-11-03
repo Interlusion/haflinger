@@ -3,8 +3,8 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Draft |
-| **Version** | 0.5 |
-| **Date** | 2026-11-01 |
+| **Version** | 0.6 |
+| **Date** | 2026-11-03 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Intended Use
@@ -149,9 +149,19 @@ General vocabulary (CIUS, Leitweg-ID, Peppol …): the [E-Invoicing 101 glossary
 | `Invoice.buyer` | BG-7 | Buyer | required |
 | `Party.name` | BT-27, BT-44 | Seller name, buyer name | required |
 | `Party.trading_name` | BT-28, BT-45 | Trading name |  |
+| `Party.identifiers` | BT-29, BT-46 | Seller identifiers, any number; buyer identifier, at most one; each an Identifier: `value` BT-29, BT-46 (required in the group), `scheme` BT-29-1, BT-46-1 |  |
 | `Party.legal_registration_id` | BT-30, BT-47 | Legal registration identifier |  |
 | `Party.vat_id` | BT-31, BT-48 | VAT identifier |  |
+| `Party.tax_registration_id` | BT-32 | Seller tax registration identifier; the seller's alone |  |
+| `Party.electronic_address` | BT-34, BT-49 | Electronic address, an Identifier: `value` BT-34, BT-49 (required in the group), `scheme` BT-34-1, BT-49-1 (required in the group) |  |
+| `Party.address_line_1` | BT-35, BT-50 | Address line 1 |  |
+| `Party.address_line_2` | BT-36, BT-51 | Address line 2 |  |
+| `Party.address_line_3` | BT-162, BT-163 | Address line 3 |  |
+| `Party.city` | BT-37, BT-52 | City |  |
+| `Party.post_code` | BT-38, BT-53 | Post code |  |
+| `Party.country_subdivision` | BT-39, BT-54 | Country subdivision |  |
 | `Party.country_code` | BT-40, BT-55 | Country code | required |
+| `Party.contact` | BG-6, BG-9 | Contact: `point` BT-41, BT-56, `telephone` BT-42, BT-57, `email` BT-43, BT-58 |  |
 | `Invoice.totals` | BG-22 | Document totals | required |
 | `Totals.line_net_total` | BT-106 | Sum of invoice line net amounts | required |
 | `Totals.allowance_total` | BT-107 | Sum of allowances on document level |  |
