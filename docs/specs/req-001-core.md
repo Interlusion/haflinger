@@ -3,7 +3,7 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Draft |
-| **Version** | 0.7 |
+| **Version** | 0.8 |
 | **Date** | 2026-11-03 |
 | **Author** | loxy (drafted with Claude) |
 
@@ -146,6 +146,7 @@ General vocabulary (CIUS, Leitweg-ID, Peppol …): the [E-Invoicing 101 glossary
 | `Invoice.specification_id` | BT-24 | Specification identifier | required |
 | `Invoice.payment_terms` | BT-20 | Payment terms |  |
 | `Invoice.notes` | BG-1 | Invoice note: `subject_code` BT-21, `text` BT-22 (required in the group) |  |
+| `Invoice.preceding_invoices` | BG-3 | Preceding invoice references, any number: `number` BT-25 (required in the group), `issue_date` BT-26 |  |
 | `Invoice.seller` | BG-4 | Seller | required |
 | `Invoice.buyer` | BG-7 | Buyer | required |
 | `Party.name` | BT-27, BT-44 | Seller name, buyer name | required |
@@ -163,6 +164,8 @@ General vocabulary (CIUS, Leitweg-ID, Peppol …): the [E-Invoicing 101 glossary
 | `Party.country_subdivision` | BT-39, BT-54 | Country subdivision |  |
 | `Party.country_code` | BT-40, BT-55 | Country code | required |
 | `Party.contact` | BG-6, BG-9 | Contact: `point` BT-41, BT-56, `telephone` BT-42, BT-57, `email` BT-43, BT-58 |  |
+| `Invoice.delivery` | BG-13 | Delivery information: `party_name` BT-70, `location` BT-71, an Identifier with its scheme BT-71-1, `date` BT-72, and the deliver to address (BG-15): `address_line_1` BT-75, `address_line_2` BT-76, `address_line_3` BT-165, `city` BT-77, `post_code` BT-78, `country_subdivision` BT-79, `country_code` BT-80 (required in the address) |  |
+| `Invoice.invoicing_period` | BG-14 | Invoicing period: `start` BT-73, `end` BT-74 |  |
 | `Invoice.payment_instructions` | BG-16 | Payment instructions: `means_code` BT-81 (required in the group), `means_text` BT-82, `remittance_information` BT-83 |  |
 | `PaymentInstructions.credit_transfers` | BG-17 | Credit transfers, any number: `account_id` BT-84 (required in the group), `account_name` BT-85, `provider_id` BT-86 |  |
 | `PaymentInstructions.card` | BG-18 | Payment card information: `account_number` BT-87 (required in the group), `holder_name` BT-88 |  |
