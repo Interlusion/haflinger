@@ -3,8 +3,8 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Draft |
-| **Version** | 0.6 |
-| **Date** | 2026-11-02 |
+| **Version** | 0.7 |
+| **Date** | 2026-11-03 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Intended Use
@@ -85,12 +85,12 @@ The personas are [REQ-001's](req-001-core.md#personas).
 
 **Description**: `haflinger.write_cii(invoice: Invoice, *, timeout: float = …) -> bytes` SHALL return a CII D16B document, UTF-8 with an XML declaration, when it passes REQ-004-PRS-F004 and REQ-004-PRS-F005. Otherwise it SHALL raise `haflinger.InvoiceWriteError`, and no other exception, with a reason that names the business term where there is one ([REQ-001-PRS-F005](req-001-core.md#req-001-prs-f005-refusals-and-findings-name-their-subject)). `InvoiceWriteError` SHALL carry `findings` and `document`:
 
-- **Before writing**, with no findings and no document, when the argument isn't an `Invoice`; the `timeout` isn't valid ([REQ-002-PRS-NF004](req-002-conformance.md#req-002-prs-nf004-time-limit)); the model's BT-24 is no supported target profile (REQ-004-PRS-F002); a value has the wrong type (an amount, quantity, price or rate that isn't a finite `Decimal`, a date that isn't a `date`, a text that isn't a `str`, a group that isn't of its class or a tuple of it); a number has more than 1,000 digits in plain notation; a text is empty, has surrounding whitespace, or holds a character XML 1.0 doesn't allow; a note (BG-1) holds neither subject code nor text; or the model holds a term without one it needs to be written (BT-111 without BT-6, BT-130 without BT-129).
+- **Before writing**, with no findings and no document, when the argument isn't an `Invoice`; the `timeout` isn't valid ([REQ-002-PRS-NF004](req-002-conformance.md#req-002-prs-nf004-time-limit)); the model's BT-24 is no supported target profile (REQ-004-PRS-F002); a value has the wrong type (an amount, quantity, price or rate that isn't a finite `Decimal`, a date that isn't a `date`, a text that isn't a `str`, a group that isn't of its class or a tuple of it); a number has more than 1,000 digits in plain notation; a text is empty, has surrounding whitespace, or holds a character XML 1.0 doesn't allow; a note (BG-1) holds neither subject code nor text, a contact (BG-6, BG-9) no term, an identifier (BT-29, BT-34, BT-46, BT-49) no value, an electronic address (BT-34, BT-49) no scheme; the buyer holds a tax registration identifier, which only the seller has (BT-32), or more than one identifier (BT-46); or the model holds a term without one it needs to be written (BT-111 without BT-6, BT-130 without BT-129).
 - **After writing**, with the findings and the written document, when it fails REQ-004-PRS-F004 or REQ-004-PRS-F005, or can't be checked by them (for example, larger than the size limit validation accepts, or when the rules don't end within `timeout` or their worker dies, [REQ-002-PRS-NF004](req-002-conformance.md#req-002-prs-nf004-time-limit), [REQ-002-PRS-NF005](req-002-conformance.md#req-002-prs-nf005-rules-in-a-worker-process)).
 
 **Related URS**: REQ-004-URS-F001, REQ-004-URS-F002
 
-**Definition of Done**: a test writes a valid invoice and gets UTF-8 bytes with an XML declaration; a test writes an invoice whose BT-112 is off by one cent and gets `InvoiceWriteError` with `BR-CO-15` among its findings and the document; a number of exactly 1,000 digits is written; one test per refusal before writing, each naming its business term (a float in BT-112, a string in BT-2, `" Example GmbH"` in BT-27, a control character in BT-153, BT-111 without BT-6).
+**Definition of Done**: a test writes a valid invoice and gets UTF-8 bytes with an XML declaration; a test writes an invoice whose BT-112 is off by one cent and gets `InvoiceWriteError` with `BR-CO-15` among its findings and the document; a number of exactly 1,000 digits is written; one test per refusal before writing, each naming its business term (a float in BT-112, a string in BT-2, `" Example GmbH"` in BT-27, a control character in BT-153, BT-111 without BT-6, an empty contact, an identifier without value, an electronic address without scheme, a buyer with BT-32 or two identifiers).
 
 #### REQ-004-PRS-F002: Supported target profiles
 
@@ -110,13 +110,14 @@ The personas are [REQ-001's](req-001-core.md#personas).
 **Description**: Each business term SHALL be written to the element the EN 16931 syntax binding for CII (EN 16931-3-3) assigns to it, in the order the CII D16B XML Schema requires, with these choices where the binding leaves room:
 
 - **Missing terms** (`None`, empty tuple) are left out, with any element that would hold nothing but them.
+- **Parties**: an identifier (BT-29, BT-46) with a scheme as `ram:GlobalID` with that `schemeID`, one without as `ram:ID`; those without come first, as the XML Schema orders the two elements and as reading orders the model (REQ-003-PRS-F002); a model in another order reads back in that one. The seller's tax registration identifier (BT-32) as `ram:SpecifiedTaxRegistration/ram:ID` with `schemeID` `FC`, after the VAT identifier's; the contact point (BT-41, BT-56) as `ram:PersonName`.
 - **VAT totals**: BT-110 as `ram:TaxTotalAmount` with `currencyID` BT-5; BT-111 as a second `ram:TaxTotalAmount` with `currencyID` BT-6.
 - **Numbers** in plain notation with the digits the model holds: `Decimal("10.50")` stays `10.50`; `Decimal("1E+2")` is written `100` (the exception of [REQ-001-URS-NF001](req-001-core.md#req-001-urs-nf001-values-exactly-as-they-are)).
 - The elements the XML Schema requires and that need no content (`ram:ApplicableHeaderTradeAgreement`, `ram:ApplicableHeaderTradeDelivery` and `ram:ApplicableHeaderTradeSettlement`; in a line, `ram:AssociatedDocumentLineDocument` and `ram:SpecifiedLineTradeSettlement`) are written even when empty.
 
 **Related URS**: REQ-004-URS-F001
 
-**Definition of Done**: a test writes numbers with trailing zeros and reads them back with the same digits, and writes `Decimal("1E+2")` as `100`; a test writes a model without optional terms and finds none of their elements; the rest is covered by REQ-004-PRS-F004 to REQ-004-PRS-F006.
+**Definition of Done**: a test writes numbers with trailing zeros and reads them back with the same digits, and writes `Decimal("1E+2")` as `100`; a test writes a model without optional terms and finds none of their elements; a test writes identifiers with and without scheme, BT-32, address lines 2 and 3, the subdivision and a contact, finds them where this requirement puts them, and reads them back; the rest is covered by REQ-004-PRS-F004 to REQ-004-PRS-F006.
 
 #### REQ-004-PRS-F004: XML Schema
 

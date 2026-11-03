@@ -12,7 +12,17 @@ from typing import Any, cast
 
 import pytest
 
-from haflinger import Invoice, InvoiceLine, Note, Party, Totals, VatBreakdown, read_invoice
+from haflinger import (
+    Contact,
+    Identifier,
+    Invoice,
+    InvoiceLine,
+    Note,
+    Party,
+    Totals,
+    VatBreakdown,
+    read_invoice,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 SUITE = ROOT / "tests/data/kosit-testsuite/instances"
@@ -34,7 +44,26 @@ CASES = {
 # business term, the difference, and the upstream report or why there is none. The comparison
 # leaves out only these terms.
 NOT_YET_REPORTED = "not reported yet (ITEM-006)"
+PLACEHOLDERS = "none: different placeholder texts"
+SELLER_IDENTIFIERS = {
+    "seller.identifiers": (
+        "BT-29",
+        "three in CII, in UBL only the one with scheme 0088",
+        NOT_YET_REPORTED,
+    ),
+}
+CONTACT_POINT = {
+    "seller.contact.point": (
+        "BT-41",
+        "the department name Testorganisation in CII, Tim Tester in UBL",
+        NOT_YET_REPORTED,
+    ),
+}
 KNOWN_DIFFERENCES: dict[str, dict[str, tuple[str, str, str]]] = {
+    "standard/01.20a-INVOICE": {
+        "seller.address_line_1": ("BT-35", "[Street] in CII, [Seller street] in UBL", PLACEHOLDERS),
+        "seller.city": ("BT-37", "[City] in CII, [Seller city] in UBL", PLACEHOLDERS),
+    },
     "standard/01.21a-INVOICE": {
         "seller.vat_id": ("BT-31", "DE152338654 in CII, DE 123456789 in UBL", NOT_YET_REPORTED),
         "vat_breakdown.0.exemption_reason": (
@@ -46,6 +75,17 @@ KNOWN_DIFFERENCES: dict[str, dict[str, tuple[str, str, str]]] = {
     "standard/03.01a-INVOICE": {
         "buyer.trading_name": ("BT-45", "only the UBL file has one", NOT_YET_REPORTED),
     },
+    "standard/03.06a-INVOICE": {
+        path: (term, "the UBL file swaps city and post code", NOT_YET_REPORTED)
+        for path, term in (
+            ("seller.city", "BT-37"),
+            ("seller.post_code", "BT-38"),
+            ("buyer.city", "BT-52"),
+            ("buyer.post_code", "BT-53"),
+        )
+    },
+    "standard/03.07a-INVOICE": SELLER_IDENTIFIERS,
+    "technical-cases/cvd/02.01a-cvd_INVOICE": SELLER_IDENTIFIERS,
     **{
         f"technical-cases/cius/01.0{n}_comprehensive_test": {
             "buyer.name": (
@@ -58,6 +98,7 @@ KNOWN_DIFFERENCES: dict[str, dict[str, tuple[str, str, str]]] = {
                 "the UBL file has the name's placeholder as the trading name",
                 NOT_YET_REPORTED,
             ),
+            **{1: SELLER_IDENTIFIERS, 3: CONTACT_POINT, 4: CONTACT_POINT}.get(n, {}),
         }
         for n in range(1, 5)
     },
@@ -150,9 +191,24 @@ EXPECTED_01_01A = Invoice(
         trading_name="[Seller trading name]",
         legal_registration_id="[HRA-Eintrag]",
         vat_id="DE 123456789",
+        electronic_address=Identifier(value="seller@email.de", scheme="EM"),
+        address_line_1="[Seller address line 1]",
+        city="[Seller city]",
+        post_code="12345",
+        country_code="DE",
+        contact=Contact(
+            point="nicht vorhanden", telephone="+49 1234-5678", email="seller@email.de"
+        ),
+    ),
+    buyer=Party(
+        name="[Buyer name]",
+        identifiers=(Identifier(value="[Buyer identifier]"),),
+        electronic_address=Identifier(value="buyer@info.de", scheme="EM"),
+        address_line_1="[Buyer address line 1]",
+        city="[Buyer city]",
+        post_code="12345",
         country_code="DE",
     ),
-    buyer=Party(name="[Buyer name]", country_code="DE"),
     totals=Totals(
         line_net_total=Decimal("314.86"),
         total_without_vat=Decimal("314.86"),

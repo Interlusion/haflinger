@@ -7,9 +7,27 @@ from decimal import Decimal
 from typing import cast
 from xml.etree.ElementTree import Element, SubElement, tostring
 
-from haflinger._xml import XML_WHITESPACE, Node, choose_vat_totals
+from haflinger._parties import (
+    BUYER,
+    SELLER,
+    TAX_REGISTRATION,
+    PartyTerms,
+    contact,
+    identifier,
+    identifiers,
+)
+from haflinger._xml import XML_WHITESPACE, Node, choose_vat_totals, first_of
 from haflinger.errors import InvoiceWriteError
-from haflinger.model import Invoice, InvoiceLine, Note, Party, Totals, VatBreakdown
+from haflinger.model import (
+    Contact,
+    Identifier,
+    Invoice,
+    InvoiceLine,
+    Note,
+    Party,
+    Totals,
+    VatBreakdown,
+)
 
 NAMESPACE = "urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100"
 NAMESPACES = {
@@ -59,16 +77,8 @@ def read(root: Node, specification_id: str | None) -> Invoice:
             for node in root.findall(f"{_DOCUMENT}/ram:IncludedNote")
             if (note := _note(node)) is not None
         ),
-        seller=_party(
-            root.group(f"{_AGREEMENT}/ram:SellerTradeParty", "BG-4"),
-            ("BT-27", "BT-28", "BT-30", "BT-31", "BT-40"),
-            "BG-5",
-        ),
-        buyer=_party(
-            root.group(f"{_AGREEMENT}/ram:BuyerTradeParty", "BG-7"),
-            ("BT-44", "BT-45", "BT-47", "BT-48", "BT-55"),
-            "BG-8",
-        ),
+        seller=_party(root.group(f"{_AGREEMENT}/ram:SellerTradeParty", "BG-4"), SELLER),
+        buyer=_party(root.group(f"{_AGREEMENT}/ram:BuyerTradeParty", "BG-7"), BUYER),
         totals=_totals(
             root.group(
                 f"{_SETTLEMENT}/ram:SpecifiedTradeSettlementHeaderMonetarySummation", "BG-22"
@@ -107,31 +117,79 @@ def _note(node: Node) -> Note | None:
     return None if note == Note() else note
 
 
-def _party(
-    party: Node | None, terms: tuple[str, str, str, str, str], address_group: str
-) -> Party | None:
+def _party(party: Node | None, terms: PartyTerms) -> Party | None:
     if party is None:
         return None
-    name, trading_name, registration, vat, country = terms
-    # The terms of one legal organisation and one address come from one element each.
+    # The terms of one legal organisation, one address and one contact come from one element
+    # each.
     organization = party.group(
         "ram:SpecifiedLegalOrganization",
-        f"{registration}, {trading_name} (ram:SpecifiedLegalOrganization)",
+        f"{terms.legal_registration_id}, {terms.trading_name} (ram:SpecifiedLegalOrganization)",
     )
-    address = party.group("ram:PostalTradeAddress", address_group)
-    vat_ids = [
-        node
-        for node in party.findall("ram:SpecifiedTaxRegistration/ram:ID")
-        if node.attribute("schemeID") == "VA" and node.plain(vat) is not None
-    ]
-    for node in vat_ids[1:]:
-        node.drop(f"{vat} appears more than once; this one is left out: {node.value!r}")
+    address = party.group("ram:PostalTradeAddress", terms.address)
+    contact_element = party.group("ram:DefinedTradeContact", terms.contact, *_CONTACT)
+    registrations = party.findall("ram:SpecifiedTaxRegistration/ram:ID")
+    # A ram:GlobalID identifies only with its scheme (REQ-003-PRS-F002).
+    ids = party.holding(terms.identifier, "ram:ID")
+    for node in party.holding(terms.identifier, "ram:GlobalID"):
+        if node.attribute("schemeID") is None:
+            node.drop(
+                f"{terms.identifier} in a ram:GlobalID without schemeID is left out: {node.value!r}"
+            )
+        else:
+            ids.append(node)
     return Party(
-        name=party.text("ram:Name", name),
-        trading_name=_text(organization, "ram:TradingBusinessName", trading_name),
-        legal_registration_id=_text(organization, "ram:ID", registration),
-        vat_id=vat_ids[0].value if vat_ids else None,
-        country_code=_text(address, "ram:CountryID", country),
+        name=party.text("ram:Name", terms.name),
+        trading_name=_text(organization, "ram:TradingBusinessName", terms.trading_name),
+        identifiers=identifiers(ids, terms),
+        legal_registration_id=_text(organization, "ram:ID", terms.legal_registration_id),
+        vat_id=_registration(registrations, "VA", terms.vat_id),
+        tax_registration_id=(
+            None
+            if terms.tax_registration is None
+            else _registration(registrations, "FC", terms.tax_registration)
+        ),
+        electronic_address=identifier(
+            party.first("ram:URIUniversalCommunication/ram:URIID", terms.electronic_address)
+        ),
+        address_line_1=_text(address, "ram:LineOne", terms.address_line_1),
+        address_line_2=_text(address, "ram:LineTwo", terms.address_line_2),
+        address_line_3=_text(address, "ram:LineThree", terms.address_line_3),
+        city=_text(address, "ram:CityName", terms.city),
+        post_code=_text(address, "ram:PostcodeCode", terms.post_code),
+        country_subdivision=_text(address, "ram:CountrySubDivisionName", terms.country_subdivision),
+        country_code=_text(address, "ram:CountryID", terms.country_code),
+        contact=None if contact_element is None else _contact(contact_element, terms),
+    )
+
+
+# The elements of a contact's terms, which make a ram:DefinedTradeContact the contact.
+_CONTACT = (
+    "ram:PersonName",
+    "ram:DepartmentName",
+    "ram:TelephoneUniversalCommunication/ram:CompleteNumber",
+    "ram:EmailURIUniversalCommunication/ram:URIID",
+)
+
+
+def _registration(registrations: list[Node], scheme: str, term: str) -> str | None:
+    """The tax registration with `scheme`: `VA` for the VAT identifier, `FC` for BT-32."""
+    nodes = [
+        node
+        for node in registrations
+        if node.attribute("schemeID") == scheme and node.plain(term) is not None
+    ]
+    node = first_of(nodes, term)
+    return None if node is None else node.value
+
+
+def _contact(element: Node, terms: PartyTerms) -> Contact | None:
+    """A person name, or else a department name, is the contact point (REQ-003-PRS-F002)."""
+    person, department, telephone, email = _CONTACT
+    return contact(
+        point=element.text(person, terms.contact_point, department),
+        telephone=element.text(telephone, terms.telephone),
+        email=element.text(email, terms.email),
     )
 
 
@@ -273,20 +331,8 @@ def write(invoice: Invoice) -> bytes:
         _write_line(SubElement(transaction, "ram:IncludedSupplyChainTradeLineItem"), line)
     agreement = SubElement(transaction, "ram:ApplicableHeaderTradeAgreement")
     _put_text(agreement, "ram:BuyerReference", invoice.buyer_reference, "BT-10")
-    _write_party(
-        agreement,
-        "ram:SellerTradeParty",
-        invoice.seller,
-        "BG-4",
-        ("BT-27", "BT-28", "BT-30", "BT-31", "BT-40"),
-    )
-    _write_party(
-        agreement,
-        "ram:BuyerTradeParty",
-        invoice.buyer,
-        "BG-7",
-        ("BT-44", "BT-45", "BT-47", "BT-48", "BT-55"),
-    )
+    _write_party(agreement, "ram:SellerTradeParty", invoice.seller, SELLER)
+    _write_party(agreement, "ram:BuyerTradeParty", invoice.buyer, BUYER)
     SubElement(transaction, "ram:ApplicableHeaderTradeDelivery")
     settlement = SubElement(transaction, "ram:ApplicableHeaderTradeSettlement")
     _put_text(settlement, "ram:TaxCurrencyCode", invoice.tax_currency_code, "BT-6")
@@ -312,25 +358,114 @@ def write(invoice: Invoice) -> bytes:
     return b'<?xml version="1.0" encoding="UTF-8"?>\n' + body
 
 
-def _write_party(
-    parent: Element,
-    tag: str,
-    party: object,
-    group: str,
-    terms: tuple[str, str, str, str, str],
-) -> None:
+def _write_party(parent: Element, tag: str, party: object, terms: PartyTerms) -> None:
     if party is None:
         return
     if not isinstance(party, Party):
-        raise InvoiceWriteError(f"{group} is not a Party: {party!r}")
-    name, trading_name, registration, vat_id, country = terms
+        raise InvoiceWriteError(f"{terms.party} is not a Party: {party!r}")
+    ids = _group(party.identifiers, Identifier, terms.identifier)
+    if terms.one_identifier and len(ids) > 1:
+        raise InvoiceWriteError(
+            f"{terms.party} holds more than one identifier ({terms.identifier})"
+        )
+    if terms.tax_registration is None and party.tax_registration_id is not None:
+        raise InvoiceWriteError(
+            f"{TAX_REGISTRATION} is the seller's alone; the buyer ({terms.party}) has none"
+        )
     element = SubElement(parent, tag)
-    _put_text(element, "ram:Name", party.name, name)
+    # The XML Schema wants every ram:ID before the first ram:GlobalID (REQ-004-PRS-F003).
+    for each in sorted(ids, key=lambda each: each.scheme is not None):
+        value, scheme = _identifier_parts(each, terms, "an identifier", terms.identifier)
+        _put_text(
+            element,
+            "ram:ID" if scheme is None else "ram:GlobalID",
+            value,
+            terms.identifier,
+            schemeID=scheme,
+        )
+    _put_text(element, "ram:Name", party.name, terms.name)
     organization = SubElement(element, "ram:SpecifiedLegalOrganization")
-    _put_text(organization, "ram:ID", party.legal_registration_id, registration)
-    _put_text(organization, "ram:TradingBusinessName", party.trading_name, trading_name)
-    _put_text(element, "ram:PostalTradeAddress/ram:CountryID", party.country_code, country)
-    _put_text(element, "ram:SpecifiedTaxRegistration/ram:ID", party.vat_id, vat_id, schemeID="VA")
+    _put_text(organization, "ram:ID", party.legal_registration_id, terms.legal_registration_id)
+    _put_text(organization, "ram:TradingBusinessName", party.trading_name, terms.trading_name)
+    _write_contact(element, party.contact, terms)
+    address = SubElement(element, "ram:PostalTradeAddress")
+    _put_text(address, "ram:PostcodeCode", party.post_code, terms.post_code)
+    _put_text(address, "ram:LineOne", party.address_line_1, terms.address_line_1)
+    _put_text(address, "ram:LineTwo", party.address_line_2, terms.address_line_2)
+    _put_text(address, "ram:LineThree", party.address_line_3, terms.address_line_3)
+    _put_text(address, "ram:CityName", party.city, terms.city)
+    _put_text(address, "ram:CountryID", party.country_code, terms.country_code)
+    _put_text(
+        address, "ram:CountrySubDivisionName", party.country_subdivision, terms.country_subdivision
+    )
+    electronic_address = cast(object, party.electronic_address)
+    if electronic_address is not None:
+        if not isinstance(electronic_address, Identifier):
+            raise InvoiceWriteError(
+                f"{terms.electronic_address} is not an Identifier: {electronic_address!r}"
+            )
+        value, scheme = _identifier_parts(
+            electronic_address,
+            terms,
+            "an electronic address",
+            terms.electronic_address,
+            scheme_required=True,
+        )
+        _put_text(
+            element,
+            "ram:URIUniversalCommunication/ram:URIID",
+            value,
+            terms.electronic_address,
+            schemeID=scheme,
+        )
+    _put_text(
+        element, "ram:SpecifiedTaxRegistration/ram:ID", party.vat_id, terms.vat_id, schemeID="VA"
+    )
+    if terms.tax_registration is not None:
+        _put_text(
+            element,
+            "ram:SpecifiedTaxRegistration/ram:ID",
+            party.tax_registration_id,
+            terms.tax_registration,
+            schemeID="FC",
+        )
+
+
+def _identifier_parts(
+    identifier: Identifier,
+    terms: PartyTerms,
+    kind: str,
+    term: str,
+    *,
+    scheme_required: bool = False,
+) -> tuple[str, str | None]:
+    """The identifier's value and scheme, checked as texts; refused without a value, or without
+    a scheme where the group requires one (REQ-001-PRS-F001)."""
+    value = _checked_text(identifier.value, term)
+    if value is None:
+        raise InvoiceWriteError(f"{terms.party} holds {kind} without its value ({term})")
+    scheme = _checked_text(identifier.scheme, f"{term}-1")
+    if scheme is None and scheme_required:
+        raise InvoiceWriteError(f"{terms.party} holds {kind} without its scheme ({term}-1)")
+    return value, scheme
+
+
+def _write_contact(party: Element, contact: object, terms: PartyTerms) -> None:
+    if contact is None:
+        return
+    if not isinstance(contact, Contact):
+        raise InvoiceWriteError(f"{terms.contact} is not a Contact: {contact!r}")
+    if contact == Contact():
+        raise InvoiceWriteError(f"{terms.contact} holds a contact without any term")
+    element = SubElement(party, "ram:DefinedTradeContact")
+    _put_text(element, "ram:PersonName", contact.point, terms.contact_point)
+    _put_text(
+        element,
+        "ram:TelephoneUniversalCommunication/ram:CompleteNumber",
+        contact.telephone,
+        terms.telephone,
+    )
+    _put_text(element, "ram:EmailURIUniversalCommunication/ram:URIID", contact.email, terms.email)
 
 
 def _write_totals(settlement: Element, invoice: Invoice) -> None:

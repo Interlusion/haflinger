@@ -131,7 +131,7 @@ flowchart TB
 | Block | Responsibility | State |
 | :- | :- | :- |
 | entry points (`read_invoice`, `write_cii`, `validate`) | Check size and safety, detect the syntax from the root element, dispatch, hand back a model with findings, a document, findings, or a refusal | Built |
-| `model` | The business terms as frozen dataclasses with `Decimal` and `date`, each field mapped to its BT or BG ID by REQ-001; equal invoices compare equal whatever their syntax | Built, 45 terms in 6 groups |
+| `model` | The business terms as frozen dataclasses with `Decimal` and `date`, each field mapped to its BT or BG ID by REQ-001; equal invoices compare equal whatever their syntax | Built: the terms REQ-001-PRS-F001 lists, growing by ADR-007 |
 | `_xml` | Parse outside XML with `defusedxml`; read elements by path, with `HAFL-VALUE` and `HAFL-DROPPED` findings that name the business term | Built |
 | `cii`, `ubl` | The syntax bindings: each business term read from the element EN 16931-3-3 (CII) or -3-2 (UBL) assigns it, CII also written | Built |
 | `validate` | Choose the rule set, check the invoice against the rule set's XML Schema, run the rules on a schema-valid invoice, turn the SVRL report into findings (rule, flag, location, text) | Built: KoSIT's scenarios with their levels (EN 16931, XRechnung 3.0, its extension, CVD); FeRD's Factur-X rules (MINIMUM, BASIC WL, BASIC, EXTENDED, and EN 16931 for written invoices), compiled with SchXslt on first use |

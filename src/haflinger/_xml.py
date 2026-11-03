@@ -199,10 +199,16 @@ class Node:
         """Whether the element or one below it holds text."""
         return any(_stripped(element.text) is not None for element in self.element.iter())
 
-    def group(self, path: str, group: str) -> Node | None:
+    def group(self, path: str, group: str, *terms: str) -> Node | None:
         """The first element at `path` that holds a value, for a group the model holds once; each
-        further one holding a value is left out with a finding."""
-        nodes = [node for node in self.findall(path) if node.holds_value()]
+        further one holding a value is left out with a finding. Where `terms` gives the paths of
+        the group's terms, only an element holding a value at one of them counts."""
+        nodes = [
+            node
+            for node in self.findall(path)
+            if node.holds_value()
+            and (not terms or any(term.holds_value() for p in terms for term in node.findall(p)))
+        ]
         for node in nodes[1:]:
             node.drop(f"{group} appears more than once; this one is left out")
         return nodes[0] if nodes else None
@@ -225,19 +231,22 @@ class Node:
             return None
         return self.value
 
-    def first(self, path: str, term: str) -> Node | None:
-        """The first element at `path` that holds a value; each further one is left out with a
-        finding, since the model holds the term once."""
-        nodes = [node for node in self.findall(path) if node.plain(term) is not None]
-        for node in nodes[1:]:
-            node.drop(f"{term} appears more than once; this one is left out: {node.value!r}")
-        return nodes[0] if nodes else None
+    def holding(self, term: str, *paths: str) -> list[Node]:
+        """The elements at each of `paths` in turn that hold a value of `term`."""
+        return [
+            node for path in paths for node in self.findall(path) if node.plain(term) is not None
+        ]
+
+    def first(self, path: str, term: str, *also: str) -> Node | None:
+        """The first element at `path`, or else at the paths `also`, that holds a value; each
+        further one is left out with a finding, since the model holds the term once."""
+        return first_of(self.holding(term, path, *also), term)
 
     def drop(self, text: str) -> None:
         self.reading.report(self, "HAFL-DROPPED", "warning", text)
 
-    def text(self, path: str, term: str) -> str | None:
-        node = self.first(path, term)
+    def text(self, path: str, term: str, *also: str) -> str | None:
+        node = self.first(path, term, *also)
         return None if node is None else node.value
 
     def decimal(self, path: str, term: str) -> Decimal | None:
@@ -274,6 +283,14 @@ class Node:
             "error",
             f"{term} is not written as {kind}: {value!r}; read as missing",
         )
+
+
+def first_of(nodes: list[Node], term: str) -> Node | None:
+    """The first of `nodes`, which hold values of `term`; each further one is left out with a
+    finding."""
+    for node in nodes[1:]:
+        node.drop(f"{term} appears more than once; this one is left out: {node.value!r}")
+    return nodes[0] if nodes else None
 
 
 def _stripped(text: str | None) -> str | None:

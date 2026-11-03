@@ -10,7 +10,15 @@ from typing import Any
 
 import pytest
 
-from haflinger import InvoiceReadError, InvoiceWriteError, Note, read_invoice, write_cii
+from haflinger import (
+    Contact,
+    Identifier,
+    InvoiceReadError,
+    InvoiceWriteError,
+    Note,
+    read_invoice,
+    write_cii,
+)
 from haflinger._xsd import check_cii
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -21,7 +29,8 @@ XRECHNUNG = f"{EN16931}#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0"
 INVOICE = replace(read_invoice(CII.read_bytes()).invoice, specification_id=EN16931)
 assert INVOICE.totals is not None
 assert INVOICE.seller is not None
-TOTALS, SELLER, LINE = INVOICE.totals, INVOICE.seller, INVOICE.lines[0]
+assert INVOICE.buyer is not None
+TOTALS, SELLER, BUYER, LINE = INVOICE.totals, INVOICE.seller, INVOICE.buyer, INVOICE.lines[0]
 
 
 def written(invoice: Any) -> bytes:
@@ -79,6 +88,15 @@ def test_refuses_an_invalid_invoice_after_writing() -> None:
         ),
         (replace(INVOICE, notes=[Note(text="a list")]), "BG-1 is not a tuple of Note"),
         (replace(INVOICE, seller="Example GmbH"), "BG-4 is not a Party"),
+        (replace(INVOICE, seller=replace(SELLER, contact="Sales")), "BG-6 is not a Contact"),
+        (
+            replace(INVOICE, seller=replace(SELLER, identifiers=[Identifier(value="A1")])),
+            "BT-29 is not a tuple of Identifier",
+        ),
+        (
+            replace(INVOICE, buyer=replace(BUYER, electronic_address="buyer@info.de")),
+            "BT-49 is not an Identifier",
+        ),
         ("<Invoice/>", "the invoice is not an Invoice"),
     ],
     ids=[
@@ -94,6 +112,9 @@ def test_refuses_an_invalid_invoice_after_writing() -> None:
         "bt-130-without-bt-129",
         "list",
         "str-party",
+        "str-contact",
+        "list-identifiers",
+        "str-electronic-address",
         "not-an-invoice",
     ],
 )
@@ -124,8 +145,9 @@ def test_refuses_other_target_profiles(specification_id: str | None) -> None:
 
 
 def test_writes_xrechnung_with_its_rules() -> None:
-    """KoSIT's XRechnung rules run: the model lacks the seller's city (BT-37), among others."""
-    with pytest.raises(InvoiceWriteError, match="BR-DE-3") as refusal:
+    """KoSIT's XRechnung rules run: the model lacks the payment instructions (BG-16), among
+    others."""
+    with pytest.raises(InvoiceWriteError, match="BR-DE-1") as refusal:
         write_cii(replace(INVOICE, specification_id=XRECHNUNG))
     assert refusal.value.document is not None
 
@@ -154,11 +176,26 @@ def test_missing_terms_are_left_out() -> None:
         buyer_reference=None,
         business_process=None,
         notes=(),
-        seller=replace(SELLER, trading_name=None, legal_registration_id=None),
+        seller=replace(
+            SELLER,
+            trading_name=None,
+            legal_registration_id=None,
+            electronic_address=None,
+            address_line_1=None,
+            city=None,
+            post_code=None,
+            contact=None,
+        ),
+        buyer=replace(BUYER, identifiers=(), electronic_address=None, address_line_1=None),
     )
     document = written(invoice)
     for tag in (
         b"ram:BuyerReference",
+        b"ram:DefinedTradeContact",
+        b"ram:URIUniversalCommunication",
+        b"ram:LineOne",
+        b"ram:CityName>[Seller",
+        b"ram:ID>[Buyer",
         b"ram:BusinessProcessSpecifiedDocumentContextParameter",
         b"ram:IncludedNote",
         b"ram:TaxCurrencyCode",
@@ -282,6 +319,104 @@ def test_refuses_what_cant_be_written_sensibly(invoice: Any, reason: str) -> Non
     with pytest.raises(InvoiceWriteError, match=re.escape(reason)) as refusal:
         write_cii(invoice)
     assert refusal.value.document is None
+
+
+# REQ-004-PRS-F001: parties
+
+
+@pytest.mark.parametrize(
+    ("invoice", "reason"),
+    [
+        (
+            replace(INVOICE, seller=replace(SELLER, contact=Contact())),
+            "BG-6 holds a contact without any term",
+        ),
+        (
+            replace(INVOICE, buyer=replace(BUYER, contact=Contact())),
+            "BG-9 holds a contact without any term",
+        ),
+        (
+            replace(INVOICE, seller=replace(SELLER, identifiers=(Identifier(scheme="0088"),))),
+            "BG-4 holds an identifier without its value (BT-29)",
+        ),
+        (
+            replace(INVOICE, buyer=replace(BUYER, electronic_address=Identifier(scheme="EM"))),
+            "BG-7 holds an electronic address without its value (BT-49)",
+        ),
+        (
+            replace(INVOICE, seller=replace(SELLER, electronic_address=Identifier(value="a@b.de"))),
+            "BG-4 holds an electronic address without its scheme (BT-34-1)",
+        ),
+        (
+            replace(INVOICE, buyer=replace(BUYER, tax_registration_id="201/113/40209")),
+            "BT-32 is the seller's alone; the buyer (BG-7) has none",
+        ),
+        (
+            replace(
+                INVOICE,
+                buyer=replace(BUYER, identifiers=(Identifier(value="A1"), Identifier(value="B2"))),
+            ),
+            "BG-7 holds more than one identifier (BT-46)",
+        ),
+    ],
+    ids=[
+        "empty-seller-contact",
+        "empty-buyer-contact",
+        "identifier-without-value",
+        "electronic-address-without-value",
+        "electronic-address-without-scheme",
+        "buyer-tax-registration",
+        "two-buyer-identifiers",
+    ],
+)
+def test_refuses_parties_that_cant_be_written(invoice: Any, reason: str) -> None:
+    with pytest.raises(InvoiceWriteError, match=re.escape(reason)) as refusal:
+        write_cii(invoice)
+    assert refusal.value.document is None
+
+
+# REQ-004-PRS-F003: parties
+
+
+def test_writes_the_parties_terms_and_reads_them_back() -> None:
+    seller = replace(
+        SELLER,
+        identifiers=(
+            Identifier(value="A1"),
+            Identifier(value="4000001000005", scheme="0088"),
+        ),
+        tax_registration_id="201/113/40209",
+        address_line_2="Hinterhaus",
+        address_line_3="3. OG",
+        country_subdivision="Berlin",
+    )
+    buyer = replace(BUYER, contact=Contact(point="Einkauf", email="buyer@info.de"))
+    document = written(replace(INVOICE, seller=seller, buyer=buyer))
+    assert (
+        b"<ram:SellerTradeParty><ram:ID>A1</ram:ID>"
+        b'<ram:GlobalID schemeID="0088">4000001000005</ram:GlobalID>' in document
+    )
+    assert b'<ram:ID schemeID="FC">201/113/40209</ram:ID>' in document
+    assert b"<ram:PersonName>Einkauf</ram:PersonName>" in document
+    assert (
+        b"<ram:LineOne>[Seller address line 1]</ram:LineOne><ram:LineTwo>Hinterhaus</ram:LineTwo>"
+        b"<ram:LineThree>3. OG</ram:LineThree><ram:CityName>[Seller city]</ram:CityName>"
+        b"<ram:CountryID>DE</ram:CountryID>"
+        b"<ram:CountrySubDivisionName>Berlin</ram:CountrySubDivisionName>" in document
+    )
+    back = read_invoice(document).invoice
+    assert back.seller == seller
+    assert back.buyer == buyer
+
+
+def test_identifiers_in_another_order_are_written_as_the_schema_wants() -> None:
+    seller = replace(
+        SELLER,
+        identifiers=(Identifier(value="4000001000005", scheme="0088"), Identifier(value="A1")),
+    )
+    back = read_invoice(written(replace(INVOICE, seller=seller))).invoice.seller
+    assert back is not None
+    assert back.identifiers == seller.identifiers[::-1]
 
 
 def test_amounts_keep_their_digits() -> None:

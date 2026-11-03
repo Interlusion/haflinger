@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from haflinger import InvoiceReadError, Note, ReadResult, read_invoice
+from haflinger import Contact, Identifier, InvoiceReadError, Note, ReadResult, read_invoice
 
 ROOT = Path(__file__).resolve().parents[2]
 STANDARD = ROOT / "tests/data/kosit-testsuite/instances/standard"
@@ -983,3 +983,259 @@ def test_refuses_a_byte_order_mark_that_contradicts_the_declaration() -> None:
 def test_reads_a_byte_order_mark_that_agrees_with_the_declaration(declaration: bytes) -> None:
     data = b"\xef\xbb\xbf" + edit(CII, b'<?xml version="1.0" encoding="UTF-8"?>', declaration)
     assert read_invoice(data).invoice.number == "123456XX"
+
+
+# REQ-003-PRS-F002: the parties' addresses, contacts and identifiers
+
+UBL_SELLER_ENDPOINT = b'<cbc:EndpointID schemeID="EM">seller@email.de</cbc:EndpointID>'
+UBL_BUYER_ENDPOINT = b'<cbc:EndpointID schemeID="EM">buyer@info.de</cbc:EndpointID>'
+CII_SELLER_VAT_ID = b'<ram:ID schemeID="VA">DE 123456789</ram:ID>'
+CII_BUYER_ADDRESS = b"<ram:LineOne>[Buyer address line 1]</ram:LineOne>"
+CII_PERSON = b"<ram:PersonName>nicht vorhanden</ram:PersonName>"
+FC = b"201/113/40209"
+
+
+def dropped(result: ReadResult) -> list[str]:
+    """The term or group each `HAFL-DROPPED` finding names, in document order."""
+    return [f.text.split()[0] for f in result.findings if f.rule == "HAFL-DROPPED"]
+
+
+def test_seller_identifiers_with_and_without_scheme() -> None:
+    cii = edit(
+        CII,
+        SELLER,
+        SELLER + b"<ram:ID>A1</ram:ID><ram:ID>B2</ram:ID>"
+        b'<ram:GlobalID schemeID="0088">4000001000005</ram:GlobalID>',
+    )
+    ubl = edit(
+        UBL,
+        UBL_SELLER_ENDPOINT,
+        UBL_SELLER_ENDPOINT
+        + b"<cac:PartyIdentification><cbc:ID>A1</cbc:ID></cac:PartyIdentification>"
+        b'<cac:PartyIdentification><cbc:ID schemeID="SEPA">DE98ZZZ09999999999</cbc:ID>'
+        b"</cac:PartyIdentification>"
+        b"<cac:PartyIdentification><cbc:ID>B2</cbc:ID></cac:PartyIdentification>"
+        b'<cac:PartyIdentification><cbc:ID schemeID="0088">4000001000005</cbc:ID>'
+        b"</cac:PartyIdentification>",
+    )
+    for data in (cii, ubl):
+        result = read_invoice(data)
+        assert result.invoice.seller is not None
+        assert result.invoice.seller.identifiers == (
+            Identifier(value="A1"),
+            Identifier(value="B2"),
+            Identifier(value="4000001000005", scheme="0088"),
+        )
+        assert result.findings == ()
+
+
+def test_seller_tax_registration_identifier() -> None:
+    cii = edit(
+        CII,
+        CII_SELLER_VAT_ID,
+        CII_SELLER_VAT_ID
+        + b'</ram:SpecifiedTaxRegistration><ram:SpecifiedTaxRegistration><ram:ID schemeID="FC">'
+        + FC
+        + b"</ram:ID>",
+    )
+    ubl = edit(
+        UBL,
+        b"</cac:PartyTaxScheme>",
+        b"</cac:PartyTaxScheme><cac:PartyTaxScheme><cbc:CompanyID>"
+        + FC
+        + b"</cbc:CompanyID><cac:TaxScheme><cbc:ID>FC</cbc:ID></cac:TaxScheme>"
+        b"</cac:PartyTaxScheme>",
+    )
+    for data in (cii, ubl):
+        result = read_invoice(data)
+        assert result.invoice.seller is not None
+        assert (result.invoice.seller.vat_id, result.invoice.seller.tax_registration_id) == (
+            "DE 123456789",
+            FC.decode(),
+        )
+        assert result.findings == ()
+
+
+def test_address_lines_and_subdivision() -> None:
+    cii = edit(
+        CII,
+        CII_BUYER_ADDRESS,
+        CII_BUYER_ADDRESS
+        + b"<ram:LineTwo>Hinterhaus</ram:LineTwo><ram:LineThree>3. OG</ram:LineThree>",
+    )
+    cii = edit(
+        cii,
+        b"<ram:CityName>[Buyer city]</ram:CityName>",
+        b"<ram:CityName>[Buyer city]</ram:CityName>"
+        b"<ram:CountrySubDivisionName>Berlin</ram:CountrySubDivisionName>",
+    )
+    ubl = edit(
+        UBL,
+        b"<cbc:CityName>[Buyer city]</cbc:CityName>",
+        b"<cbc:AdditionalStreetName>Hinterhaus</cbc:AdditionalStreetName>"
+        b"<cbc:CityName>[Buyer city]</cbc:CityName>"
+        b"<cbc:CountrySubentity>Berlin</cbc:CountrySubentity>"
+        b"<cac:AddressLine><cbc:Line>3. OG</cbc:Line></cac:AddressLine>"
+        b"<cac:AddressLine><cbc:Line>Aufgang B</cbc:Line></cac:AddressLine>",
+    )
+    for data, findings in ((cii, []), (ubl, ["BT-163"])):
+        result = read_invoice(data)
+        buyer = result.invoice.buyer
+        assert buyer is not None
+        assert (
+            buyer.address_line_1,
+            buyer.address_line_2,
+            buyer.address_line_3,
+            buyer.city,
+            buyer.post_code,
+            buyer.country_subdivision,
+            buyer.country_code,
+        ) == (
+            "[Buyer address line 1]",
+            "Hinterhaus",
+            "3. OG",
+            "[Buyer city]",
+            "12345",
+            "Berlin",
+            "DE",
+        )
+        assert dropped(result) == findings
+
+
+def test_a_cii_contact_with_a_department_name() -> None:
+    alone = read_invoice(edit(CII, CII_PERSON, b"<ram:DepartmentName>Sales</ram:DepartmentName>"))
+    both = read_invoice(
+        edit(CII, CII_PERSON, CII_PERSON + b"<ram:DepartmentName>Sales</ram:DepartmentName>")
+    )
+    assert alone.invoice.seller is not None
+    assert both.invoice.seller is not None
+    assert alone.invoice.seller.contact == Contact(
+        point="Sales", telephone="+49 1234-5678", email="seller@email.de"
+    )
+    assert alone.findings == ()
+    assert both.invoice.seller.contact is not None
+    assert both.invoice.seller.contact.point == "nicht vorhanden"
+    assert dropped(both) == ["BT-41"]
+
+
+def test_terms_held_once_are_read_from_the_first_and_the_rest_dropped() -> None:
+    other_contact = (
+        b"<ram:DefinedTradeContact><ram:PersonName>Other</ram:PersonName></ram:DefinedTradeContact>"
+    )
+    cii = edit(CII, b"</ram:DefinedTradeContact>", b"</ram:DefinedTradeContact>" + other_contact)
+    cii = edit(
+        cii,
+        CII_SELLER_VAT_ID,
+        CII_SELLER_VAT_ID
+        + b'<ram:ID schemeID="FC">'
+        + FC
+        + b'</ram:ID><ram:ID schemeID="FC">999/999/99999</ram:ID>',
+    )
+    cii = edit(
+        cii,
+        b'<ram:URIID schemeID="EM">buyer@info.de</ram:URIID>',
+        b'<ram:URIID schemeID="EM">buyer@info.de</ram:URIID></ram:URIUniversalCommunication>'
+        b'<ram:URIUniversalCommunication><ram:URIID schemeID="0204">991-1</ram:URIID>',
+    )
+    cii = edit(
+        cii,
+        b"<ram:ID>[Buyer identifier]</ram:ID>",
+        b"<ram:ID>[Buyer identifier]</ram:ID>"
+        b'<ram:GlobalID schemeID="0088">4000001000005</ram:GlobalID>',
+    )
+    ubl = edit(
+        UBL,
+        b"</cac:Contact>",
+        b"</cac:Contact><cac:Contact><cbc:Name>Other</cbc:Name></cac:Contact>",
+    )
+    ubl = edit(
+        ubl,
+        b"</cac:PartyTaxScheme>",
+        b"</cac:PartyTaxScheme>"
+        + b"".join(
+            b"<cac:PartyTaxScheme><cbc:CompanyID>"
+            + value
+            + b"</cbc:CompanyID><cac:TaxScheme><cbc:ID>FC</cbc:ID></cac:TaxScheme>"
+            b"</cac:PartyTaxScheme>"
+            for value in (FC, b"999/999/99999")
+        ),
+    )
+    ubl = edit(
+        ubl,
+        UBL_BUYER_ENDPOINT,
+        UBL_BUYER_ENDPOINT + b'<cbc:EndpointID schemeID="0204">991-1</cbc:EndpointID>',
+    )
+    ubl = edit(
+        ubl,
+        b"<cbc:ID>[Buyer identifier]</cbc:ID>",
+        b"<cbc:ID>[Buyer identifier]</cbc:ID></cac:PartyIdentification>"
+        b'<cac:PartyIdentification><cbc:ID schemeID="0088">4000001000005</cbc:ID>',
+    )
+    for data, order in (
+        (cii, ["BG-6", "BT-32", "BT-46", "BT-49"]),
+        (ubl, ["BT-32", "BG-6", "BT-49", "BT-46"]),
+    ):
+        result = read_invoice(data)
+        seller, buyer = result.invoice.seller, result.invoice.buyer
+        assert seller is not None
+        assert buyer is not None
+        assert seller.contact is not None
+        assert seller.contact.point == "nicht vorhanden"
+        assert seller.tax_registration_id == FC.decode()
+        assert buyer.electronic_address == Identifier(value="buyer@info.de", scheme="EM")
+        # The identifier with a scheme is read before the one without (CII-SR-450).
+        assert buyer.identifiers == (Identifier(value="4000001000005", scheme="0088"),)
+        assert dropped(result) == order
+
+
+def test_identifiers_take_one_order_whatever_the_syntax() -> None:
+    """Those without a scheme first, as CII's XML Schema puts ram:ID before ram:GlobalID."""
+    ubl = edit(
+        UBL,
+        UBL_SELLER_ENDPOINT,
+        UBL_SELLER_ENDPOINT
+        + b'<cac:PartyIdentification><cbc:ID schemeID="0088">4000001000005</cbc:ID>'
+        b"</cac:PartyIdentification>"
+        b"<cac:PartyIdentification><cbc:ID>A1</cbc:ID></cac:PartyIdentification>",
+    )
+    cii = edit(
+        CII,
+        SELLER,
+        SELLER + b'<ram:ID>A1</ram:ID><ram:GlobalID schemeID="0088">4000001000005</ram:GlobalID>',
+    )
+    for data in (ubl, cii):
+        result = read_invoice(data)
+        assert result.invoice.seller is not None
+        assert result.invoice.seller.identifiers == (
+            Identifier(value="A1"),
+            Identifier(value="4000001000005", scheme="0088"),
+        )
+        assert result.findings == ()
+
+
+def test_a_cii_global_id_without_scheme_is_dropped() -> None:
+    result = read_invoice(edit(CII, SELLER, SELLER + b"<ram:GlobalID>X1</ram:GlobalID>"))
+    assert result.invoice.seller is not None
+    assert result.invoice.seller.identifiers == ()
+    assert dropped(result) == ["BT-29"]
+
+
+def test_a_contact_element_holding_none_of_the_contacts_terms_is_not_the_contact() -> None:
+    fax = (
+        b"<ram:DefinedTradeContact><ram:FaxUniversalCommunication>"
+        b"<ram:CompleteNumber>+49 1234-5679</ram:CompleteNumber>"
+        b"</ram:FaxUniversalCommunication></ram:DefinedTradeContact>"
+    )
+    cii = edit(CII, b"<ram:DefinedTradeContact>", fax + b"<ram:DefinedTradeContact>")
+    ubl = edit(
+        UBL,
+        b"<cac:Contact>",
+        b"<cac:Contact><cbc:Telefax>+49 1234-5679</cbc:Telefax></cac:Contact><cac:Contact>",
+    )
+    for data in (cii, ubl):
+        result = read_invoice(data)
+        assert result.invoice.seller is not None
+        assert result.invoice.seller.contact == Contact(
+            point="nicht vorhanden", telephone="+49 1234-5678", email="seller@email.de"
+        )
+        assert result.findings == ()
