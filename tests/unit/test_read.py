@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from haflinger import (
+    AllowanceCharge,
     Contact,
     CreditTransfer,
     Delivery,
@@ -1675,3 +1676,224 @@ def test_a_ubl_delivery_and_period_without_the_models_terms_dont_count() -> None
     assert result.invoice.delivery == DELIVERY
     assert result.invoice.invoicing_period == Period(start=date(2016, 3, 1), end=date(2016, 3, 31))
     assert dropped(result) == []
+
+
+# An allowance's or a charge's VAT category in the tests: standard rated, 7 %.
+STANDARD_RATE = AllowanceCharge(vat_category_code="S", vat_rate=Decimal(7))
+
+
+def cii_allowance_charge(
+    indicator: bytes, amount: bytes, terms: bytes = b"", after: bytes = b""
+) -> bytes:
+    """An allowance or a charge with `terms` before its amount and `after` after it."""
+    return (
+        b"<ram:SpecifiedTradeAllowanceCharge><ram:ChargeIndicator><udt:Indicator>"
+        + indicator
+        + b"</udt:Indicator></ram:ChargeIndicator>"
+        + terms
+        + b"<ram:ActualAmount>"
+        + amount
+        + b"</ram:ActualAmount>"
+        + after
+        + b"<ram:CategoryTradeTax><ram:TypeCode>VAT</ram:TypeCode>"
+        b"<ram:CategoryCode>S</ram:CategoryCode><ram:RateApplicablePercent>7"
+        b"</ram:RateApplicablePercent></ram:CategoryTradeTax></ram:SpecifiedTradeAllowanceCharge>"
+    )
+
+
+def ubl_allowance_charge(
+    indicator: bytes, amount: bytes, terms: bytes = b"", after: bytes = b""
+) -> bytes:
+    """An allowance or a charge with `terms` before its amount and `after` after it."""
+    return (
+        b"<cac:AllowanceCharge><cbc:ChargeIndicator>"
+        + indicator
+        + b"</cbc:ChargeIndicator>"
+        + terms
+        + b'<cbc:Amount currencyID="EUR">'
+        + amount
+        + b"</cbc:Amount>"
+        + after
+        + b"<cac:TaxCategory><cbc:ID>S</cbc:ID><cbc:Percent>7</cbc:Percent>"
+        b"<cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:TaxCategory>"
+        b"</cac:AllowanceCharge>"
+    )
+
+
+def with_allowances_and_charges(cii: list[bytes], ubl: list[bytes]) -> tuple[bytes, bytes]:
+    """01.01a with these allowances and charges, in both syntaxes."""
+    return (
+        edit(
+            CII,
+            b"<ram:SpecifiedTradePaymentTerms>",
+            b"".join(cii) + b"<ram:SpecifiedTradePaymentTerms>",
+        ),
+        edit(UBL, UBL_TAX_TOTAL_START, b"".join(ubl) + UBL_TAX_TOTAL_START),
+    )
+
+
+def test_allowances_and_charges() -> None:
+    """Each term in its syntax's order: in CII the percentage and the base amount before the
+    amount, the reason code and the reason after it; in UBL the reason code, the reason and the
+    percentage before the amount, the base amount after it."""
+    cii, ubl = with_allowances_and_charges(
+        [
+            cii_allowance_charge(
+                b"false",
+                b"10.00",
+                b"<ram:CalculationPercent>5</ram:CalculationPercent>"
+                b"<ram:BasisAmount>200.00</ram:BasisAmount>",
+                b"<ram:ReasonCode>95</ram:ReasonCode><ram:Reason>Rabatt</ram:Reason>",
+            ),
+            cii_allowance_charge(
+                b"true",
+                b"4.50",
+                b"<ram:CalculationPercent>1.5</ram:CalculationPercent>"
+                b"<ram:BasisAmount>300.00</ram:BasisAmount>",
+                b"<ram:ReasonCode>FC</ram:ReasonCode><ram:Reason>Fracht</ram:Reason>",
+            ),
+            cii_allowance_charge(b"false", b"1.00"),
+        ],
+        [
+            ubl_allowance_charge(
+                b"false",
+                b"10.00",
+                b"<cbc:AllowanceChargeReasonCode>95</cbc:AllowanceChargeReasonCode>"
+                b"<cbc:AllowanceChargeReason>Rabatt</cbc:AllowanceChargeReason>"
+                b"<cbc:MultiplierFactorNumeric>5</cbc:MultiplierFactorNumeric>",
+                b'<cbc:BaseAmount currencyID="EUR">200.00</cbc:BaseAmount>',
+            ),
+            ubl_allowance_charge(
+                b"true",
+                b"4.50",
+                b"<cbc:AllowanceChargeReasonCode>FC</cbc:AllowanceChargeReasonCode>"
+                b"<cbc:AllowanceChargeReason>Fracht</cbc:AllowanceChargeReason>"
+                b"<cbc:MultiplierFactorNumeric>1.5</cbc:MultiplierFactorNumeric>",
+                b'<cbc:BaseAmount currencyID="EUR">300.00</cbc:BaseAmount>',
+            ),
+            ubl_allowance_charge(b"false", b"1.00"),
+        ],
+    )
+    for data in (cii, ubl):
+        result = read_invoice(data)
+        assert result.invoice.allowances == (
+            replace(
+                STANDARD_RATE,
+                amount=Decimal("10.00"),
+                base_amount=Decimal("200.00"),
+                percentage=Decimal(5),
+                reason="Rabatt",
+                reason_code="95",
+            ),
+            replace(STANDARD_RATE, amount=Decimal("1.00")),
+        )
+        assert result.invoice.charges == (
+            replace(
+                STANDARD_RATE,
+                amount=Decimal("4.50"),
+                base_amount=Decimal("300.00"),
+                percentage=Decimal("1.5"),
+                reason="Fracht",
+                reason_code="FC",
+            ),
+        )
+        assert result.findings == ()
+
+
+def test_the_charge_indicator_takes_the_values_of_xs_boolean() -> None:
+    """`1` is a charge, `0` an allowance; any other value makes neither, which is left out."""
+    cii, ubl = with_allowances_and_charges(
+        [
+            cii_allowance_charge(b"1", b"4.50"),
+            cii_allowance_charge(b" 0 ", b"1.00"),
+            cii_allowance_charge(b"yes", b"2.00"),
+        ],
+        [
+            ubl_allowance_charge(b"1", b"4.50"),
+            ubl_allowance_charge(b" 0 ", b"1.00"),
+            ubl_allowance_charge(b"yes", b"2.00"),
+        ],
+    )
+    for data in (cii, ubl):
+        result = read_invoice(data)
+        assert result.invoice.allowances == (replace(STANDARD_RATE, amount=Decimal("1.00")),)
+        assert result.invoice.charges == (replace(STANDARD_RATE, amount=Decimal("4.50")),)
+        assert dropped(result) == ["BG-20/BG-21"]
+
+
+def test_the_charge_indicator_is_read_as_any_term() -> None:
+    """The first indicator holding a value counts, a further one is left out with a finding, and
+    one holding elements is no value, so its allowance or charge is left out."""
+    cii, ubl = with_allowances_and_charges(
+        [
+            cii_allowance_charge(b"true</udt:Indicator><udt:Indicator>false", b"4.50"),
+            cii_allowance_charge(b"</udt:Indicator><udt:Indicator>false", b"1.00"),
+            cii_allowance_charge(b"<ram:Name>true</ram:Name>", b"2.00"),
+        ],
+        [
+            ubl_allowance_charge(b"true</cbc:ChargeIndicator><cbc:ChargeIndicator>false", b"4.50"),
+            ubl_allowance_charge(b"</cbc:ChargeIndicator><cbc:ChargeIndicator>false", b"1.00"),
+            ubl_allowance_charge(b"<cbc:Name>true</cbc:Name>", b"2.00"),
+        ],
+    )
+    for data in (cii, ubl):
+        result = read_invoice(data)
+        assert result.invoice.allowances == (replace(STANDARD_RATE, amount=Decimal("1.00")),)
+        assert result.invoice.charges == (replace(STANDARD_RATE, amount=Decimal("4.50")),)
+        assert dropped(result) == ["BG-20/BG-21", "BG-20/BG-21"]
+        assert [f.rule for f in result.findings if f.rule == "HAFL-VALUE"] == ["HAFL-VALUE"]
+
+
+def test_an_allowances_vat_category_is_the_first_of_vat() -> None:
+    """A tax category of another tax is left out, as is a further one of VAT, each with a
+    finding."""
+    cii, ubl = with_allowances_and_charges(
+        [
+            cii_allowance_charge(
+                b"false",
+                b"1.00",
+                after=b"<ram:CategoryTradeTax><ram:TypeCode>LOC</ram:TypeCode>"
+                b"<ram:CategoryCode>Z</ram:CategoryCode>"
+                b"<ram:RateApplicablePercent>3</ram:RateApplicablePercent></ram:CategoryTradeTax>",
+            ),
+            cii_allowance_charge(
+                b"true",
+                b"4.50",
+                after=b"<ram:CategoryTradeTax><ram:TypeCode>VAT</ram:TypeCode>"
+                b"<ram:CategoryCode>Z</ram:CategoryCode>"
+                b"<ram:RateApplicablePercent>0</ram:RateApplicablePercent></ram:CategoryTradeTax>",
+            ),
+        ],
+        [
+            ubl_allowance_charge(
+                b"false",
+                b"1.00",
+                after=b"<cac:TaxCategory><cbc:ID>Z</cbc:ID><cbc:Percent>3</cbc:Percent>"
+                b"<cac:TaxScheme><cbc:ID>LOC</cbc:ID></cac:TaxScheme></cac:TaxCategory>",
+            ),
+            ubl_allowance_charge(
+                b"true",
+                b"4.50",
+                after=b"<cac:TaxCategory><cbc:ID>Z</cbc:ID><cbc:Percent>0</cbc:Percent>"
+                b"<cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:TaxCategory>",
+            ),
+        ],
+    )
+    for data in (cii, ubl):
+        result = read_invoice(data)
+        assert result.invoice.allowances == (replace(STANDARD_RATE, amount=Decimal("1.00")),)
+        assert result.invoice.charges == (
+            AllowanceCharge(amount=Decimal("4.50"), vat_category_code="Z", vat_rate=Decimal(0)),
+        )
+        assert dropped(result) == ["BT-95", "BT-102"]
+
+
+def test_a_ubl_lines_allowance_isnt_the_invoices() -> None:
+    ubl = edit(
+        UBL,
+        b"</cac:OrderLineReference>",
+        b"</cac:OrderLineReference>" + ubl_allowance_charge(b"false", b"1.00"),
+    )
+    result = read_invoice(ubl)
+    assert result.invoice.allowances == ()
+    assert result.findings == ()
