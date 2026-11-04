@@ -15,6 +15,7 @@ from datetime import date
 from decimal import Decimal
 
 from haflinger import _saxon, cii, ubl
+from haflinger._allowances import ALLOWANCE, CHARGE, AllowanceChargeTerms
 from haflinger._parties import (
     BUYER,
     DELIVER_TO,
@@ -31,6 +32,7 @@ from haflinger._parties import (
 from haflinger._xml import XML_WHITESPACE, Node, Reading, none_if_empty, parse
 from haflinger.errors import InvoiceReadError
 from haflinger.model import (
+    AllowanceCharge,
     CreditTransfer,
     Delivery,
     DirectDebit,
@@ -145,6 +147,10 @@ def _invoice(invoice: Node, syntax: Syntax) -> Invoice:
         delivery=_delivery(invoice.group(_term("BG-13"), "BG-13")),
         invoicing_period=_period(invoice.group(_term("BG-14"), "BG-14")),
         payment_instructions=_payment_instructions(invoice.group(_term("BG-16"), "BG-16")),
+        allowances=tuple(
+            _allowance_charge(node, ALLOWANCE) for node in invoice.findall(_term("BG-20"))
+        ),
+        charges=tuple(_allowance_charge(node, CHARGE) for node in invoice.findall(_term("BG-21"))),
         totals=_totals(invoice.find(_term("BG-22"))),
         vat_breakdown=tuple(_vat_breakdown(vat) for vat in invoice.findall(_term("BG-23"))),
         lines=tuple(_line(line) for line in invoice.findall(_term("BG-25"))),
@@ -275,6 +281,18 @@ def _totals(totals: Node | None) -> Totals | None:
         prepaid_amount=_decimal(totals, "BT-113"),
         rounding_amount=_decimal(totals, "BT-114"),
         amount_due=_decimal(totals, "BT-115"),
+    )
+
+
+def _allowance_charge(node: Node, terms: AllowanceChargeTerms) -> AllowanceCharge:
+    return AllowanceCharge(
+        amount=_decimal(node, terms.amount),
+        base_amount=_decimal(node, terms.base_amount),
+        percentage=_decimal(node, terms.percentage),
+        vat_category_code=_text(node, terms.vat_category_code),
+        vat_rate=_decimal(node, terms.vat_rate),
+        reason=_text(node, terms.reason),
+        reason_code=_text(node, terms.reason_code),
     )
 
 

@@ -18,12 +18,6 @@ XRECHNUNG = "urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3
 # REQ-004-PRS-F005: the rules a written KoSIT file still fails, each with the business terms the
 # model lacks for it (ADR-007). The list shrinks as the model grows.
 MISSING_TERMS = {
-    "BR-CO-11": "BG-20 document level allowances",
-    "BR-CO-12": "BG-21 document level charges",
-    "BR-AE-08": "BG-20 and BG-21, which enter the taxable amount (BT-116)",
-    "BR-E-08": "BG-20 and BG-21, which enter the taxable amount (BT-116)",
-    "BR-S-08": "BG-20 and BG-21, which enter the taxable amount (BT-116)",
-    "BR-E-01": "BG-20 and BG-21, whose VAT category (BT-95, BT-102) the rule counts",
     "BR-CO-16": "BG-DEX-09 third party payments of the XRechnung extension, which the extension"
     " allows into BT-115; outside the model by ADR-007, so the entry stays while the extension"
     " case is written as XRechnung",

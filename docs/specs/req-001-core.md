@@ -3,7 +3,7 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Draft |
-| **Version** | 0.8 |
+| **Version** | 0.9 |
 | **Date** | 2026-11-03 |
 | **Author** | loxy (drafted with Claude) |
 
@@ -170,6 +170,8 @@ General vocabulary (CIUS, Leitweg-ID, Peppol …): the [E-Invoicing 101 glossary
 | `PaymentInstructions.credit_transfers` | BG-17 | Credit transfers, any number: `account_id` BT-84 (required in the group), `account_name` BT-85, `provider_id` BT-86 |  |
 | `PaymentInstructions.card` | BG-18 | Payment card information: `account_number` BT-87 (required in the group), `holder_name` BT-88 |  |
 | `PaymentInstructions.direct_debit` | BG-19 | Direct debit: `mandate_reference` BT-89, `creditor_id` BT-90, `debited_account_id` BT-91 |  |
+| `Invoice.allowances` | BG-20 | Document level allowances, any number: `amount` BT-92 (required in the group), `base_amount` BT-93, `percentage` BT-94, `vat_category_code` BT-95 (required in the group), `vat_rate` BT-96, `reason` BT-97, `reason_code` BT-98 |  |
+| `Invoice.charges` | BG-21 | Document level charges, any number, with the fields of an allowance: `amount` BT-99 (required in the group), `base_amount` BT-100, `percentage` BT-101, `vat_category_code` BT-102 (required in the group), `vat_rate` BT-103, `reason` BT-104, `reason_code` BT-105 |  |
 | `Invoice.totals` | BG-22 | Document totals | required |
 | `Totals.line_net_total` | BT-106 | Sum of invoice line net amounts | required |
 | `Totals.allowance_total` | BT-107 | Sum of allowances on document level |  |

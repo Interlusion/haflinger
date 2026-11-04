@@ -11,6 +11,7 @@ from typing import Any
 import pytest
 
 from haflinger import (
+    AllowanceCharge,
     Contact,
     CreditTransfer,
     Delivery,
@@ -419,6 +420,15 @@ def test_refuses_what_cant_be_written_sensibly(invoice: Any, reason: str) -> Non
         ),
         (replace(INVOICE, invoicing_period=Period()), "BG-14 holds a period without any term"),
         (
+            replace(INVOICE, allowances=(AllowanceCharge(),)),
+            "BG-20 holds an allowance without any term",
+        ),
+        (replace(INVOICE, charges=(AllowanceCharge(),)), "BG-21 holds a charge without any term"),
+        (
+            replace(INVOICE, allowances=[AllowanceCharge(amount=Decimal(1))]),
+            "BG-20 is not a tuple of AllowanceCharge",
+        ),
+        (
             replace(INVOICE, delivery=Delivery(city="")),
             "BT-77 is empty; a missing term is None",
         ),
@@ -456,6 +466,9 @@ def test_refuses_what_cant_be_written_sensibly(invoice: Any, reason: str) -> Non
         "empty-preceding-invoice",
         "empty-delivery",
         "empty-period",
+        "empty-allowance",
+        "empty-charge",
+        "list-allowances",
         "empty-city",
         "str-delivery",
         "str-period",
@@ -631,6 +644,23 @@ def test_writes_preceding_invoice_delivery_and_period_and_reads_them_back() -> N
             "BR-55",
         ),
         (
+            replace(
+                INVOICE,
+                allowances=(AllowanceCharge(amount=Decimal(0), reason="Rabatt"),),
+                totals=replace(TOTALS, allowance_total=Decimal(0)),
+                specification_id=XRECHNUNG,
+            ),
+            "BR-32",
+        ),
+        (
+            replace(
+                INVOICE,
+                allowances=(AllowanceCharge(amount=Decimal(0), reason="Rabatt"),),
+                totals=replace(TOTALS, allowance_total=Decimal(0)),
+            ),
+            "BR-32",
+        ),
+        (
             replace(INVOICE, delivery=Delivery(city="Example City"), specification_id=XRECHNUNG),
             "BR-57",
         ),
@@ -641,6 +671,8 @@ def test_writes_preceding_invoice_delivery_and_period_and_reads_them_back() -> N
         "instructions-without-means-code-factur-x",
         "credit-transfer-without-account",
         "preceding-invoice-without-number",
+        "allowance-without-vat-category",
+        "allowance-without-vat-category-factur-x",
         "deliver-to-address-without-country",
         "deliver-to-address-without-country-factur-x",
     ],
@@ -650,14 +682,84 @@ def test_the_official_artefacts_refuse_a_group_without_a_term_it_needs(
 ) -> None:
     """Written, since CII D16B can hold the rest, and refused after writing: payment
     instructions without their means code (BT-81) by BR-49, a credit transfer without its
-    account (BT-84) by BR-50, a preceding invoice without its number (BT-25) by BR-55, a deliver
-    to address without its country code (BT-80) by BR-57; for EN 16931, Factur-X's XML Schema
-    requires BT-81 and BT-80 (REQ-004-PRS-F001)."""
+    account (BT-84) by BR-50, a preceding invoice without its number (BT-25) by BR-55, an
+    allowance without its VAT category code (BT-95) by BR-32, a deliver to address without its
+    country code (BT-80) by BR-57; for EN 16931, Factur-X's XML Schema requires BT-81 and BT-80
+    (REQ-004-PRS-F001)."""
     with pytest.raises(InvoiceWriteError, match=rule) as refusal:
         write_cii(invoice)
     assert rule in {finding.rule for finding in refusal.value.findings}
     assert refusal.value.document is not None
     assert read_invoice(refusal.value.document).invoice == invoice
+
+
+ALLOWANCES_AND_CHARGES = replace(
+    INVOICE,
+    allowances=(
+        AllowanceCharge(
+            amount=Decimal("10.00"),
+            base_amount=Decimal("200.00"),
+            percentage=Decimal(5),
+            vat_category_code="S",
+            vat_rate=Decimal(7),
+            reason="Rabatt",
+            reason_code="95",
+        ),
+        AllowanceCharge(
+            amount=Decimal("1.00"), vat_category_code="S", vat_rate=Decimal(7), reason="Skonto"
+        ),
+    ),
+    charges=(
+        AllowanceCharge(
+            amount=Decimal("4.50"),
+            base_amount=Decimal("300.00"),
+            percentage=Decimal("1.5"),
+            vat_category_code="S",
+            vat_rate=Decimal(7),
+            reason="Fracht",
+            reason_code="FC",
+        ),
+    ),
+    totals=replace(
+        TOTALS,
+        allowance_total=Decimal("11.00"),
+        charge_total=Decimal("4.50"),
+        total_without_vat=Decimal("308.36"),
+        vat_total=Decimal("21.59"),
+        total_with_vat=Decimal("329.95"),
+        amount_due=Decimal("329.95"),
+    ),
+    vat_breakdown=(
+        replace(
+            INVOICE.vat_breakdown[0], taxable_amount=Decimal("308.36"), tax_amount=Decimal("21.59")
+        ),
+    ),
+)
+
+
+@pytest.mark.parametrize("specification_id", [EN16931, XRECHNUNG])
+def test_writes_allowances_and_charges_and_reads_them_back(specification_id: str) -> None:
+    """Handed out: the totals and the VAT breakdown add up with them (BR-CO-11, BR-CO-12,
+    BR-S-08)."""
+    invoice = replace(ALLOWANCES_AND_CHARGES, specification_id=specification_id)
+    document = write_cii(invoice)
+    assert (
+        b"<ram:SpecifiedTradeAllowanceCharge><ram:ChargeIndicator><udt:Indicator>false"
+        b"</udt:Indicator></ram:ChargeIndicator><ram:CalculationPercent>5</ram:CalculationPercent>"
+        b"<ram:BasisAmount>200.00</ram:BasisAmount><ram:ActualAmount>10.00</ram:ActualAmount>"
+        b"<ram:ReasonCode>95</ram:ReasonCode><ram:Reason>Rabatt</ram:Reason><ram:CategoryTradeTax>"
+        b"<ram:TypeCode>VAT</ram:TypeCode><ram:CategoryCode>S</ram:CategoryCode>"
+        b"<ram:RateApplicablePercent>7</ram:RateApplicablePercent></ram:CategoryTradeTax>"
+        b"</ram:SpecifiedTradeAllowanceCharge>" in document
+    )
+    assert (
+        b"<udt:Indicator>true</udt:Indicator></ram:ChargeIndicator>"
+        b"<ram:CalculationPercent>1.5</ram:CalculationPercent>"
+        b"<ram:BasisAmount>300.00</ram:BasisAmount><ram:ActualAmount>4.50</ram:ActualAmount>"
+        in document
+    )
+    assert document.index(b"<udt:Indicator>false") < document.index(b"<udt:Indicator>true")
+    assert read_invoice(document).invoice == invoice
 
 
 def test_identifiers_in_another_order_are_written_as_the_schema_wants() -> None:
