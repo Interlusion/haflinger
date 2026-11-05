@@ -437,7 +437,8 @@ def _line(line: Node) -> InvoiceLine:
 
 
 def _vat_taxes(parent: Node, path: str, group: str) -> list[Node]:
-    """The elements at `path` holding a value that are VAT: of type code `VAT`, or of none."""
+    """The elements at `path` holding a value that are VAT: of type code `VAT` in any case, or of
+    none."""
     return vat_only(parent.findall(path), "ram:TypeCode", group)
 
 
