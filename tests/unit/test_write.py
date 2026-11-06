@@ -112,6 +112,7 @@ def test_refuses_an_invalid_invoice_after_writing() -> None:
             ),
             "BT-157 is not an Identifier",
         ),
+        (replace(INVOICE, invoiced_object_id="O-18"), "BT-18 is not an Identifier"),
         (replace(INVOICE, notes=[Note(text="a list")]), "BG-1 is not a tuple of Note"),
         (replace(INVOICE, seller="Example GmbH"), "BG-4 is not a Party"),
         (replace(INVOICE, seller=replace(SELLER, contact="Sales")), "BG-6 is not a Contact"),
@@ -139,6 +140,7 @@ def test_refuses_an_invalid_invoice_after_writing() -> None:
         "bt-147-without-bt-148",
         "bt-150-without-bt-149",
         "str-standard-item-id",
+        "str-invoiced-object",
         "list",
         "str-party",
         "str-contact",
@@ -238,6 +240,11 @@ def test_missing_terms_are_left_out() -> None:
         b"ram:SellerAssignedID",
         b"ram:GrossPriceProductTradePrice",
         b"ram:BasisQuantity",
+        b"ram:BuyerOrderReferencedDocument",
+        b"ram:AdditionalReferencedDocument",
+        b"ram:SpecifiedProcuringProject",
+        b"ram:DespatchAdviceReferencedDocument",
+        b"ram:ReceivableSpecifiedTradeAccountingAccount",
     ):
         assert tag not in document
     assert b"<ram:ApplicableHeaderTradeDelivery />" in document
@@ -486,6 +493,10 @@ def test_refuses_what_cant_be_written_sensibly(invoice: Any, reason: str) -> Non
             ),
             "BG-31 holds a standard identifier without its value (BT-157)",
         ),
+        (
+            replace(INVOICE, invoiced_object_id=Identifier(scheme="ABZ")),
+            "the invoice holds an invoiced object identifier without its value (BT-18)",
+        ),
     ],
     ids=[
         "empty-seller-contact",
@@ -513,6 +524,7 @@ def test_refuses_what_cant_be_written_sensibly(invoice: Any, reason: str) -> Non
         "buyer-tax-registration",
         "two-buyer-identifiers",
         "standard-item-id-without-value",
+        "invoiced-object-without-value",
     ],
 )
 def test_refuses_parties_that_cant_be_written(invoice: Any, reason: str) -> None:
@@ -797,6 +809,65 @@ def test_writes_allowances_and_charges_and_reads_them_back(specification_id: str
         in document
     )
     assert document.index(b"<udt:Indicator>false") < document.index(b"<udt:Indicator>true")
+    assert read_invoice(document).invoice == invoice
+
+
+# REQ-004-PRS-F003: the document references
+
+REFERENCES = replace(
+    INVOICE,
+    project_reference="P-11",
+    contract_reference="C-12",
+    purchase_order_reference="PO-13",
+    sales_order_reference="SO-14",
+    receiving_advice_reference="R-15",
+    despatch_advice_reference="D-16",
+    tender_or_lot_reference="T-17",
+    invoiced_object_id=Identifier(value="O-18", scheme="ABZ"),
+    buyer_accounting_reference="A-19",
+)
+
+
+@pytest.mark.parametrize("specification_id", [EN16931, XRECHNUNG])
+def test_writes_the_document_references_and_reads_them_back(specification_id: str) -> None:
+    """In the XML Schema's order, with the project name it requires; the advice references
+    without delivery information."""
+    invoice = replace(REFERENCES, specification_id=specification_id)
+    document = write_cii(invoice)
+    assert (
+        b"</ram:BuyerTradeParty><ram:SellerOrderReferencedDocument>"
+        b"<ram:IssuerAssignedID>SO-14</ram:IssuerAssignedID></ram:SellerOrderReferencedDocument>"
+        b"<ram:BuyerOrderReferencedDocument><ram:IssuerAssignedID>PO-13</ram:IssuerAssignedID>"
+        b"</ram:BuyerOrderReferencedDocument><ram:ContractReferencedDocument>"
+        b"<ram:IssuerAssignedID>C-12</ram:IssuerAssignedID></ram:ContractReferencedDocument>"
+        b"<ram:AdditionalReferencedDocument><ram:IssuerAssignedID>T-17</ram:IssuerAssignedID>"
+        b"<ram:TypeCode>50</ram:TypeCode></ram:AdditionalReferencedDocument>"
+        b"<ram:AdditionalReferencedDocument><ram:IssuerAssignedID>O-18</ram:IssuerAssignedID>"
+        b"<ram:TypeCode>130</ram:TypeCode><ram:ReferenceTypeCode>ABZ</ram:ReferenceTypeCode>"
+        b"</ram:AdditionalReferencedDocument><ram:SpecifiedProcuringProject><ram:ID>P-11</ram:ID>"
+        b"<ram:Name>Project reference</ram:Name></ram:SpecifiedProcuringProject>"
+        b"</ram:ApplicableHeaderTradeAgreement>" in document
+    )
+    assert (
+        b"<ram:ApplicableHeaderTradeDelivery><ram:DespatchAdviceReferencedDocument>"
+        b"<ram:IssuerAssignedID>D-16</ram:IssuerAssignedID></ram:DespatchAdviceReferencedDocument>"
+        b"<ram:ReceivingAdviceReferencedDocument><ram:IssuerAssignedID>R-15</ram:IssuerAssignedID>"
+        b"</ram:ReceivingAdviceReferencedDocument></ram:ApplicableHeaderTradeDelivery>" in document
+    )
+    assert (
+        b"<ram:ReceivableSpecifiedTradeAccountingAccount><ram:ID>A-19</ram:ID>"
+        b"</ram:ReceivableSpecifiedTradeAccountingAccount></ram:ApplicableHeaderTradeSettlement>"
+        in document
+    )
+    assert read_invoice(document).invoice == invoice
+
+
+def test_the_advice_references_follow_the_delivery_information() -> None:
+    invoice = replace(REFERENCES, delivery=Delivery(party_name="Lager Nord", country_code="DE"))
+    document = write_cii(invoice)
+    assert document.index(b"</ram:ShipToTradeParty>") < document.index(
+        b"<ram:DespatchAdviceReferencedDocument>"
+    )
     assert read_invoice(document).invoice == invoice
 
 

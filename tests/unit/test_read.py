@@ -19,6 +19,7 @@ from haflinger import (
     Delivery,
     DirectDebit,
     Identifier,
+    Invoice,
     InvoiceLine,
     InvoiceReadError,
     Note,
@@ -2226,3 +2227,225 @@ def test_a_standard_item_identifier_without_a_scheme() -> None:
     )
     assert result.invoice.lines[0].standard_item_id == Identifier(value="4000001000005")
     assert result.findings == ()
+
+
+# REQ-003-PRS-F002: the document references
+
+
+def cii_document(type_code: bytes, issuer_id: bytes, after: bytes = b"") -> bytes:
+    """An additional referenced document of this type code, with `after` after the type code."""
+    return (
+        b"<ram:AdditionalReferencedDocument><ram:IssuerAssignedID>"
+        + issuer_id
+        + b"</ram:IssuerAssignedID><ram:TypeCode>"
+        + type_code
+        + b"</ram:TypeCode>"
+        + after
+        + b"</ram:AdditionalReferencedDocument>"
+    )
+
+
+def ubl_document(type_code: bytes, identifier: bytes) -> bytes:
+    """An additional document reference of this document type code, `identifier` its cbc:ID."""
+    return (
+        b"<cac:AdditionalDocumentReference>"
+        + identifier
+        + b"<cbc:DocumentTypeCode>"
+        + type_code
+        + b"</cbc:DocumentTypeCode></cac:AdditionalDocumentReference>"
+    )
+
+
+def cii_referenced(element: bytes, issuer_id: bytes) -> bytes:
+    return (
+        b"<ram:"
+        + element
+        + b"><ram:IssuerAssignedID>"
+        + issuer_id
+        + b"</ram:IssuerAssignedID></ram:"
+        + element
+        + b">"
+    )
+
+
+CII_BUYER_END = b"</ram:BuyerTradeParty>"
+CII_REFERENCES = edit(
+    edit(
+        edit(
+            CII,
+            CII_BUYER_END,
+            CII_BUYER_END
+            + cii_referenced(b"SellerOrderReferencedDocument", b"SO-14")
+            + cii_referenced(b"BuyerOrderReferencedDocument", b"PO-13")
+            + cii_referenced(b"ContractReferencedDocument", b"C-12")
+            + cii_document(b"916", b"Anhang")
+            + cii_document(b"50", b"T-17")
+            + cii_document(b" 130 ", b"O-18", b"<ram:ReferenceTypeCode>ABZ</ram:ReferenceTypeCode>")
+            + b"<ram:SpecifiedProcuringProject><ram:ID>P-11</ram:ID>"
+            b"<ram:Name>Project reference</ram:Name></ram:SpecifiedProcuringProject>",
+        ),
+        b"<ram:ApplicableHeaderTradeDelivery/>",
+        b"<ram:ApplicableHeaderTradeDelivery>"
+        + cii_referenced(b"DespatchAdviceReferencedDocument", b"D-16")
+        + cii_referenced(b"ReceivingAdviceReferencedDocument", b"R-15")
+        + b"</ram:ApplicableHeaderTradeDelivery>",
+    ),
+    b"</ram:ApplicableHeaderTradeSettlement>",
+    b"<ram:ReceivableSpecifiedTradeAccountingAccount><ram:ID>A-19</ram:ID>"
+    b"</ram:ReceivableSpecifiedTradeAccountingAccount></ram:ApplicableHeaderTradeSettlement>",
+)
+# In UBL's order; an additional document of type code 50 is a project reference only in a
+# credit note.
+UBL_REFERENCES = edit(
+    edit(
+        UBL,
+        b"<cbc:BuyerReference>",
+        b"<cbc:AccountingCost>A-19</cbc:AccountingCost><cbc:BuyerReference>",
+    ),
+    UBL_SUPPLIER,
+    b"<cac:OrderReference><cbc:ID>PO-13</cbc:ID><cbc:SalesOrderID>SO-14</cbc:SalesOrderID>"
+    b"</cac:OrderReference><cac:DespatchDocumentReference><cbc:ID>D-16</cbc:ID>"
+    b"</cac:DespatchDocumentReference><cac:ReceiptDocumentReference><cbc:ID>R-15</cbc:ID>"
+    b"</cac:ReceiptDocumentReference><cac:OriginatorDocumentReference><cbc:ID>T-17</cbc:ID>"
+    b"</cac:OriginatorDocumentReference><cac:ContractDocumentReference><cbc:ID>C-12</cbc:ID>"
+    b"</cac:ContractDocumentReference>"
+    + ubl_document(b"916", b"<cbc:ID>Anhang</cbc:ID>")
+    + ubl_document(b"50", b"<cbc:ID>Ausschreibung</cbc:ID>")
+    + ubl_document(b" 130 ", b'<cbc:ID schemeID="ABZ">O-18</cbc:ID>')
+    + b"<cac:ProjectReference><cbc:ID>P-11</cbc:ID></cac:ProjectReference>"
+    + UBL_SUPPLIER,
+)
+
+
+def with_references(invoice: Invoice) -> Invoice:
+    return replace(
+        invoice,
+        project_reference="P-11",
+        contract_reference="C-12",
+        purchase_order_reference="PO-13",
+        sales_order_reference="SO-14",
+        receiving_advice_reference="R-15",
+        despatch_advice_reference="D-16",
+        tender_or_lot_reference="T-17",
+        invoiced_object_id=Identifier(value="O-18", scheme="ABZ"),
+        buyer_accounting_reference="A-19",
+    )
+
+
+@pytest.mark.parametrize(
+    ("base", "data"), [(CII, CII_REFERENCES), (UBL, UBL_REFERENCES)], ids=["cii", "ubl"]
+)
+def test_the_document_references(base: bytes, data: bytes) -> None:
+    """BT-11 to BT-19; a supporting document (BG-24) is neither BT-17 nor BT-18."""
+    result = read_invoice(data)
+    assert result.invoice == with_references(read_invoice(base).invoice)
+    assert result.findings == ()
+
+
+def test_a_credit_notes_project_reference() -> None:
+    """A UBL credit note has no cac:ProjectReference: the project is an additional document of
+    type code 50."""
+    note = (ROOT / "tests/data/cen-en16931/ubl/examples/ubl-tc434-creditnote1.xml").read_bytes()
+    data = edit(
+        note,
+        b"<cac:AccountingSupplierParty>",
+        ubl_document(b"50", b"<cbc:ID>P-11</cbc:ID>") + b"<cac:AccountingSupplierParty>",
+    )
+    invoice = read_invoice(data).invoice
+    assert (invoice.project_reference, invoice.tender_or_lot_reference) == ("P-11", None)
+
+
+def test_a_second_contract_reference_and_invoiced_object_are_dropped() -> None:
+    cii = edit(
+        CII,
+        CII_BUYER_END,
+        CII_BUYER_END
+        + cii_referenced(b"ContractReferencedDocument", b"C-1")
+        + cii_referenced(b"ContractReferencedDocument", b"C-2")
+        + cii_document(b"130", b"O-1")
+        + cii_document(b"130", b"O-2"),
+    )
+    ubl = edit(
+        UBL,
+        UBL_SUPPLIER,
+        b"<cac:ContractDocumentReference><cbc:ID>C-1</cbc:ID></cac:ContractDocumentReference>"
+        b"<cac:ContractDocumentReference><cbc:ID>C-2</cbc:ID></cac:ContractDocumentReference>"
+        + ubl_document(b"130", b"<cbc:ID>O-1</cbc:ID>")
+        + ubl_document(b"130", b"<cbc:ID>O-2</cbc:ID>")
+        + UBL_SUPPLIER,
+    )
+    for data in (cii, ubl):
+        result = read_invoice(data)
+        invoice = result.invoice
+        assert (invoice.contract_reference, invoice.invoiced_object_id) == (
+            "C-1",
+            Identifier(value="O-1"),
+        )
+        assert dropped(result) == ["BT-12", "BT-18"]
+        # Each finding names the value left out.
+        assert [f.text.rsplit(": ", 1)[-1] for f in result.findings] == ["'C-2'", "'O-2'"]
+
+
+def test_a_cii_lines_object_identifier_isnt_the_invoices() -> None:
+    """A line's additional document of type code 130 is BT-128."""
+    summation = b"</ram:SpecifiedTradeSettlementLineMonetarySummation>"
+    data = CII.replace(summation, summation + cii_document(b"130", b"ANG-1"), 1)
+    result = read_invoice(data)
+    assert result.invoice.invoiced_object_id is None
+    assert result.findings == ()
+
+
+def test_a_tender_reference_holding_elements_is_reported_once() -> None:
+    data = edit(
+        CII,
+        CII_BUYER_END,
+        CII_BUYER_END
+        + cii_document(b"50", b"<ram:X>a</ram:X></ram:IssuerAssignedID><ram:IssuerAssignedID>T-17"),
+    )
+    result = read_invoice(data)
+    assert result.invoice.tender_or_lot_reference == "T-17"
+    assert [(f.rule, f.text.split()[0]) for f in result.findings] == [("HAFL-VALUE", "BT-17")]
+
+
+def test_a_cii_invoiced_objects_scheme() -> None:
+    """ram:ReferenceTypeCode, or else the schemeID; a differing schemeID beside it, and a scheme
+    without its identifier, are left out."""
+    attribute = b'<ram:IssuerAssignedID schemeID="AAA">O-18</ram:IssuerAssignedID>'
+    code = b"<ram:ReferenceTypeCode>ABZ</ram:ReferenceTypeCode>"
+    cases: list[tuple[bytes, Identifier | None, list[str]]] = [
+        (
+            attribute + b"<ram:TypeCode>130</ram:TypeCode>",
+            Identifier(value="O-18", scheme="AAA"),
+            [],
+        ),
+        (
+            attribute + b"<ram:TypeCode>130</ram:TypeCode>" + code,
+            Identifier(value="O-18", scheme="ABZ"),
+            ["BT-18-1"],
+        ),
+        (b"<ram:TypeCode>130</ram:TypeCode>" + code, None, ["BT-18-1"]),
+    ]
+    for document, expected, drops in cases:
+        data = edit(
+            CII,
+            CII_BUYER_END,
+            CII_BUYER_END
+            + b"<ram:AdditionalReferencedDocument>"
+            + document
+            + b"</ram:AdditionalReferencedDocument>",
+        )
+        result = read_invoice(data)
+        assert result.invoice.invoiced_object_id == expected
+        assert dropped(result) == drops
+        assert [f.rule for f in result.findings if f.rule != "HAFL-DROPPED"] == []
+
+
+def test_a_supporting_documents_findings_name_bg_24() -> None:
+    """Its type code decides between BG-24, BT-17 and BT-18; a second one names all three."""
+    data = edit(
+        CII,
+        CII_BUYER_END,
+        CII_BUYER_END + cii_document(b"916", b"Anhang", b"<ram:TypeCode>916</ram:TypeCode>"),
+    )
+    result = read_invoice(data)
+    assert [f.text.split(" (")[0] for f in result.findings] == ["BG-24, BT-17, BT-18"]
