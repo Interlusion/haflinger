@@ -46,7 +46,7 @@ class PrecedingInvoice:
 @dataclass(frozen=True, kw_only=True)
 class Identifier:
     """An identifier with the scheme it belongs to: BT-29 and BT-29-1, BT-34 and BT-34-1, BT-46
-    and BT-46-1, BT-49 and BT-49-1, BT-71 and BT-71-1."""
+    and BT-46-1, BT-49 and BT-49-1, BT-71 and BT-71-1, BT-157 and BT-157-1."""
 
     value: str | None = None
     scheme: str | None = None
@@ -189,16 +189,25 @@ class VatBreakdown:
 
 @dataclass(frozen=True, kw_only=True)
 class InvoiceLine:
-    """BG-25."""
+    """BG-25, with the price details (BG-29), the VAT information (BG-30) and the item (BG-31)."""
 
     id: str | None = None  # BT-126
+    note: str | None = None  # BT-127
     quantity: Decimal | None = None  # BT-129
     unit_code: str | None = None  # BT-130
     net_amount: Decimal | None = None  # BT-131
     net_price: Decimal | None = None  # BT-146
+    price_discount: Decimal | None = None  # BT-147
+    gross_price: Decimal | None = None  # BT-148
+    base_quantity: Decimal | None = None  # BT-149
+    base_quantity_unit_code: str | None = None  # BT-150
     vat_category_code: str | None = None  # BT-151
     vat_rate: Decimal | None = None  # BT-152
     item_name: str | None = None  # BT-153
+    item_description: str | None = None  # BT-154
+    seller_item_id: str | None = None  # BT-155
+    buyer_item_id: str | None = None  # BT-156
+    standard_item_id: Identifier | None = None  # BT-157
 
 
 @dataclass(frozen=True, kw_only=True)

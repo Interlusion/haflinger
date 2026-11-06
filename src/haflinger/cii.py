@@ -8,7 +8,13 @@ from decimal import Decimal
 from typing import cast
 from xml.etree.ElementTree import Element, SubElement, tostring
 
-from haflinger._allowances import ALLOWANCE, CHARGE, AllowanceChargeTerms, allowances_and_charges
+from haflinger._allowances import (
+    ALLOWANCE,
+    CHARGE,
+    AllowanceChargeTerms,
+    allowances_and_charges,
+    price_allowance,
+)
 from haflinger._parties import (
     BUYER,
     DELIVER_TO,
@@ -70,6 +76,9 @@ _DOCUMENT = "rsm:ExchangedDocument"
 _TRANSACTION = "rsm:SupplyChainTradeTransaction"
 _AGREEMENT = f"{_TRANSACTION}/ram:ApplicableHeaderTradeAgreement"
 _SETTLEMENT = f"{_TRANSACTION}/ram:ApplicableHeaderTradeSettlement"
+# A line's prices (BG-29), within its ram:SpecifiedLineTradeAgreement.
+_GROSS_PRICE = "ram:GrossPriceProductTradePrice"
+_NET_PRICE = "ram:NetPriceProductTradePrice"
 _DELIVERY = f"{_TRANSACTION}/ram:ApplicableHeaderTradeDelivery"
 
 
@@ -413,6 +422,19 @@ def _line(line: Node) -> InvoiceLine:
     quantity = line.first(quantity_path, "BT-129")
     # BT-130 is an attribute: read also where the quantity's element is empty.
     unit = quantity or line.find(quantity_path)
+    price = line.group("ram:SpecifiedLineTradeAgreement", "BG-29", _GROSS_PRICE, _NET_PRICE)
+    base_quantity, base_unit = _base_quantity(price)
+    discount = (
+        None
+        if price is None
+        else price_allowance(
+            price.findall(f"{_GROSS_PRICE}/ram:AppliedTradeAllowanceCharge"),
+            "ram:ChargeIndicator/udt:Indicator",
+            ("ram:ActualAmount",),
+            "BT-147 (ram:AppliedTradeAllowanceCharge)",
+        )
+    )
+    product = line.group("ram:SpecifiedTradeProduct", "BG-31")
     settlement = "ram:SpecifiedLineTradeSettlement"
     taxes = _vat_taxes(line, f"{settlement}/ram:ApplicableTradeTax", "BG-30")
     for node in taxes[1:]:
@@ -420,19 +442,59 @@ def _line(line: Node) -> InvoiceLine:
     tax = taxes[0] if taxes else None
     return InvoiceLine(
         id=line.text("ram:AssociatedDocumentLineDocument/ram:LineID", "BT-126"),
+        note=line.text("ram:AssociatedDocumentLineDocument/ram:IncludedNote/ram:Content", "BT-127"),
         quantity=None if quantity is None else quantity.as_decimal("BT-129"),
         unit_code=None if unit is None else unit.attribute("unitCode"),
         net_amount=line.decimal(
             f"{settlement}/ram:SpecifiedTradeSettlementLineMonetarySummation/ram:LineTotalAmount",
             "BT-131",
         ),
-        net_price=line.decimal(
-            "ram:SpecifiedLineTradeAgreement/ram:NetPriceProductTradePrice/ram:ChargeAmount",
-            "BT-146",
-        ),
+        net_price=None
+        if price is None
+        else price.decimal(f"{_NET_PRICE}/ram:ChargeAmount", "BT-146"),
+        price_discount=None if discount is None else discount.decimal("ram:ActualAmount", "BT-147"),
+        gross_price=None
+        if price is None
+        else price.decimal(f"{_GROSS_PRICE}/ram:ChargeAmount", "BT-148"),
+        base_quantity=base_quantity,
+        base_quantity_unit_code=base_unit,
         vat_category_code=_text(tax, "ram:CategoryCode", "BT-151"),
         vat_rate=None if tax is None else tax.decimal("ram:RateApplicablePercent", "BT-152"),
-        item_name=line.text("ram:SpecifiedTradeProduct/ram:Name", "BT-153"),
+        item_name=_text(product, "ram:Name", "BT-153"),
+        item_description=_text(product, "ram:Description", "BT-154"),
+        seller_item_id=_text(product, "ram:SellerAssignedID", "BT-155"),
+        buyer_item_id=_text(product, "ram:BuyerAssignedID", "BT-156"),
+        standard_item_id=None
+        if product is None
+        else identifier(product.first("ram:GlobalID", "BT-157")),
+    )
+
+
+def _base_quantity(price: Node | None) -> tuple[Decimal | None, str | None]:
+    """BT-149 and BT-150: the net price's ram:BasisQuantity, to which BT-146 applies, or else the
+    gross price's; a unit that only one of them gives counts. Where both give a value or a unit,
+    the gross price's is left out with a finding if it differs (REQ-003-PRS-F002)."""
+    if price is None:
+        return None, None
+    _, net_value, net_unit = _basis_quantity(price, _NET_PRICE)
+    gross, gross_value, gross_unit = _basis_quantity(price, _GROSS_PRICE)
+    differs = "of the gross price differs from the net price's; it is left out"
+    if gross is not None and net_value is not None and gross_value not in (None, net_value):
+        gross.drop(f"BT-149 {differs}: {gross.value!r}")
+    if gross is not None and net_unit is not None and gross_unit not in (None, net_unit):
+        gross.drop(f"BT-150 {differs}: {gross_unit!r}")
+    return (gross_value if net_value is None else net_value), net_unit or gross_unit
+
+
+def _basis_quantity(price: Node, path: str) -> tuple[Node | None, Decimal | None, str | None]:
+    """The ram:BasisQuantity of the price at `path`: its element, value and unit, the unit read
+    also where the element is empty, as BT-130 is."""
+    quantity = price.first(f"{path}/ram:BasisQuantity", "BT-149")
+    element = quantity or price.find(f"{path}/ram:BasisQuantity")
+    return (
+        element,
+        None if quantity is None else quantity.as_decimal("BT-149"),
+        None if element is None else element.attribute("unitCode"),
     )
 
 
@@ -864,14 +926,11 @@ def _write_totals(settlement: Element, invoice: Invoice) -> None:
 
 
 def _write_line(item: Element, line: InvoiceLine) -> None:
-    _put_text(item, "ram:AssociatedDocumentLineDocument/ram:LineID", line.id, "BT-126")
-    _put_text(item, "ram:SpecifiedTradeProduct/ram:Name", line.item_name, "BT-153")
-    _put_amount(
-        item,
-        "ram:SpecifiedLineTradeAgreement/ram:NetPriceProductTradePrice/ram:ChargeAmount",
-        line.net_price,
-        "BT-146",
-    )
+    document = SubElement(item, "ram:AssociatedDocumentLineDocument")
+    _put_text(document, "ram:LineID", line.id, "BT-126")
+    _put_text(document, "ram:IncludedNote/ram:Content", line.note, "BT-127")
+    _write_product(SubElement(item, "ram:SpecifiedTradeProduct"), line)
+    _write_price(SubElement(item, "ram:SpecifiedLineTradeAgreement"), line)
     if line.unit_code is not None and line.quantity is None:
         raise InvoiceWriteError("BT-130 needs the invoiced quantity (BT-129), which is missing")
     _put_amount(
@@ -893,6 +952,43 @@ def _write_line(item: Element, line: InvoiceLine) -> None:
         line.net_amount,
         "BT-131",
     )
+
+
+def _write_product(product: Element, line: InvoiceLine) -> None:
+    """BG-31, in the XML Schema's order."""
+    standard = cast(object, line.standard_item_id)
+    if standard is not None:
+        if not isinstance(standard, Identifier):
+            raise InvoiceWriteError(f"BT-157 is not an Identifier: {standard!r}")
+        value, scheme = _identifier_parts(standard, "BG-31", "a standard identifier", "BT-157")
+        _put_text(product, "ram:GlobalID", value, "BT-157", schemeID=scheme)
+    _put_text(product, "ram:SellerAssignedID", line.seller_item_id, "BT-155")
+    _put_text(product, "ram:BuyerAssignedID", line.buyer_item_id, "BT-156")
+    _put_text(product, "ram:Name", line.item_name, "BT-153")
+    _put_text(product, "ram:Description", line.item_description, "BT-154")
+
+
+def _write_price(agreement: Element, line: InvoiceLine) -> None:
+    """BG-29: the gross price with its discount, then the net price, the base quantity in both,
+    so that both prices are for the same quantity (REQ-004-PRS-F003)."""
+    if line.price_discount is not None and line.gross_price is None:
+        raise InvoiceWriteError("BT-147 needs the item gross price (BT-148), which is missing")
+    if line.base_quantity_unit_code is not None and line.base_quantity is None:
+        raise InvoiceWriteError(
+            "BT-150 needs the item price base quantity (BT-149), which is missing"
+        )
+    unit = _checked_text(line.base_quantity_unit_code, "BT-150")
+    if line.gross_price is not None:
+        gross = SubElement(agreement, "ram:GrossPriceProductTradePrice")
+        _put_amount(gross, "ram:ChargeAmount", line.gross_price, "BT-148")
+        _put_amount(gross, "ram:BasisQuantity", line.base_quantity, "BT-149", unitCode=unit)
+        if line.price_discount is not None:
+            allowance = SubElement(gross, "ram:AppliedTradeAllowanceCharge")
+            _leaf(allowance, "ram:ChargeIndicator/udt:Indicator", ALLOWANCE.indicator, {})
+            _put_amount(allowance, "ram:ActualAmount", line.price_discount, "BT-147")
+    net = SubElement(agreement, "ram:NetPriceProductTradePrice")
+    _put_amount(net, "ram:ChargeAmount", line.net_price, "BT-146")
+    _put_amount(net, "ram:BasisQuantity", line.base_quantity, "BT-149", unitCode=unit)
 
 
 def _group[T](values: object, kind: type[T], group: str) -> list[T]:

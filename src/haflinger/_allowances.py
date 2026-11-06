@@ -1,11 +1,11 @@
 """Document level allowances and charges: the business term IDs of their fields, which reading,
 writing and findings name (REQ-001-PRS-F001), and how reading tells them apart across the
-syntaxes (REQ-003-PRS-F002)."""
+syntaxes (REQ-003-PRS-F002); and the allowance on a line's price, which gives its discount."""
 
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from haflinger._xml import Node, none_if_empty
+from haflinger._xml import Node, first_group, none_if_empty
 from haflinger.model import AllowanceCharge
 
 
@@ -74,8 +74,7 @@ def allowances_and_charges(
     for node in nodes:
         if not node.holds_value():
             continue
-        value = node.text(indicator, f"{_EITHER} charge indicator")
-        terms = None if value is None else _INDICATORS.get(value)
+        terms, value = _indicated(node, indicator, _EITHER)
         if terms is None:
             node.drop(
                 f"{_EITHER} whose charge indicator is neither true nor false ({value!r})"
@@ -86,3 +85,35 @@ def allowances_and_charges(
         if group is not None:
             (allowances if terms is ALLOWANCE else charges).append(group)
     return tuple(allowances), tuple(charges)
+
+
+def price_allowance(
+    nodes: list[Node], indicator: str, amounts: tuple[str, ...], label: str
+) -> Node | None:
+    """The allowance on a line's price that gives the item price discount (BT-147): the first of
+    `nodes` holding a value at one of the paths `amounts` whose charge indicator at the path
+    `indicator` is false, or that has no charge indicator, since EN 16931 has no charge on a
+    price. A charge, one whose indicator is neither, empty included, and a further allowance are
+    left out with a finding naming `label` (REQ-003-PRS-F002)."""
+    allowances: list[Node] = []
+    for node in nodes:
+        if not any(amount.holds_value() for path in amounts for amount in node.findall(path)):
+            continue
+        if node.find(indicator.split("/")[0]) is None:
+            allowances.append(node)
+            continue
+        terms, value = _indicated(node, indicator, label)
+        if terms is ALLOWANCE:
+            allowances.append(node)
+        else:
+            node.drop(f"{label} that isn't an allowance ({value!r}) is left out")
+    return first_group(allowances, label)
+
+
+def _indicated(
+    node: Node, indicator: str, label: str
+) -> tuple[AllowanceChargeTerms | None, str | None]:
+    """The terms the charge indicator at the path `indicator` gives, None where it is neither
+    true nor false, with its value as written."""
+    value = node.text(indicator, f"{label} charge indicator")
+    return (None if value is None else _INDICATORS.get(value)), value
