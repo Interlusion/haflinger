@@ -29,6 +29,7 @@ from haflinger._xml import (
     first_group,
     first_of,
     first_reference,
+    identifier_only,
     none_if_empty,
     vat_only,
 )
@@ -47,6 +48,7 @@ from haflinger.model import (
     PaymentInstructions,
     Period,
     PrecedingInvoice,
+    SupportingDocument,
     TaxRepresentative,
     Totals,
     VatBreakdown,
@@ -96,19 +98,26 @@ def read(root: Node, specification_id: str | None, *, credit_note: bool) -> Invo
     )
     # BT-18 is the additional document of the type code 130, and in a credit note, which has no
     # cac:ProjectReference, BT-11 the one of 50; the others are supporting documents (BG-24),
-    # which the model doesn't hold.
+    # whatever their type code.
+    additional = root.findall("cac:AdditionalDocumentReference")
     documents = by_code(
-        root.findall("cac:AdditionalDocumentReference"),
+        additional,
         "cbc:DocumentTypeCode",
         f"BG-24{', BT-11' if credit_note else ''}, BT-18 (cbc:DocumentTypeCode)",
     )
-    invoiced = first_reference(documents.get("130", []), "cbc:ID", "BT-18")
+    invoiced_objects = documents.pop("130", [])
+    identifier_only(
+        invoiced_objects, _SUPPORTING_ONLY, "BT-18's additional document (type code 130)"
+    )
+    invoiced = first_reference(invoiced_objects, "cbc:ID", "BT-18")
+    projects: list[Node] = []
     if credit_note:
-        project = _text(
-            first_reference(documents.get("50", []), "cbc:ID", "BT-11"), "cbc:ID", "BT-11"
-        )
+        projects = documents.pop("50", [])
+        identifier_only(projects, _SUPPORTING_ONLY, "BT-11's additional document (type code 50)")
+        project = _text(first_reference(projects, "cbc:ID", "BT-11"), "cbc:ID", "BT-11")
     else:
         project = root.text("cac:ProjectReference/cbc:ID", "BT-11")
+    references = {node.element for node in invoiced_objects + projects}
     seller = root.group("cac:AccountingSupplierParty/cac:Party", "BG-4")
     payee = root.group("cac:PayeeParty", "BG-10")
     return Invoice(
@@ -167,7 +176,30 @@ def read(root: Node, specification_id: str | None, *, credit_note: bool) -> Invo
             _tax_amount(vat_total_in_tax_currency),
         ),
         vat_breakdown=tuple(_vat_breakdown(node) for node in _subtotals(tax_totals, vat_total)),
+        supporting_documents=tuple(
+            document
+            for node in additional
+            if node.element not in references
+            and (document := _supporting_document(node)) is not None
+        ),
         lines=tuple(_line(node, quantity) for node in root.findall(line) if node.holds_value()),
+    )
+
+
+# The terms of a supporting document an additional document of BT-11 or BT-18 doesn't hold.
+_SUPPORTING_ONLY = (
+    ("cbc:DocumentDescription", "BT-123"),
+    ("cac:Attachment/cac:ExternalReference/cbc:URI", "BT-124"),
+)
+
+
+def _supporting_document(node: Node) -> SupportingDocument | None:
+    return none_if_empty(
+        SupportingDocument(
+            reference=node.text("cbc:ID", "BT-122"),
+            description=node.text("cbc:DocumentDescription", "BT-123"),
+            external_location=node.text("cac:Attachment/cac:ExternalReference/cbc:URI", "BT-124"),
+        )
     )
 
 

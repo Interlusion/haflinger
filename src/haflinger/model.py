@@ -213,6 +213,15 @@ class VatBreakdown:
 
 
 @dataclass(frozen=True, kw_only=True)
+class SupportingDocument:
+    """BG-24, without the attached document (BT-125), which the model doesn't hold."""
+
+    reference: str | None = None  # BT-122
+    description: str | None = None  # BT-123
+    external_location: str | None = None  # BT-124
+
+
+@dataclass(frozen=True, kw_only=True)
 class InvoiceLine:
     """BG-25, with the price details (BG-29), the VAT information (BG-30) and the item (BG-31)."""
 
@@ -275,6 +284,7 @@ class Invoice:
     charges: tuple[AllowanceCharge, ...] = ()  # BG-21
     totals: Totals | None = None  # BG-22
     vat_breakdown: tuple[VatBreakdown, ...] = ()  # BG-23
+    supporting_documents: tuple[SupportingDocument, ...] = ()  # BG-24
     lines: tuple[InvoiceLine, ...] = ()  # BG-25
     syntax: Syntax | None = field(default=None, compare=False)
 

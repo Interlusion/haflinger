@@ -39,6 +39,7 @@ from haflinger._xml import (
     first_group,
     first_of,
     first_reference,
+    identifier_only,
     none_if_empty,
     vat_only,
 )
@@ -59,6 +60,7 @@ from haflinger.model import (
     PaymentInstructions,
     Period,
     PrecedingInvoice,
+    SupportingDocument,
     TaxRepresentative,
     Totals,
     VatBreakdown,
@@ -101,15 +103,20 @@ def read(root: Node, specification_id: str | None) -> Invoice:
         _allowance_charge,
     )
     # BT-17 and BT-18 are additional documents of the type codes 50 and 130; the others are
-    # supporting documents (BG-24), which the model doesn't hold.
+    # supporting documents (BG-24) or left out as such.
     documents = by_code(
         root.findall(f"{_AGREEMENT}/ram:AdditionalReferencedDocument"),
         "ram:TypeCode",
         "BG-24, BT-17, BT-18 (ram:TypeCode)",
     )
-    tender = first_reference(documents.get("50", []), "ram:IssuerAssignedID", "BT-17")
+    tenders, invoiced_objects = documents.pop("50", []), documents.pop("130", [])
+    identifier_only(tenders, _SUPPORTING_ONLY, "BT-17's additional document (type code 50)")
+    identifier_only(
+        invoiced_objects, _SUPPORTING_ONLY, "BT-18's additional document (type code 130)"
+    )
+    tender = first_reference(tenders, "ram:IssuerAssignedID", "BT-17")
     invoiced = first_reference(
-        documents.get("130", []), "ram:IssuerAssignedID", "BT-18", "ram:ReferenceTypeCode"
+        invoiced_objects, "ram:IssuerAssignedID", "BT-18", "ram:ReferenceTypeCode"
     )
     return Invoice(
         syntax="cii",
@@ -180,6 +187,7 @@ def read(root: Node, specification_id: str | None) -> Invoice:
             currency_code,
             tax_currency_code,
         ),
+        supporting_documents=_supporting_documents(documents),
         vat_breakdown=tuple(
             _vat_breakdown(node)
             for node in _vat_taxes(root, f"{_SETTLEMENT}/ram:ApplicableTradeTax", "BG-23")
@@ -189,6 +197,42 @@ def read(root: Node, specification_id: str | None) -> Invoice:
             for node in root.findall(f"{_TRANSACTION}/ram:IncludedSupplyChainTradeLineItem")
             if node.holds_value()
         ),
+    )
+
+
+# The terms of a supporting document an additional document of BT-17 or BT-18 doesn't hold.
+_SUPPORTING_ONLY = (("ram:Name", "BT-123"), ("ram:URIID", "BT-124"))
+
+
+def _supporting_documents(
+    documents: dict[str | None, list[Node]],
+) -> tuple[SupportingDocument, ...]:
+    """BG-24: of the additional documents other than BT-17's and BT-18's, those of the type code
+    916, to which EN 16931-3-3 binds the group; one of another type code, or without one, holding
+    a term of the group is left out with a finding (REQ-003-PRS-F002)."""
+    for code, nodes in documents.items():
+        if code == "916":
+            continue
+        for node in nodes:
+            if node.holds_value("ram:IssuerAssignedID", *(path for path, _ in _SUPPORTING_ONLY)):
+                node.drop(
+                    "BG-24 without a type code (ram:TypeCode) is left out"
+                    if code is None
+                    else f"BG-24 of the type code {code!r}, not 916, is left out"
+                )
+    return tuple(
+        document
+        for node in documents.get("916", [])
+        if (
+            document := none_if_empty(
+                SupportingDocument(
+                    reference=node.text("ram:IssuerAssignedID", "BT-122"),
+                    description=node.text("ram:Name", "BT-123"),
+                    external_location=node.text("ram:URIID", "BT-124"),
+                )
+            )
+        )
+        is not None
     )
 
 
@@ -767,8 +811,8 @@ def write(invoice: Invoice) -> bytes:
 
 
 def _write_references(agreement: Element, invoice: Invoice) -> None:
-    """BT-14, BT-13, BT-12, BT-17, BT-18 and BT-11 after the buyer, in the XML Schema's order
-    (REQ-004-PRS-F003)."""
+    """BT-14, BT-13, BT-12, BT-17, BT-18, BG-24 and BT-11 after the buyer, in the XML Schema's
+    order (REQ-004-PRS-F003)."""
     for path, value, term in (
         ("ram:SellerOrderReferencedDocument", invoice.sales_order_reference, "BT-14"),
         ("ram:BuyerOrderReferencedDocument", invoice.purchase_order_reference, "BT-13"),
@@ -784,6 +828,14 @@ def _write_references(agreement: Element, invoice: Invoice) -> None:
             invoiced, "the invoice", "an invoiced object identifier", "BT-18"
         )
         _write_additional_document(agreement, value, "130", scheme)
+    for document in _group(
+        invoice.supporting_documents, SupportingDocument, "BG-24", "a supporting document"
+    ):
+        element = SubElement(agreement, "ram:AdditionalReferencedDocument")
+        _put_text(element, "ram:IssuerAssignedID", document.reference, "BT-122")
+        _put_text(element, "ram:URIID", document.external_location, "BT-124")
+        _leaf(element, "ram:TypeCode", "916", {})
+        _put_text(element, "ram:Name", document.description, "BT-123")
     project = _checked_text(invoice.project_reference, "BT-11")
     if project is not None:
         element = SubElement(agreement, "ram:SpecifiedProcuringProject")
@@ -997,9 +1049,7 @@ def _write_allowance_charges(
     settlement: Element, values: object, terms: AllowanceChargeTerms
 ) -> None:
     """BG-20 or BG-21, each as a ram:SpecifiedTradeAllowanceCharge (REQ-004-PRS-F003)."""
-    for each in _group(values, AllowanceCharge, terms.group):
-        if each == AllowanceCharge():
-            raise InvoiceWriteError(f"{terms.group} holds {terms.kind} without any term")
+    for each in _group(values, AllowanceCharge, terms.group, terms.kind):
         element = SubElement(settlement, "ram:SpecifiedTradeAllowanceCharge")
         _leaf(element, "ram:ChargeIndicator/udt:Indicator", terms.indicator, {})
         _put_amount(element, "ram:CalculationPercent", each.percentage, terms.percentage)
@@ -1063,9 +1113,7 @@ def _checked_instructions(payment: object) -> PaymentInstructions | None:
     payment = _checked_group(payment, PaymentInstructions, "BG-16", "payment instructions")
     if payment is None:
         return None
-    for transfer in _group(payment.credit_transfers, CreditTransfer, "BG-17"):
-        if transfer == CreditTransfer():
-            raise InvoiceWriteError("BG-17 holds a credit transfer without any term")
+    _group(payment.credit_transfers, CreditTransfer, "BG-17", "a credit transfer")
     card = cast(object, payment.card)
     if card is not None:
         if not isinstance(card, PaymentCard):
@@ -1226,8 +1274,10 @@ def _checked_group[T](value: object, kind: type[T], group: str, holds: str) -> T
     return value
 
 
-def _group[T](values: object, kind: type[T], group: str) -> list[T]:
-    """The model's static types aren't checked at run time; a caller may pass anything."""
+def _group[T](values: object, kind: type[T], group: str, holds: str | None = None) -> list[T]:
+    """A group the model holds any number of, a tuple of its class; the model's static types
+    aren't checked at run time, so a caller may pass anything. With `holds`, each must hold a
+    term."""
     if not isinstance(values, tuple):
         raise InvoiceWriteError(f"{group} is not a tuple of {kind.__name__}: {values!r}")
     items: list[T] = []
@@ -1236,6 +1286,8 @@ def _group[T](values: object, kind: type[T], group: str) -> list[T]:
             raise InvoiceWriteError(
                 f"{group} holds something other than {kind.__name__}: {value!r}"
             )
+        if holds is not None and value == kind():
+            raise InvoiceWriteError(f"{group} holds {holds} without any term")
         items.append(value)
     return items
 

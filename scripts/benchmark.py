@@ -147,6 +147,7 @@ def factur_x(specification_id: str) -> bytes:
             notes=(),
             lines=(),
             buyer_reference=None,
+            supporting_documents=(),
             # The parties' terms that every profile's XML Schema allows.
             seller=Party(
                 name=seller.name,
@@ -164,10 +165,11 @@ def factur_x(specification_id: str) -> bytes:
             ),
         )
     elif "basic" in specification_id:
-        # BASIC has no seller contact or additional legal information, and of an item only its
-        # standard identifier and its name.
+        # BASIC has no seller contact, additional legal information or supporting documents, and
+        # of an item only its standard identifier and its name.
         model = replace(
             model,
+            supporting_documents=(),
             seller=replace(seller, contact=None, additional_legal_information=None),
             lines=tuple(
                 replace(line, item_description=None, seller_item_id=None, buyer_item_id=None)

@@ -26,8 +26,10 @@ from haflinger import (
     PaymentInstructions,
     Period,
     PrecedingInvoice,
+    SupportingDocument,
     TaxRepresentative,
     read_invoice,
+    validate,
     write_cii,
 )
 from haflinger._xsd import check_cii
@@ -115,6 +117,17 @@ def test_refuses_an_invalid_invoice_after_writing() -> None:
             "BT-157 is not an Identifier",
         ),
         (replace(INVOICE, invoiced_object_id="O-18"), "BT-18 is not an Identifier"),
+        (
+            replace(INVOICE, supporting_documents=[SupportingDocument(reference="A-1")]),
+            "BG-24 is not a tuple of SupportingDocument",
+        ),
+        (
+            replace(
+                INVOICE,
+                supporting_documents=(SupportingDocument(reference=1),),  # pyright: ignore[reportArgumentType]
+            ),
+            "BT-122 is not a str",
+        ),
         (replace(INVOICE, payee="Example Factoring GmbH"), "BG-10 is not a Payee"),
         (replace(INVOICE, tax_representative="Example"), "BG-11 is not a TaxRepresentative"),
         (
@@ -149,6 +162,8 @@ def test_refuses_an_invalid_invoice_after_writing() -> None:
         "bt-150-without-bt-149",
         "str-standard-item-id",
         "str-invoiced-object",
+        "list-supporting-documents",
+        "int-supporting-document-reference",
         "str-payee",
         "str-tax-representative",
         "str-legal-registration",
@@ -510,6 +525,10 @@ def test_refuses_what_cant_be_written_sensibly(invoice: Any, reason: str) -> Non
         ),
         (replace(INVOICE, payee=Payee()), "BG-10 holds a payee without any term"),
         (
+            replace(INVOICE, supporting_documents=(SupportingDocument(),)),
+            "BG-24 holds a supporting document without any term",
+        ),
+        (
             replace(INVOICE, tax_representative=TaxRepresentative()),
             "BG-11 holds a tax representative without any term",
         ),
@@ -560,6 +579,7 @@ def test_refuses_what_cant_be_written_sensibly(invoice: Any, reason: str) -> Non
         "standard-item-id-without-value",
         "invoiced-object-without-value",
         "empty-payee",
+        "empty-supporting-document",
         "empty-tax-representative",
         "buyer-bt-33",
         "empty-buyer-bt-33",
@@ -755,6 +775,12 @@ def test_writes_preceding_invoice_delivery_and_period_and_reads_them_back() -> N
             "BR-57",
         ),
         (replace(INVOICE, delivery=Delivery(city="Example City")), "HAFL-XSD"),
+        (
+            replace(
+                INVOICE, supporting_documents=(SupportingDocument(description="Stundenzettel"),)
+            ),
+            "BR-52",
+        ),
     ],
     ids=[
         "instructions-without-means-code",
@@ -765,6 +791,7 @@ def test_writes_preceding_invoice_delivery_and_period_and_reads_them_back() -> N
         "allowance-without-vat-category-factur-x",
         "deliver-to-address-without-country",
         "deliver-to-address-without-country-factur-x",
+        "supporting-document-without-reference",
     ],
 )
 def test_the_official_artefacts_refuse_a_group_without_a_term_it_needs(
@@ -774,7 +801,8 @@ def test_the_official_artefacts_refuse_a_group_without_a_term_it_needs(
     instructions without their means code (BT-81) by BR-49, a credit transfer without its
     account (BT-84) by BR-50, a preceding invoice without its number (BT-25) by BR-55, an
     allowance without its VAT category code (BT-95) by BR-32, a deliver to address without its
-    country code (BT-80) by BR-57; for EN 16931, Factur-X's XML Schema requires BT-81 and BT-80
+    country code (BT-80) by BR-57, a supporting document without its reference (BT-122) by
+    BR-52; for EN 16931, Factur-X's XML Schema requires BT-81 and BT-80
     (REQ-004-PRS-F001)."""
     with pytest.raises(InvoiceWriteError, match=rule) as refusal:
         write_cii(invoice)
@@ -959,6 +987,51 @@ def test_writes_the_document_references_and_reads_them_back(specification_id: st
         in document
     )
     assert read_invoice(document).invoice == invoice
+
+
+@pytest.mark.parametrize("specification_id", [EN16931, XRECHNUNG])
+def test_writes_the_supporting_documents_and_reads_them_back(specification_id: str) -> None:
+    """After BT-17's and BT-18's additional documents, each with the type code 916, in the XML
+    Schema's order."""
+    invoice = replace(
+        REFERENCES,
+        specification_id=specification_id,
+        supporting_documents=(
+            SupportingDocument(
+                reference="A-1",
+                description="Stundenzettel",
+                external_location="https://example.com/a-1.pdf",
+            ),
+            SupportingDocument(reference="A-2"),
+        ),
+    )
+    document = write_cii(invoice)
+    assert (
+        b"<ram:ReferenceTypeCode>ABZ</ram:ReferenceTypeCode></ram:AdditionalReferencedDocument>"
+        b"<ram:AdditionalReferencedDocument><ram:IssuerAssignedID>A-1</ram:IssuerAssignedID>"
+        b"<ram:URIID>https://example.com/a-1.pdf</ram:URIID><ram:TypeCode>916</ram:TypeCode>"
+        b"<ram:Name>Stundenzettel</ram:Name></ram:AdditionalReferencedDocument>"
+        b"<ram:AdditionalReferencedDocument><ram:IssuerAssignedID>A-2</ram:IssuerAssignedID>"
+        b"<ram:TypeCode>916</ram:TypeCode></ram:AdditionalReferencedDocument>"
+        b"<ram:SpecifiedProcuringProject>" in document
+    )
+    assert read_invoice(document).invoice == invoice
+
+
+def test_two_supporting_documents_with_descriptions_still_warn_with_cii_sr_475() -> None:
+    """CEN's CII-SR-475 counts the descriptions of all supporting documents, where EN 16931 gives
+    each its own (ITEM-006); once a release counts them per document, this test goes."""
+    invoice = replace(
+        INVOICE,
+        supporting_documents=(
+            SupportingDocument(reference="A-1", description="Stundenzettel"),
+            SupportingDocument(reference="A-2", description="Lieferschein"),
+        ),
+    )
+    findings = validate(write_cii(invoice))
+    assert [(f.rule, f.flag) for f in findings if f.rule == "CII-SR-475"] == [
+        ("CII-SR-475", "warning")
+    ]
 
 
 def test_the_advice_references_follow_the_delivery_information() -> None:

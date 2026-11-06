@@ -68,7 +68,7 @@ def test_term_report_lists_only_terms_the_model_doesnt_hold() -> None:
     assert "BT-158" not in held
     assert rows
     assert not held & set(rows)
-    assert rows["BT-122"] == ["Supporting document reference", "BG-24", "35"]
+    assert rows["BT-125"] == ["Attached document", "BG-24", "32"]
     assert rows["BT-158"] == ["Item classification identifier", "BG-31", "23"]
 
 
