@@ -3,7 +3,7 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Draft |
-| **Version** | 0.12 |
+| **Version** | 0.13 |
 | **Date** | 2026-11-06 |
 | **Author** | loxy (drafted with Claude) |
 
@@ -202,6 +202,7 @@ General vocabulary (CIUS, Leitweg-ID, Peppol …): the [E-Invoicing 101 glossary
 | `VatBreakdown.rate` | BT-119 | VAT category rate |  |
 | `VatBreakdown.exemption_reason` | BT-120 | VAT exemption reason text |  |
 | `VatBreakdown.exemption_reason_code` | BT-121 | VAT exemption reason code |  |
+| `Invoice.supporting_documents` | BG-24 | Additional supporting documents, any number: `reference` BT-122 (required in the group), `description` BT-123, `external_location` BT-124, but not the attached document |  |
 | `Invoice.lines` | BG-25 | Invoice lines, at least one | required |
 | `InvoiceLine.id` | BT-126 | Invoice line identifier | required |
 | `InvoiceLine.note` | BT-127 | Invoice line note |  |
