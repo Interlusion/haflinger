@@ -3,8 +3,8 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Draft |
-| **Version** | 0.9 |
-| **Date** | 2026-11-03 |
+| **Version** | 0.10 |
+| **Date** | 2026-11-06 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Intended Use
@@ -192,13 +192,22 @@ General vocabulary (CIUS, Leitweg-ID, Peppol …): the [E-Invoicing 101 glossary
 | `VatBreakdown.exemption_reason_code` | BT-121 | VAT exemption reason code |  |
 | `Invoice.lines` | BG-25 | Invoice lines, at least one | required |
 | `InvoiceLine.id` | BT-126 | Invoice line identifier | required |
+| `InvoiceLine.note` | BT-127 | Invoice line note |  |
 | `InvoiceLine.quantity` | BT-129 | Invoiced quantity | required |
 | `InvoiceLine.unit_code` | BT-130 | Invoiced quantity unit of measure | required |
 | `InvoiceLine.net_amount` | BT-131 | Invoice line net amount | required |
 | `InvoiceLine.net_price` | BT-146 | Item net price | required |
+| `InvoiceLine.price_discount` | BT-147 | Item price discount |  |
+| `InvoiceLine.gross_price` | BT-148 | Item gross price |  |
+| `InvoiceLine.base_quantity` | BT-149 | Item price base quantity |  |
+| `InvoiceLine.base_quantity_unit_code` | BT-150 | Item price base quantity unit of measure code |  |
 | `InvoiceLine.vat_category_code` | BT-151 | Invoiced item VAT category code | required |
 | `InvoiceLine.vat_rate` | BT-152 | Invoiced item VAT rate |  |
 | `InvoiceLine.item_name` | BT-153 | Item name | required |
+| `InvoiceLine.item_description` | BT-154 | Item description |  |
+| `InvoiceLine.seller_item_id` | BT-155 | Item Seller's identifier |  |
+| `InvoiceLine.buyer_item_id` | BT-156 | Item Buyer's identifier |  |
+| `InvoiceLine.standard_item_id` | BT-157 | Item standard identifier, an Identifier: `value` BT-157 (required in the group), `scheme` BT-157-1 (required in the group) |  |
 
 **Related URS**: REQ-001-URS-F001, REQ-001-URS-F002
 
