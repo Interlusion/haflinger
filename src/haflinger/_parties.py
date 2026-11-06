@@ -149,7 +149,8 @@ def location(nodes: list[Node], scheme: str = "schemeID") -> Identifier | None:
 
 
 def identifier(node: Node | None, scheme: str = "schemeID") -> Identifier | None:
-    """The electronic address `node` holds, with its scheme in the attribute `scheme`."""
+    """The identifier `node` holds, such as an electronic address, with its scheme in the
+    attribute `scheme`."""
     return None if node is None else Identifier(value=node.value, scheme=node.attribute(scheme))
 
 

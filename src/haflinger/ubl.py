@@ -4,7 +4,7 @@
 import re
 from datetime import date
 
-from haflinger._allowances import AllowanceChargeTerms, allowances_and_charges
+from haflinger._allowances import AllowanceChargeTerms, allowances_and_charges, price_allowance
 from haflinger._parties import (
     BUYER,
     DELIVER_TO,
@@ -417,19 +417,43 @@ def _vat_breakdown(subtotal: Node) -> VatBreakdown:
 
 def _line(line: Node, quantity_path: str) -> InvoiceLine:
     quantity = line.first(quantity_path, "BT-129")
-    # BT-130 is an attribute: read also where the quantity's element is empty.
+    # BT-130 and BT-150 are attributes: read also where the quantity's element is empty.
     unit = quantity or line.find(quantity_path)
+    price = line.group("cac:Price", "BG-29")
+    base_quantity = None if price is None else price.first("cbc:BaseQuantity", "BT-149")
+    base_unit = base_quantity or (None if price is None else price.find("cbc:BaseQuantity"))
+    discount = (
+        None
+        if price is None
+        else price_allowance(
+            price.findall("cac:AllowanceCharge"),
+            "cbc:ChargeIndicator",
+            ("cbc:Amount", "cbc:BaseAmount"),
+            "BT-147, BT-148 (cac:AllowanceCharge)",
+        )
+    )
     item = line.group("cac:Item", "BG-31")
     tax = None if item is None else item.group("cac:ClassifiedTaxCategory", "BG-30")
     return InvoiceLine(
         id=line.text("cbc:ID", "BT-126"),
+        note=line.text("cbc:Note", "BT-127"),
         quantity=None if quantity is None else quantity.as_decimal("BT-129"),
         unit_code=None if unit is None else unit.attribute("unitCode"),
         net_amount=line.decimal("cbc:LineExtensionAmount", "BT-131"),
-        net_price=line.decimal("cac:Price/cbc:PriceAmount", "BT-146"),
+        net_price=None if price is None else price.decimal("cbc:PriceAmount", "BT-146"),
+        price_discount=None if discount is None else discount.decimal("cbc:Amount", "BT-147"),
+        gross_price=None if discount is None else discount.decimal("cbc:BaseAmount", "BT-148"),
+        base_quantity=None if base_quantity is None else base_quantity.as_decimal("BT-149"),
+        base_quantity_unit_code=None if base_unit is None else base_unit.attribute("unitCode"),
         vat_category_code=_text(tax, "cbc:ID", "BT-151"),
         vat_rate=None if tax is None else tax.decimal("cbc:Percent", "BT-152"),
         item_name=_text(item, "cbc:Name", "BT-153"),
+        item_description=_text(item, "cbc:Description", "BT-154"),
+        seller_item_id=_text(item, "cac:SellersItemIdentification/cbc:ID", "BT-155"),
+        buyer_item_id=_text(item, "cac:BuyersItemIdentification/cbc:ID", "BT-156"),
+        standard_item_id=None
+        if item is None
+        else identifier(item.first("cac:StandardItemIdentification/cbc:ID", "BT-157")),
     )
 
 

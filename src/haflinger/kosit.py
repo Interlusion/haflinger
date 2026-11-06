@@ -317,11 +317,22 @@ def _vat_breakdown(vat: Node) -> VatBreakdown:
 def _line(line: Node) -> InvoiceLine:
     return InvoiceLine(
         id=_text(line, "BT-126"),
+        note=_text(line, "BT-127"),
         quantity=_decimal(line, "BT-129"),
         unit_code=_text(line, "BT-130"),
         net_amount=_decimal(line, "BT-131"),
         net_price=_decimal(line, "BG-29", "BT-146"),
+        price_discount=_decimal(line, "BG-29", "BT-147"),
+        gross_price=_decimal(line, "BG-29", "BT-148"),
+        base_quantity=_decimal(line, "BG-29", "BT-149"),
+        base_quantity_unit_code=_text(line, "BG-29", "BT-150"),
         vat_category_code=_text(line, "BG-30", "BT-151"),
         vat_rate=_decimal(line, "BG-30", "BT-152"),
         item_name=_text(line, "BG-31", "BT-153"),
+        item_description=_text(line, "BG-31", "BT-154"),
+        seller_item_id=_text(line, "BG-31", "BT-155"),
+        buyer_item_id=_text(line, "BG-31", "BT-156"),
+        standard_item_id=identifier(
+            line.first(_term("BG-31", "BT-157"), "BT-157"), "scheme_identifier"
+        ),
     )

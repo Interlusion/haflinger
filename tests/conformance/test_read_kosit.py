@@ -61,6 +61,10 @@ CONTACT_POINT = {
         NOT_YET_REPORTED,
     ),
 }
+SECOND_LINES_BASE_QUANTITY = {
+    "lines.1.base_quantity": ("BT-149", "only the UBL file has one", NOT_YET_REPORTED),
+    "lines.1.base_quantity_unit_code": ("BT-150", "only the UBL file has one", NOT_YET_REPORTED),
+}
 ONE_PRECEDING_INVOICE = {
     "preceding_invoices": (
         "BG-3",
@@ -99,7 +103,14 @@ KNOWN_DIFFERENCES: dict[str, dict[str, tuple[str, str, str]]] = {
         )
     },
     "standard/03.07a-INVOICE": SELLER_IDENTIFIERS,
-    "technical-cases/cvd/02.01a-cvd_INVOICE": SELLER_IDENTIFIERS,
+    "technical-cases/cvd/02.01a-cvd_INVOICE": SELLER_IDENTIFIERS
+    | {
+        "lines.0.item_description": (
+            "BT-154",
+            "Gruppe von Fahrzeugde XY in CII, Gruppe von Fahrzeug XY in UBL",
+            NOT_YET_REPORTED,
+        ),
+    },
     **{
         f"technical-cases/cius/01.0{n}_comprehensive_test": {
             "buyer.name": (
@@ -112,6 +123,7 @@ KNOWN_DIFFERENCES: dict[str, dict[str, tuple[str, str, str]]] = {
                 "the UBL file has the name's placeholder as the trading name",
                 NOT_YET_REPORTED,
             ),
+            **SECOND_LINES_BASE_QUANTITY,
             **{
                 1: SELLER_IDENTIFIERS | ONE_PRECEDING_INVOICE,
                 3: CONTACT_POINT,
@@ -250,6 +262,8 @@ EXPECTED_01_01A = Invoice(
     lines=(
         InvoiceLine(
             id="Zeitschrift [...]",
+            note="Die letzte Lieferung im Rahmen des abgerechneten Abonnements erfolgt in 12/2016"
+            " Lieferung erfolgt / erfolgte direkt vom Verlag",
             quantity=Decimal(1),
             unit_code="XPP",
             net_amount=Decimal("288.79"),
@@ -257,6 +271,8 @@ EXPECTED_01_01A = Invoice(
             vat_category_code="S",
             vat_rate=Decimal(7),
             item_name="Zeitschrift [...]",
+            item_description="Zeitschrift Inland",
+            seller_item_id="246",
         ),
         InvoiceLine(
             id="Porto + Versandkosten",

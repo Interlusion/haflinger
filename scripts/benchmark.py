@@ -163,8 +163,16 @@ def factur_x(specification_id: str) -> bytes:
                 amount_due=totals.amount_due,
             ),
         )
-    elif "basic" in specification_id:  # BASIC has no seller contact
-        model = replace(model, seller=replace(seller, contact=None))
+    elif "basic" in specification_id:
+        # BASIC has no seller contact, and of an item only its standard identifier and its name.
+        model = replace(
+            model,
+            seller=replace(seller, contact=None),
+            lines=tuple(
+                replace(line, item_description=None, seller_item_id=None, buyer_item_id=None)
+                for line in model.lines
+            ),
+        )
     if "minimum" in specification_id:
         model = replace(
             model,
