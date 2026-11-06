@@ -31,6 +31,7 @@ from haflinger._parties import (
     one_identifier,
 )
 from haflinger._payments import one_value, payment_means
+from haflinger._periods import INVOICING_PERIOD, LINE_PERIOD, PeriodTerms
 from haflinger._xml import (
     XML_WHITESPACE,
     Node,
@@ -176,7 +177,9 @@ def read(root: Node, specification_id: str | None) -> Invoice:
             root.group(f"{_AGREEMENT}/ram:SellerTaxRepresentativeTradeParty", "BG-11")
         ),
         delivery=_delivery(root),
-        invoicing_period=_period(root.group(f"{_SETTLEMENT}/ram:BillingSpecifiedPeriod", "BG-14")),
+        invoicing_period=_period(
+            root, f"{_SETTLEMENT}/ram:BillingSpecifiedPeriod", INVOICING_PERIOD
+        ),
         payment_instructions=_payment_instructions(root),
         allowances=allowances,
         charges=charges,
@@ -395,13 +398,15 @@ def _delivery(root: Node) -> Delivery | None:
     )
 
 
-def _period(period: Node | None) -> Period | None:
+def _period(parent: Node, path: str, terms: PeriodTerms) -> Period | None:
+    """BG-14 or BG-26, from the ram:BillingSpecifiedPeriod at `path`."""
+    period = parent.group(path, terms.group)
     if period is None:
         return None
     return none_if_empty(
         Period(
-            start=_date(period, "ram:StartDateTime/udt:DateTimeString", "BT-73"),
-            end=_date(period, "ram:EndDateTime/udt:DateTimeString", "BT-74"),
+            start=_date(period, "ram:StartDateTime/udt:DateTimeString", terms.start),
+            end=_date(period, "ram:EndDateTime/udt:DateTimeString", terms.end),
         )
     )
 
@@ -588,6 +593,7 @@ def _line(line: Node) -> InvoiceLine:
             f"{settlement}/ram:SpecifiedTradeSettlementLineMonetarySummation/ram:LineTotalAmount",
             "BT-131",
         ),
+        period=_period(line, f"{settlement}/ram:BillingSpecifiedPeriod", LINE_PERIOD),
         net_price=None
         if price is None
         else price.decimal(f"{_NET_PRICE}/ram:ChargeAmount", "BT-146"),
@@ -776,7 +782,7 @@ def write(invoice: Invoice) -> bytes:
         _put_text(tax, "ram:CategoryCode", vat.category_code, "BT-118")
         _put_text(tax, "ram:ExemptionReasonCode", vat.exemption_reason_code, "BT-121")
         _put_amount(tax, "ram:RateApplicablePercent", vat.rate, "BT-119")
-    _write_period(settlement, invoice.invoicing_period)
+    _write_period(settlement, invoice.invoicing_period, INVOICING_PERIOD)
     _write_allowance_charges(settlement, invoice.allowances, ALLOWANCE)
     _write_allowance_charges(settlement, invoice.charges, CHARGE)
     terms = SubElement(settlement, "ram:SpecifiedTradePaymentTerms")
@@ -1036,13 +1042,14 @@ def _write_delivery(element: Element, delivery: object) -> None:
     )
 
 
-def _write_period(settlement: Element, period: object) -> None:
-    period = _checked_group(period, Period, "BG-14", "a period")
+def _write_period(settlement: Element, period: object, terms: PeriodTerms) -> None:
+    """BG-14 or BG-26."""
+    period = _checked_group(period, Period, terms.group, "a period")
     if period is None:
         return
     element = SubElement(settlement, "ram:BillingSpecifiedPeriod")
-    _put_date(element, "ram:StartDateTime", period.start, "BT-73")
-    _put_date(element, "ram:EndDateTime", period.end, "BT-74")
+    _put_date(element, "ram:StartDateTime", period.start, terms.start)
+    _put_date(element, "ram:EndDateTime", period.end, terms.end)
 
 
 def _write_allowance_charges(
@@ -1219,6 +1226,7 @@ def _write_line(item: Element, line: InvoiceLine) -> None:
         SubElement(tax, "ram:TypeCode").text = "VAT"
         _put_text(tax, "ram:CategoryCode", line.vat_category_code, "BT-151")
         _put_amount(tax, "ram:RateApplicablePercent", line.vat_rate, "BT-152")
+    _write_period(settlement, line.period, LINE_PERIOD)
     _put_amount(
         settlement,
         "ram:SpecifiedTradeSettlementLineMonetarySummation/ram:LineTotalAmount",

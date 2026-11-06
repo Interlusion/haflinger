@@ -32,6 +32,7 @@ from haflinger._parties import (
     identifiers,
     one_identifier,
 )
+from haflinger._periods import INVOICING_PERIOD, LINE_PERIOD, PeriodTerms
 from haflinger._xml import XML_WHITESPACE, Node, Reading, none_if_empty, parse
 from haflinger.errors import InvoiceReadError
 from haflinger.model import (
@@ -175,7 +176,7 @@ def _invoice(invoice: Node, syntax: Syntax) -> Invoice:
         payee=_payee(invoice.group(_term("BG-10"), "BG-10")),
         tax_representative=_tax_representative(invoice.group(_term("BG-11"), "BG-11")),
         delivery=_delivery(invoice.group(_term("BG-13"), "BG-13")),
-        invoicing_period=_period(invoice.group(_term("BG-14"), "BG-14")),
+        invoicing_period=_period(invoice, INVOICING_PERIOD),
         payment_instructions=_payment_instructions(invoice.group(_term("BG-16"), "BG-16")),
         allowances=tuple(
             _allowance_charge(node, ALLOWANCE) for node in invoice.findall(_term("BG-20"))
@@ -278,10 +279,12 @@ def _delivery(delivery: Node | None) -> Delivery | None:
     )
 
 
-def _period(period: Node | None) -> Period | None:
+def _period(parent: Node, terms: PeriodTerms) -> Period | None:
+    """BG-14 or BG-26."""
+    period = parent.group(_term(terms.group), terms.group)
     if period is None:
         return None
-    return none_if_empty(Period(start=_date(period, "BT-73"), end=_date(period, "BT-74")))
+    return none_if_empty(Period(start=_date(period, terms.start), end=_date(period, terms.end)))
 
 
 def _payment_instructions(payment: Node | None) -> PaymentInstructions | None:
@@ -408,6 +411,7 @@ def _line(line: Node) -> InvoiceLine:
         quantity=_decimal(line, "BT-129"),
         unit_code=_text(line, "BT-130"),
         net_amount=_decimal(line, "BT-131"),
+        period=_period(line, LINE_PERIOD),
         net_price=_decimal(line, "BG-29", "BT-146"),
         price_discount=_decimal(line, "BG-29", "BT-147"),
         gross_price=_decimal(line, "BG-29", "BT-148"),
