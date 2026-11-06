@@ -68,6 +68,9 @@ PURCHASE_ORDER = {
         "ask whether it is deliberate (ITEM-006)",
     ),
 }
+PAYEE_LEGAL_REGISTRATION = {
+    "payee.legal_registration_id": ("BT-61", "only the CII file has one", NOT_YET_REPORTED),
+}
 SECOND_LINES_BASE_QUANTITY = {
     "lines.1.base_quantity": ("BT-149", "only the UBL file has one", NOT_YET_REPORTED),
     "lines.1.base_quantity_unit_code": ("BT-150", "only the UBL file has one", NOT_YET_REPORTED),
@@ -110,8 +113,9 @@ KNOWN_DIFFERENCES: dict[str, dict[str, tuple[str, str, str]]] = {
             ("buyer.post_code", "BT-53"),
         )
     },
-    "standard/03.07a-INVOICE": SELLER_IDENTIFIERS,
+    "standard/03.07a-INVOICE": SELLER_IDENTIFIERS | PAYEE_LEGAL_REGISTRATION,
     "technical-cases/cvd/02.01a-cvd_INVOICE": SELLER_IDENTIFIERS
+    | PAYEE_LEGAL_REGISTRATION
     | {
         "lines.0.item_description": (
             "BT-154",
@@ -132,6 +136,7 @@ KNOWN_DIFFERENCES: dict[str, dict[str, tuple[str, str, str]]] = {
                 NOT_YET_REPORTED,
             ),
             **SECOND_LINES_BASE_QUANTITY,
+            **PAYEE_LEGAL_REGISTRATION,
             **{
                 1: SELLER_IDENTIFIERS | ONE_PRECEDING_INVOICE,
                 3: CONTACT_POINT,
@@ -228,7 +233,8 @@ EXPECTED_01_01A = Invoice(
     seller=Party(
         name="[Seller name]",
         trading_name="[Seller trading name]",
-        legal_registration_id="[HRA-Eintrag]",
+        legal_registration_id=Identifier(value="[HRA-Eintrag]"),
+        additional_legal_information="123/456/7890, HRA-Eintrag in […]",
         vat_id="DE 123456789",
         electronic_address=Identifier(value="seller@email.de", scheme="EM"),
         address_line_1="[Seller address line 1]",

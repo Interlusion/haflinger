@@ -45,9 +45,8 @@ class PrecedingInvoice:
 
 @dataclass(frozen=True, kw_only=True)
 class Identifier:
-    """An identifier with the scheme it belongs to: BT-18 and BT-18-1, BT-29 and BT-29-1, BT-34
-    and BT-34-1, BT-46 and BT-46-1, BT-49 and BT-49-1, BT-71 and BT-71-1, BT-157 and
-    BT-157-1."""
+    """An identifier with the scheme it belongs to: BT-18, BT-29, BT-30, BT-34, BT-46, BT-47,
+    BT-49, BT-60, BT-61, BT-71 and BT-157, each with its scheme (BT-18-1 and so on)."""
 
     value: str | None = None
     scheme: str | None = None
@@ -64,15 +63,16 @@ class Contact:
 
 @dataclass(frozen=True, kw_only=True)
 class Party:
-    """BG-4 seller or BG-7 buyer, with its postal address (BG-5, BG-8). BT-32 is the seller's
-    alone, and the buyer has at most one identifier (BT-46)."""
+    """BG-4 seller or BG-7 buyer, with its postal address (BG-5, BG-8). BT-32 and BT-33 are the
+    seller's alone, and the buyer has at most one identifier (BT-46)."""
 
     name: str | None = None  # BT-27, BT-44
     trading_name: str | None = None  # BT-28, BT-45
     identifiers: tuple[Identifier, ...] = ()  # BT-29, BT-46
-    legal_registration_id: str | None = None  # BT-30, BT-47
+    legal_registration_id: Identifier | None = None  # BT-30, BT-47
     vat_id: str | None = None  # BT-31, BT-48
     tax_registration_id: str | None = None  # BT-32
+    additional_legal_information: str | None = None  # BT-33
     electronic_address: Identifier | None = None  # BT-34, BT-49
     address_line_1: str | None = None  # BT-35, BT-50
     address_line_2: str | None = None  # BT-36, BT-51
@@ -82,6 +82,30 @@ class Party:
     country_subdivision: str | None = None  # BT-39, BT-54
     country_code: str | None = None  # BT-40, BT-55
     contact: Contact | None = None  # BG-6, BG-9
+
+
+@dataclass(frozen=True, kw_only=True)
+class Payee:
+    """BG-10, where the payee isn't the seller."""
+
+    name: str | None = None  # BT-59
+    identifier: Identifier | None = None  # BT-60
+    legal_registration_id: Identifier | None = None  # BT-61
+
+
+@dataclass(frozen=True, kw_only=True)
+class TaxRepresentative:
+    """BG-11, with its postal address (BG-12)."""
+
+    name: str | None = None  # BT-62
+    vat_id: str | None = None  # BT-63
+    address_line_1: str | None = None  # BT-64
+    address_line_2: str | None = None  # BT-65
+    address_line_3: str | None = None  # BT-164
+    city: str | None = None  # BT-66
+    post_code: str | None = None  # BT-67
+    country_subdivision: str | None = None  # BT-68
+    country_code: str | None = None  # BT-69
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -242,6 +266,8 @@ class Invoice:
     preceding_invoices: tuple[PrecedingInvoice, ...] = ()  # BG-3
     seller: Party | None = None  # BG-4
     buyer: Party | None = None  # BG-7
+    payee: Payee | None = None  # BG-10
+    tax_representative: TaxRepresentative | None = None  # BG-11
     delivery: Delivery | None = None  # BG-13
     invoicing_period: Period | None = None  # BG-14
     payment_instructions: PaymentInstructions | None = None  # BG-16

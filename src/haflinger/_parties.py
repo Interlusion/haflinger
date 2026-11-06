@@ -1,15 +1,12 @@
-"""The seller, the buyer and the deliver to address: the business term IDs of their fields, which
-reading, writing and findings name (REQ-001-PRS-F001), and what reading them shares across the
-syntaxes (REQ-003-PRS-F002)."""
+"""The seller, the buyer, the payee, the tax representative and the deliver to address: the
+business term IDs of their fields, which reading, writing and findings name (REQ-001-PRS-F001),
+and what reading them shares across the syntaxes (REQ-003-PRS-F002)."""
 
 from dataclasses import dataclass
 from typing import TypedDict
 
 from haflinger._xml import Node, first_of, none_if_empty
 from haflinger.model import Contact, Identifier
-
-# The seller's tax registration identifier; the buyer has no such term.
-TAX_REGISTRATION = "BT-32"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -27,7 +24,8 @@ class AddressTerms:
 
 
 class Address(TypedDict):
-    """The address fields `Party` and `Delivery` share, as reading gives them."""
+    """The address fields `Party`, `TaxRepresentative` and `Delivery` share, as reading gives
+    them."""
 
     address_line_1: str | None
     address_line_2: str | None
@@ -41,9 +39,9 @@ class Address(TypedDict):
 @dataclass(frozen=True, kw_only=True)
 class PartyTerms:
     """The IDs of one party's group and of the terms each `Party` field holds for it, and how
-    the two parties differ: only the seller has a tax registration identifier and shares its
-    identifiers' element with the bank assigned creditor identifier; the buyer has one
-    identifier."""
+    the two parties differ: only the seller has a tax registration identifier and additional
+    legal information and shares its identifiers' element with the bank assigned creditor
+    identifier; the buyer has one identifier."""
 
     party: str
     name: str
@@ -58,6 +56,7 @@ class PartyTerms:
     telephone: str
     email: str
     tax_registration: str | None
+    additional_legal_information: str | None
     creditor_identifier: str | None
     one_identifier: bool
 
@@ -84,7 +83,8 @@ SELLER = PartyTerms(
     contact_point="BT-41",
     telephone="BT-42",
     email="BT-43",
-    tax_registration=TAX_REGISTRATION,
+    tax_registration="BT-32",
+    additional_legal_information="BT-33",
     creditor_identifier="BT-90",
     one_identifier=False,
 )
@@ -111,6 +111,7 @@ BUYER = PartyTerms(
     telephone="BT-57",
     email="BT-58",
     tax_registration=None,
+    additional_legal_information=None,
     creditor_identifier=None,
     one_identifier=True,
 )
@@ -124,6 +125,19 @@ DELIVER_TO = AddressTerms(
     country_subdivision="BT-79",
     country_code="BT-80",
 )
+# The seller tax representative's postal address (BG-11).
+TAX_REPRESENTATIVE_ADDRESS = AddressTerms(
+    group="BG-12",
+    address_line_1="BT-64",
+    address_line_2="BT-65",
+    address_line_3="BT-164",
+    city="BT-66",
+    post_code="BT-67",
+    country_subdivision="BT-68",
+    country_code="BT-69",
+)
+# The payee's identifier (BG-10), which, like the buyer's, is one.
+PAYEE_IDENTIFIER = "BT-60"
 # The deliver to location identifier (BG-13), which, like the buyer's, is one.
 LOCATION = "BT-71"
 
@@ -142,9 +156,10 @@ def identifiers(
     return tuple(Identifier(value=node.value, scheme=node.attribute(scheme)) for node in nodes)
 
 
-def location(nodes: list[Node], scheme: str = "schemeID") -> Identifier | None:
-    """The deliver to location identifier (BT-71) `nodes` hold, chosen as the buyer's is."""
-    found = identifiers(nodes, LOCATION, one=True, scheme=scheme)
+def one_identifier(nodes: list[Node], term: str, scheme: str = "schemeID") -> Identifier | None:
+    """The one identifier of `term` that `nodes` hold, chosen as the buyer's is: the payee's
+    (BT-60) or the deliver to location (BT-71)."""
+    found = identifiers(nodes, term, one=True, scheme=scheme)
     return found[0] if found else None
 
 

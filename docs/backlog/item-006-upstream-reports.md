@@ -24,7 +24,7 @@ The spikes compared what KoSIT's reading stylesheet makes of the CII and UBL fil
 | BT-13 | 7 | Only the UBL files have a purchase order reference (`Dummywert`) | Ask whether it is deliberate |
 | BT-31, BT-82, BT-120 | 01.21a | Different values (BT-107 too, but as 0 against absent, which the standard allows) | Yes |
 | BT-45 | 03.01a | Only in UBL | Yes |
-| BT-29, BT-61, BT-122 | 03.07a | Only in one of the two files; BT-29 also in technical 01.01 and CVD 02.01a, three seller identifiers in CII and one in UBL | Yes |
+| BT-29, BT-61, BT-122 | 03.07a | Only in one of the two files; BT-29 also in technical 01.01 and CVD 02.01a, three seller identifiers in CII and one in UBL; BT-61, the payee's legal registration identifier, only in CII, also in technical 01.01 to 01.04 and CVD 02.01a | Yes |
 | BT-41 | technical 01.03, 01.04 | The department name Testorganisation in CII, the person Tim Tester in UBL | Yes |
 | BT-44, BT-45 | technical 01.01 to 01.04 | The UBL files swap the buyer's name and trading name placeholders | Yes |
 | BT-149, BT-150 | technical 01.01 to 01.04 | Only the UBL files give the second line a base quantity (`1`, `XPP`) | Yes |
@@ -40,6 +40,7 @@ The spikes compared what KoSIT's reading stylesheet makes of the CII and UBL fil
 | BT-9, BT-20 | ZUGFeRD corpus, intarsys's and symtrax's `EXTENDED_Fremdwaehrung` | KoSIT's reading stylesheet joins a CII invoice's two due dates into one value and its two payment terms into one text, separated by `;`, where EN 16931 holds one of each; Haflinger reads the first and leaves the second out with a finding (REQ-003-PRS-F002) | No: only Factur-X EXTENDED allows more than one |
 | BT-18-1 | ZUGFeRD corpus, `XML-Rechnung/CII/not_validating_full_invoice_based_onTest_EeISI_300_CENfullmodel.cii.xml` | KoSIT's reading stylesheet gives the scheme of a CII invoiced object identifier, `ram:ReferenceTypeCode`, only where its `ram:IssuerAssignedID` has a `schemeID` too (the template `identifier-with-scheme` in `common-xr.xsl` tests `@schemeID`), so the scheme is lost; Haflinger reads it (REQ-003-PRS-F002) | Yes: EN 16931 binds BT-18-1 to `ram:ReferenceTypeCode`, which XRechnung allows |
 | BT-11 | none in the suite | KoSIT's reading stylesheet compares a UBL credit note's document type code with 50 as a number, so `050` or `50.0` gives the project reference; Haflinger compares the code as written, without the whitespace around it (REQ-003-PRS-F002) | No: neither is a code of UNTDID 1001 |
+| BT-63 | none in the suite | KoSIT's reading stylesheet takes every CII `ram:SpecifiedTaxRegistration/ram:ID` of the tax representative as BT-63, whatever its `schemeID`; Haflinger reads the one with `VA` or without a scheme and leaves one with another scheme out (REQ-003-PRS-F002) | No: CEN's `BR-56` counts only one with `VA`, so such an invoice isn't valid |
 
 ## Open Questions
 

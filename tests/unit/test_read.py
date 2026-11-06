@@ -23,11 +23,13 @@ from haflinger import (
     InvoiceLine,
     InvoiceReadError,
     Note,
+    Payee,
     PaymentCard,
     PaymentInstructions,
     Period,
     PrecedingInvoice,
     ReadResult,
+    TaxRepresentative,
     read_invoice,
 )
 
@@ -2449,3 +2451,328 @@ def test_a_supporting_documents_findings_name_bg_24() -> None:
     )
     result = read_invoice(data)
     assert [f.text.split(" (")[0] for f in result.findings] == ["BG-24, BT-17, BT-18"]
+
+
+# REQ-003-PRS-F002: the payee, the tax representative and the parties' remaining terms
+
+CII_PAYEE = (
+    b'<ram:PayeeTradeParty><ram:GlobalID schemeID="0088">4000001000005</ram:GlobalID>'
+    b"<ram:Name>Example Factoring GmbH</ram:Name><ram:SpecifiedLegalOrganization>"
+    b'<ram:ID schemeID="0002">HRB 12345</ram:ID></ram:SpecifiedLegalOrganization>'
+    b"</ram:PayeeTradeParty>"
+)
+CII_TAX_REPRESENTATIVE = (
+    b"<ram:SellerTaxRepresentativeTradeParty><ram:Name>Example Steuervertretung GmbH</ram:Name>"
+    b"<ram:PostalTradeAddress><ram:PostcodeCode>10115</ram:PostcodeCode>"
+    b"<ram:LineOne>Musterstrasse 1</ram:LineOne><ram:LineTwo>Hinterhaus</ram:LineTwo>"
+    b"<ram:LineThree>3. OG</ram:LineThree><ram:CityName>Berlin</ram:CityName>"
+    b"<ram:CountryID>DE</ram:CountryID><ram:CountrySubDivisionName>Berlin"
+    b"</ram:CountrySubDivisionName></ram:PostalTradeAddress><ram:SpecifiedTaxRegistration>"
+    b'<ram:ID schemeID="VA">DE123456789</ram:ID></ram:SpecifiedTaxRegistration>'
+    b"</ram:SellerTaxRepresentativeTradeParty>"
+)
+UBL_PAYEE = (
+    b'<cac:PayeeParty><cac:PartyIdentification><cbc:ID schemeID="0088">4000001000005</cbc:ID>'
+    b"</cac:PartyIdentification><cac:PartyName><cbc:Name>Example Factoring GmbH</cbc:Name>"
+    b'</cac:PartyName><cac:PartyLegalEntity><cbc:CompanyID schemeID="0002">HRB 12345'
+    b"</cbc:CompanyID></cac:PartyLegalEntity></cac:PayeeParty>"
+)
+UBL_TAX_REPRESENTATIVE = (
+    b"<cac:TaxRepresentativeParty><cac:PartyName><cbc:Name>Example Steuervertretung GmbH"
+    b"</cbc:Name></cac:PartyName><cac:PostalAddress><cbc:StreetName>Musterstrasse 1"
+    b"</cbc:StreetName><cbc:AdditionalStreetName>Hinterhaus</cbc:AdditionalStreetName>"
+    b"<cbc:CityName>Berlin</cbc:CityName><cbc:PostalZone>10115</cbc:PostalZone>"
+    b"<cbc:CountrySubentity>Berlin</cbc:CountrySubentity><cac:AddressLine><cbc:Line>3. OG"
+    b"</cbc:Line></cac:AddressLine><cac:Country><cbc:IdentificationCode>DE"
+    b"</cbc:IdentificationCode></cac:Country></cac:PostalAddress><cac:PartyTaxScheme>"
+    b"<cbc:CompanyID>DE123456789</cbc:CompanyID><cac:TaxScheme><cbc:ID>VAT</cbc:ID>"
+    b"</cac:TaxScheme></cac:PartyTaxScheme></cac:TaxRepresentativeParty>"
+)
+CII_CURRENCY = b"<ram:InvoiceCurrencyCode>EUR</ram:InvoiceCurrencyCode>"
+UBL_CUSTOMER_END = b"</cac:AccountingCustomerParty>"
+PAYEE = Payee(
+    name="Example Factoring GmbH",
+    identifier=Identifier(value="4000001000005", scheme="0088"),
+    legal_registration_id=Identifier(value="HRB 12345", scheme="0002"),
+)
+TAX_REPRESENTATIVE = TaxRepresentative(
+    name="Example Steuervertretung GmbH",
+    vat_id="DE123456789",
+    address_line_1="Musterstrasse 1",
+    address_line_2="Hinterhaus",
+    address_line_3="3. OG",
+    city="Berlin",
+    post_code="10115",
+    country_subdivision="Berlin",
+    country_code="DE",
+)
+
+
+@pytest.mark.parametrize(
+    ("base", "data"),
+    [
+        (
+            CII,
+            edit(
+                edit(
+                    edit(
+                        CII,
+                        b"<ram:ID>[HRA-Eintrag]</ram:ID>",
+                        b'<ram:ID schemeID="0002">[HRA-Eintrag]</ram:ID>',
+                    ),
+                    CII_BUYER_END,
+                    CII_BUYER_END + CII_TAX_REPRESENTATIVE,
+                ),
+                CII_CURRENCY,
+                CII_CURRENCY + CII_PAYEE,
+            ),
+        ),
+        (
+            UBL,
+            edit(
+                edit(
+                    UBL,
+                    b"<cbc:CompanyID>[HRA-Eintrag]</cbc:CompanyID>",
+                    b'<cbc:CompanyID schemeID="0002">[HRA-Eintrag]</cbc:CompanyID>',
+                ),
+                UBL_CUSTOMER_END,
+                UBL_CUSTOMER_END + UBL_PAYEE + UBL_TAX_REPRESENTATIVE,
+            ),
+        ),
+    ],
+    ids=["cii", "ubl"],
+)
+def test_the_payee_tax_representative_and_legal_terms(base: bytes, data: bytes) -> None:
+    """BG-10, BG-11 with BG-12, the seller's BT-33 and the legal registration's scheme."""
+    result = read_invoice(data)
+    invoice = read_invoice(base).invoice
+    assert invoice.seller is not None
+    assert invoice.seller.additional_legal_information == "123/456/7890, HRA-Eintrag in […]"
+    assert result.invoice == replace(
+        invoice,
+        seller=replace(
+            invoice.seller,
+            legal_registration_id=Identifier(value="[HRA-Eintrag]", scheme="0002"),
+        ),
+        payee=PAYEE,
+        tax_representative=TAX_REPRESENTATIVE,
+    )
+    assert result.findings == ()
+
+
+def test_a_ubl_payees_sepa_identifier_is_the_creditor_identifier_only() -> None:
+    """Without a mandate it is no direct debit's, and dropped as BT-90, not read as BT-60."""
+    payee = (
+        b'<cac:PayeeParty><cac:PartyIdentification><cbc:ID schemeID="SEPA">DE98ZZZ09999999999'
+        b"</cbc:ID></cac:PartyIdentification><cac:PartyName><cbc:Name>Example Factoring GmbH"
+        b"</cbc:Name></cac:PartyName></cac:PayeeParty>"
+    )
+    result = read_invoice(edit(UBL, UBL_CUSTOMER_END, UBL_CUSTOMER_END + payee))
+    assert result.invoice.payee == Payee(name="Example Factoring GmbH")
+    assert dropped(result) == ["BT-90"]
+
+
+CII_SECOND_PAYEE = CII_PAYEE.replace(b"Example Factoring GmbH", b"Example Inkasso GmbH")
+UBL_SECOND_PAYEE = UBL_PAYEE.replace(b"Example Factoring GmbH", b"Example Inkasso GmbH")
+CII_SECOND_TAX_REPRESENTATIVE = CII_TAX_REPRESENTATIVE.replace(
+    b"Example Steuervertretung GmbH", b"Example Fiskalvertretung GmbH"
+)
+UBL_SECOND_TAX_REPRESENTATIVE = UBL_TAX_REPRESENTATIVE.replace(
+    b"Example Steuervertretung GmbH", b"Example Fiskalvertretung GmbH"
+)
+
+
+@pytest.mark.parametrize(
+    ("data", "payee", "tax_representative", "group"),
+    [
+        (
+            edit(CII, CII_CURRENCY, CII_CURRENCY + CII_PAYEE + CII_SECOND_PAYEE),
+            PAYEE,
+            None,
+            "BG-10",
+        ),
+        (
+            edit(
+                CII,
+                CII_BUYER_END,
+                CII_BUYER_END + CII_TAX_REPRESENTATIVE + CII_SECOND_TAX_REPRESENTATIVE,
+            ),
+            None,
+            TAX_REPRESENTATIVE,
+            "BG-11",
+        ),
+        (
+            edit(UBL, UBL_CUSTOMER_END, UBL_CUSTOMER_END + UBL_PAYEE + UBL_SECOND_PAYEE),
+            PAYEE,
+            None,
+            "BG-10",
+        ),
+        (
+            edit(
+                UBL,
+                UBL_CUSTOMER_END,
+                UBL_CUSTOMER_END + UBL_TAX_REPRESENTATIVE + UBL_SECOND_TAX_REPRESENTATIVE,
+            ),
+            None,
+            TAX_REPRESENTATIVE,
+            "BG-11",
+        ),
+    ],
+    ids=["cii-payee", "cii-tax-representative", "ubl-payee", "ubl-tax-representative"],
+)
+def test_a_second_payee_or_tax_representative_is_dropped(
+    data: bytes, payee: Payee | None, tax_representative: TaxRepresentative | None, group: str
+) -> None:
+    result = read_invoice(data)
+    assert result.invoice.payee == payee
+    assert result.invoice.tax_representative == tax_representative
+    assert dropped(result) == [group]
+
+
+def test_a_dropped_ubl_payees_sepa_identifier_is_no_creditor_identifier() -> None:
+    """Only the payee read gives BT-90: the second one is left out whole, not dropped as BT-90
+    as well."""
+    second = UBL_SECOND_PAYEE.replace(
+        b'<cbc:ID schemeID="0088">4000001000005</cbc:ID>',
+        b'<cbc:ID schemeID="SEPA">DE98ZZZ09999999999</cbc:ID>',
+    )
+    result = read_invoice(edit(UBL, UBL_CUSTOMER_END, UBL_CUSTOMER_END + UBL_PAYEE + second))
+    assert result.invoice.payee == PAYEE
+    assert dropped(result) == ["BG-10"]
+
+
+CII_SECOND_ADDRESS = (
+    b"<ram:PostalTradeAddress><ram:CityName>Hamburg</ram:CityName>"
+    b"<ram:CountryID>DE</ram:CountryID></ram:PostalTradeAddress>"
+)
+UBL_SECOND_ADDRESS = (
+    b"<cac:PostalAddress><cbc:CityName>Hamburg</cbc:CityName><cac:Country>"
+    b"<cbc:IdentificationCode>DE</cbc:IdentificationCode></cac:Country></cac:PostalAddress>"
+)
+CII_TAX_REPRESENTATIVE_VAT_ID = b'<ram:ID schemeID="VA">DE123456789</ram:ID>'
+UBL_TAX_REPRESENTATIVE_VAT_ID = (
+    b"<cac:PartyTaxScheme><cbc:CompanyID>DE123456789</cbc:CompanyID><cac:TaxScheme>"
+    b"<cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:PartyTaxScheme>"
+)
+
+
+@pytest.mark.parametrize(
+    ("data", "drop"),
+    [
+        (
+            edit(
+                CII,
+                CII_BUYER_END,
+                CII_BUYER_END
+                + edit(
+                    CII_TAX_REPRESENTATIVE,
+                    b"</ram:PostalTradeAddress>",
+                    b"</ram:PostalTradeAddress>" + CII_SECOND_ADDRESS,
+                ),
+            ),
+            "BG-12",
+        ),
+        (
+            edit(
+                UBL,
+                UBL_CUSTOMER_END,
+                UBL_CUSTOMER_END
+                + edit(
+                    UBL_TAX_REPRESENTATIVE,
+                    b"</cac:PostalAddress>",
+                    b"</cac:PostalAddress>" + UBL_SECOND_ADDRESS,
+                ),
+            ),
+            "BG-12",
+        ),
+        (
+            edit(
+                CII,
+                CII_BUYER_END,
+                CII_BUYER_END
+                + edit(
+                    CII_TAX_REPRESENTATIVE,
+                    b"</ram:SpecifiedTaxRegistration>",
+                    b"</ram:SpecifiedTaxRegistration><ram:SpecifiedTaxRegistration>"
+                    b'<ram:ID schemeID="VA">DE999999999</ram:ID></ram:SpecifiedTaxRegistration>',
+                ),
+            ),
+            "BT-63",
+        ),
+        (
+            edit(
+                UBL,
+                UBL_CUSTOMER_END,
+                UBL_CUSTOMER_END
+                + edit(
+                    UBL_TAX_REPRESENTATIVE,
+                    UBL_TAX_REPRESENTATIVE_VAT_ID,
+                    UBL_TAX_REPRESENTATIVE_VAT_ID
+                    + UBL_TAX_REPRESENTATIVE_VAT_ID.replace(b"DE123456789", b"DE999999999"),
+                ),
+            ),
+            "BT-63",
+        ),
+    ],
+    ids=["cii-address", "ubl-address", "cii-vat-id", "ubl-vat-id"],
+)
+def test_a_tax_representatives_second_address_or_vat_identifier_is_dropped(
+    data: bytes, drop: str
+) -> None:
+    result = read_invoice(data)
+    assert result.invoice.tax_representative == TAX_REPRESENTATIVE
+    assert dropped(result) == [drop]
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        edit(
+            CII,
+            CII_CURRENCY,
+            CII_CURRENCY
+            + edit(
+                CII_PAYEE,
+                b"</ram:SpecifiedLegalOrganization>",
+                b"</ram:SpecifiedLegalOrganization><ram:SpecifiedLegalOrganization>"
+                b"<ram:ID>HRB 99999</ram:ID></ram:SpecifiedLegalOrganization>",
+            ),
+        ),
+        edit(
+            UBL,
+            UBL_CUSTOMER_END,
+            UBL_CUSTOMER_END
+            + edit(
+                UBL_PAYEE,
+                b"</cac:PartyLegalEntity>",
+                b"</cac:PartyLegalEntity><cac:PartyLegalEntity><cbc:CompanyID>HRB 99999"
+                b"</cbc:CompanyID></cac:PartyLegalEntity>",
+            ),
+        ),
+    ],
+    ids=["cii", "ubl"],
+)
+def test_a_payees_second_legal_organization_is_dropped(data: bytes) -> None:
+    result = read_invoice(data)
+    assert result.invoice.payee == PAYEE
+    assert dropped(result) == ["BT-61"]
+
+
+@pytest.mark.parametrize(
+    ("scheme", "vat_id", "drops"),
+    [(b"", "DE123456789", []), (b' schemeID="FC"', None, ["BT-63"])],
+    ids=["without-scheme", "other-scheme"],
+)
+def test_a_cii_tax_representatives_vat_identifier_is_one_with_scheme_va_or_none(
+    scheme: bytes, vat_id: str | None, drops: list[str]
+) -> None:
+    """The tax representative has no other tax term, so an identifier without a scheme is its
+    VAT identifier; one with another scheme is left out."""
+    representative = edit(
+        CII_TAX_REPRESENTATIVE,
+        CII_TAX_REPRESENTATIVE_VAT_ID,
+        b"<ram:ID%s>DE123456789</ram:ID>" % scheme,
+    )
+    result = read_invoice(edit(CII, CII_BUYER_END, CII_BUYER_END + representative))
+    assert result.invoice.tax_representative == replace(TAX_REPRESENTATIVE, vat_id=vat_id)
+    assert dropped(result) == drops
