@@ -14,7 +14,7 @@ Report upstream the differences between the CII and UBL files of the KoSIT test 
 
 ## Context / Motivation
 
-The spikes compared what KoSIT's reading stylesheet makes of the CII and UBL file of each business case, over every business term in them, in the KoSIT test suite `v2026-08-31`. Apart from differences in the files themselves, both agree. Those differences, with the technical cases' found by Haflinger's reading in the rebuild, and limits of KoSIT's reading stylesheet itself (the last eight rows):
+The spikes compared what KoSIT's reading stylesheet makes of the CII and UBL file of each business case, over every business term in them, in the KoSIT test suite `v2026-08-31`. Apart from differences in the files themselves, both agree. Those differences, with the technical cases' found by Haflinger's reading in the rebuild, and limits of KoSIT's reading stylesheet itself (the last ten rows):
 
 | Business term | Cases | Difference | Report? |
 | :- | :- | :- | :- |
@@ -38,6 +38,8 @@ The spikes compared what KoSIT's reading stylesheet makes of the CII and UBL fil
 | BT-149, BT-150 | none in the suite | KoSIT's reading stylesheet takes a CII line's base quantity and its unit from the gross price where both prices give one; Haflinger takes the net price's, to which the net price (BT-146) applies, and leaves a differing gross one out (REQ-003-PRS-F002) | No: XRechnung, which the stylesheet is made for, requires both to be the same (`BR-TMP-3`) |
 | BT-83 | ZUGFeRD corpus, seven of Mustang's `testout-ZF2Push*.xml` and FNFE-MPE's five `Avoir_FR_*` | KoSIT's reading stylesheet gives the payment instructions (BG-16) only within a CII `ram:SpecifiedTradeSettlementPaymentMeans`, so the remittance information (`ram:PaymentReference`) of an invoice without one is lost; Haflinger reads it (REQ-003-PRS-F002) | No: XRechnung, which the stylesheet is made for, requires a payment means (`BR-DE-1`) |
 | BT-9, BT-20 | ZUGFeRD corpus, intarsys's and symtrax's `EXTENDED_Fremdwaehrung` | KoSIT's reading stylesheet joins a CII invoice's two due dates into one value and its two payment terms into one text, separated by `;`, where EN 16931 holds one of each; Haflinger reads the first and leaves the second out with a finding (REQ-003-PRS-F002) | No: only Factur-X EXTENDED allows more than one |
+| BT-18-1 | ZUGFeRD corpus, `XML-Rechnung/CII/not_validating_full_invoice_based_onTest_EeISI_300_CENfullmodel.cii.xml` | KoSIT's reading stylesheet gives the scheme of a CII invoiced object identifier, `ram:ReferenceTypeCode`, only where its `ram:IssuerAssignedID` has a `schemeID` too (the template `identifier-with-scheme` in `common-xr.xsl` tests `@schemeID`), so the scheme is lost; Haflinger reads it (REQ-003-PRS-F002) | Yes: EN 16931 binds BT-18-1 to `ram:ReferenceTypeCode`, which XRechnung allows |
+| BT-11 | none in the suite | KoSIT's reading stylesheet compares a UBL credit note's document type code with 50 as a number, so `050` or `50.0` gives the project reference; Haflinger compares the code as written, without the whitespace around it (REQ-003-PRS-F002) | No: neither is a code of UNTDID 1001 |
 
 ## Open Questions
 

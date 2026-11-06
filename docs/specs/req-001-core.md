@@ -3,7 +3,7 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Draft |
-| **Version** | 0.10 |
+| **Version** | 0.11 |
 | **Date** | 2026-11-06 |
 | **Author** | loxy (drafted with Claude) |
 
@@ -142,6 +142,15 @@ General vocabulary (CIUS, Leitweg-ID, Peppol …): the [E-Invoicing 101 glossary
 | `Invoice.tax_currency_code` | BT-6 | VAT accounting currency code |  |
 | `Invoice.due_date` | BT-9 | Payment due date |  |
 | `Invoice.buyer_reference` | BT-10 | Buyer reference (Leitweg-ID) |  |
+| `Invoice.project_reference` | BT-11 | Project reference |  |
+| `Invoice.contract_reference` | BT-12 | Contract reference |  |
+| `Invoice.purchase_order_reference` | BT-13 | Purchase order reference |  |
+| `Invoice.sales_order_reference` | BT-14 | Sales order reference |  |
+| `Invoice.receiving_advice_reference` | BT-15 | Receiving advice reference |  |
+| `Invoice.despatch_advice_reference` | BT-16 | Despatch advice reference |  |
+| `Invoice.tender_or_lot_reference` | BT-17 | Tender or lot reference |  |
+| `Invoice.invoiced_object_id` | BT-18 | Invoiced object identifier, an Identifier: `value` BT-18 (required in the group), `scheme` BT-18-1 |  |
+| `Invoice.buyer_accounting_reference` | BT-19 | Buyer accounting reference |  |
 | `Invoice.business_process` | BT-23 | Business process type |  |
 | `Invoice.specification_id` | BT-24 | Specification identifier | required |
 | `Invoice.payment_terms` | BT-20 | Payment terms |  |
