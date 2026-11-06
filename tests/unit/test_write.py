@@ -247,7 +247,7 @@ def test_missing_terms_are_left_out() -> None:
         ),
         buyer=replace(BUYER, identifiers=(), electronic_address=None, address_line_1=None),
         lines=tuple(
-            replace(line, note=None, item_description=None, seller_item_id=None)
+            replace(line, note=None, period=None, item_description=None, seller_item_id=None)
             for line in INVOICE.lines
         ),
     )
@@ -261,6 +261,7 @@ def test_missing_terms_are_left_out() -> None:
         b"ram:ID>[Buyer",
         b"ram:BusinessProcessSpecifiedDocumentContextParameter",
         b"ram:IncludedNote",
+        b"ram:BillingSpecifiedPeriod",
         b"ram:TaxCurrencyCode",
         b"ram:SpecifiedLegalOrganization",
         b"ram:SellerAssignedID",
@@ -480,6 +481,10 @@ def test_refuses_what_cant_be_written_sensibly(invoice: Any, reason: str) -> Non
         ),
         (replace(INVOICE, invoicing_period=Period()), "BG-14 holds a period without any term"),
         (
+            replace(INVOICE, lines=(replace(LINE, period=Period()), *INVOICE.lines[1:])),
+            "BG-26 holds a period without any term",
+        ),
+        (
             replace(INVOICE, allowances=(AllowanceCharge(),)),
             "BG-20 holds an allowance without any term",
         ),
@@ -494,6 +499,10 @@ def test_refuses_what_cant_be_written_sensibly(invoice: Any, reason: str) -> Non
         ),
         (replace(INVOICE, delivery="Lager"), "BG-13 is not a Delivery"),
         (replace(INVOICE, invoicing_period="March"), "BG-14 is not a Period"),
+        (
+            replace(INVOICE, lines=(replace(LINE, period="2016"), *INVOICE.lines[1:])),
+            "BG-26 is not a Period",
+        ),
         (
             replace(INVOICE, preceding_invoices=[PrecedingInvoice(number="R-0")]),
             "BG-3 is not a tuple of PrecedingInvoice",
@@ -567,12 +576,14 @@ def test_refuses_what_cant_be_written_sensibly(invoice: Any, reason: str) -> Non
         "empty-preceding-invoice",
         "empty-delivery",
         "empty-period",
+        "empty-line-period",
         "empty-allowance",
         "empty-charge",
         "list-allowances",
         "empty-city",
         "str-delivery",
         "str-period",
+        "str-line-period",
         "list-preceding-invoices",
         "buyer-tax-registration",
         "two-buyer-identifiers",
@@ -1048,6 +1059,7 @@ def test_the_advice_references_follow_the_delivery_information() -> None:
 LINE_DETAILS = replace(
     LINE,
     note="Lieferung direkt vom Verlag",
+    period=Period(start=date(2016, 7, 1), end=date(2016, 12, 31)),
     price_discount=Decimal("11.21"),
     gross_price=Decimal("300.00"),
     base_quantity=Decimal(1),
@@ -1061,7 +1073,8 @@ LINE_DETAILS = replace(
 
 @pytest.mark.parametrize("specification_id", [EN16931, XRECHNUNG])
 def test_writes_a_lines_price_and_item_details_and_reads_them_back(specification_id: str) -> None:
-    """The base quantity in both prices; the item's terms in the XML Schema's order."""
+    """The base quantity in both prices; the item's terms in the XML Schema's order; the period
+    after the line's VAT."""
     invoice = replace(
         INVOICE, specification_id=specification_id, lines=(LINE_DETAILS, *INVOICE.lines[1:])
     )
@@ -1087,7 +1100,26 @@ def test_writes_a_lines_price_and_item_details_and_reads_them_back(specification
         b'<ram:BasisQuantity unitCode="XPP">1</ram:BasisQuantity></ram:NetPriceProductTradePrice>'
         in document
     )
+    assert (
+        b"<ram:RateApplicablePercent>7</ram:RateApplicablePercent></ram:ApplicableTradeTax>"
+        b'<ram:BillingSpecifiedPeriod><ram:StartDateTime><udt:DateTimeString format="102">'
+        b"20160701</udt:DateTimeString></ram:StartDateTime><ram:EndDateTime>"
+        b'<udt:DateTimeString format="102">20161231</udt:DateTimeString></ram:EndDateTime>'
+        b"</ram:BillingSpecifiedPeriod><ram:SpecifiedTradeSettlementLineMonetarySummation>"
+        in document
+    )
     assert read_invoice(document).invoice == invoice
+
+
+def test_a_line_period_that_ends_before_it_starts_fails_br_30() -> None:
+    """Written as the model holds it, and refused after writing (REQ-004-PRS-F001)."""
+    period = Period(start=date(2016, 12, 31), end=date(2016, 1, 1))
+    invoice = replace(INVOICE, lines=(replace(LINE, period=period), *INVOICE.lines[1:]))
+    with pytest.raises(InvoiceWriteError, match="BR-30") as refusal:
+        write_cii(invoice)
+    assert "BR-30" in {finding.rule for finding in refusal.value.findings}
+    assert refusal.value.document is not None
+    assert read_invoice(refusal.value.document).invoice == invoice
 
 
 def test_a_base_quantity_without_a_gross_price_is_the_net_prices() -> None:

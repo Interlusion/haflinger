@@ -3,7 +3,7 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Draft |
-| **Version** | 0.13 |
+| **Version** | 0.14 |
 | **Date** | 2026-11-06 |
 | **Author** | loxy (drafted with Claude) |
 
@@ -209,6 +209,7 @@ General vocabulary (CIUS, Leitweg-ID, Peppol …): the [E-Invoicing 101 glossary
 | `InvoiceLine.quantity` | BT-129 | Invoiced quantity | required |
 | `InvoiceLine.unit_code` | BT-130 | Invoiced quantity unit of measure | required |
 | `InvoiceLine.net_amount` | BT-131 | Invoice line net amount | required |
+| `InvoiceLine.period` | BG-26 | Invoice line period: `start` BT-134, `end` BT-135 |  |
 | `InvoiceLine.net_price` | BT-146 | Item net price | required |
 | `InvoiceLine.price_discount` | BT-147 | Item price discount |  |
 | `InvoiceLine.gross_price` | BT-148 | Item gross price |  |

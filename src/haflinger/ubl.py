@@ -21,6 +21,7 @@ from haflinger._parties import (
     one_identifier,
 )
 from haflinger._payments import one_value, payment_means
+from haflinger._periods import INVOICING_PERIOD, LINE_PERIOD, PeriodTerms
 from haflinger._xml import (
     XML_WHITESPACE,
     Node,
@@ -166,7 +167,7 @@ def read(root: Node, specification_id: str | None, *, credit_note: bool) -> Invo
         payee=_payee(payee),
         tax_representative=_tax_representative(root.group("cac:TaxRepresentativeParty", "BG-11")),
         delivery=_delivery(root.group("cac:Delivery", "BG-13", *_DELIVERY)),
-        invoicing_period=_period(root.group("cac:InvoicePeriod", "BG-14", *_PERIOD)),
+        invoicing_period=_period(root, INVOICING_PERIOD),
         payment_instructions=_payment_instructions(root, payee, seller),
         allowances=allowances,
         charges=charges,
@@ -363,8 +364,8 @@ def _address(address: Node | None, terms: AddressTerms) -> Address:
     )
 
 
-# The elements of BG-13's and BG-14's terms, which make a cac:Delivery or a cac:InvoicePeriod
-# the group (REQ-003-PRS-F002).
+# The elements of BG-13's terms and of BG-14's or BG-26's, which make a cac:Delivery or a
+# cac:InvoicePeriod the group (REQ-003-PRS-F002).
 _DELIVERY = (
     "cac:DeliveryParty/cac:PartyName/cbc:Name",
     "cac:DeliveryLocation/cbc:ID",
@@ -401,13 +402,15 @@ def _delivery(delivery: Node | None) -> Delivery | None:
     )
 
 
-def _period(period: Node | None) -> Period | None:
+def _period(parent: Node, terms: PeriodTerms) -> Period | None:
+    """BG-14 or BG-26, from the parent's first cac:InvoicePeriod holding a date."""
+    period = parent.group("cac:InvoicePeriod", terms.group, *_PERIOD)
     if period is None:
         return None
     return none_if_empty(
         Period(
-            start=_date(period, "cbc:StartDate", "BT-73"),
-            end=_date(period, "cbc:EndDate", "BT-74"),
+            start=_date(period, "cbc:StartDate", terms.start),
+            end=_date(period, "cbc:EndDate", terms.end),
         )
     )
 
@@ -575,6 +578,7 @@ def _line(line: Node, quantity_path: str) -> InvoiceLine:
         quantity=None if quantity is None else quantity.as_decimal("BT-129"),
         unit_code=None if unit is None else unit.attribute("unitCode"),
         net_amount=line.decimal("cbc:LineExtensionAmount", "BT-131"),
+        period=_period(line, LINE_PERIOD),
         net_price=None if price is None else price.decimal("cbc:PriceAmount", "BT-146"),
         price_discount=None if discount is None else discount.decimal("cbc:Amount", "BT-147"),
         gross_price=None if discount is None else discount.decimal("cbc:BaseAmount", "BT-148"),

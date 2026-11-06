@@ -127,10 +127,10 @@ class Delivery:
 
 @dataclass(frozen=True, kw_only=True)
 class Period:
-    """BG-14."""
+    """BG-14 invoicing period or BG-26 invoice line period."""
 
-    start: date | None = None  # BT-73
-    end: date | None = None  # BT-74
+    start: date | None = None  # BT-73, BT-134
+    end: date | None = None  # BT-74, BT-135
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -223,13 +223,15 @@ class SupportingDocument:
 
 @dataclass(frozen=True, kw_only=True)
 class InvoiceLine:
-    """BG-25, with the price details (BG-29), the VAT information (BG-30) and the item (BG-31)."""
+    """BG-25, with its period (BG-26), the price details (BG-29), the VAT information (BG-30) and
+    the item (BG-31)."""
 
     id: str | None = None  # BT-126
     note: str | None = None  # BT-127
     quantity: Decimal | None = None  # BT-129
     unit_code: str | None = None  # BT-130
     net_amount: Decimal | None = None  # BT-131
+    period: Period | None = None  # BG-26
     net_price: Decimal | None = None  # BT-146
     price_discount: Decimal | None = None  # BT-147
     gross_price: Decimal | None = None  # BT-148
