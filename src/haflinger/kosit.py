@@ -20,14 +20,16 @@ from haflinger._parties import (
     BUYER,
     DELIVER_TO,
     LOCATION,
+    PAYEE_IDENTIFIER,
     SELLER,
+    TAX_REPRESENTATIVE_ADDRESS,
     Address,
     AddressTerms,
     PartyTerms,
     contact,
     identifier,
     identifiers,
-    location,
+    one_identifier,
 )
 from haflinger._xml import XML_WHITESPACE, Node, Reading, none_if_empty, parse
 from haflinger.errors import InvoiceReadError
@@ -36,15 +38,18 @@ from haflinger.model import (
     CreditTransfer,
     Delivery,
     DirectDebit,
+    Identifier,
     Invoice,
     InvoiceLine,
     Note,
     Party,
+    Payee,
     PaymentCard,
     PaymentInstructions,
     Period,
     PrecedingInvoice,
     Syntax,
+    TaxRepresentative,
     Totals,
     VatBreakdown,
 )
@@ -119,6 +124,11 @@ def _text(node: Node, *terms: str) -> str | None:
     return node.text(_term(*terms), terms[-1])
 
 
+def _identifier(node: Node, *terms: str) -> Identifier | None:
+    """An identifier with its scheme, which KoSIT's stylesheets give as `scheme_identifier`."""
+    return identifier(node.first(_term(*terms), terms[-1]), "scheme_identifier")
+
+
 def _decimal(node: Node, *terms: str) -> Decimal | None:
     return node.decimal(_term(*terms), terms[-1])
 
@@ -145,7 +155,7 @@ def _invoice(invoice: Node, syntax: Syntax) -> Invoice:
         receiving_advice_reference=_text(invoice, "BT-15"),
         despatch_advice_reference=_text(invoice, "BT-16"),
         tender_or_lot_reference=_text(invoice, "BT-17"),
-        invoiced_object_id=identifier(invoice.first(_term("BT-18"), "BT-18"), "scheme_identifier"),
+        invoiced_object_id=_identifier(invoice, "BT-18"),
         buyer_accounting_reference=_text(invoice, "BT-19"),
         payment_terms=_text(invoice, "BT-20"),
         business_process=_text(invoice, "BG-2", "BT-23"),
@@ -160,6 +170,8 @@ def _invoice(invoice: Node, syntax: Syntax) -> Invoice:
         ),
         seller=_party(invoice.find(_term("BG-4")), SELLER),
         buyer=_party(invoice.find(_term("BG-7")), BUYER),
+        payee=_payee(invoice.group(_term("BG-10"), "BG-10")),
+        tax_representative=_tax_representative(invoice.group(_term("BG-11"), "BG-11")),
         delivery=_delivery(invoice.group(_term("BG-13"), "BG-13")),
         invoicing_period=_period(invoice.group(_term("BG-14"), "BG-14")),
         payment_instructions=_payment_instructions(invoice.group(_term("BG-16"), "BG-16")),
@@ -187,15 +199,15 @@ def _party(party: Node | None, terms: PartyTerms) -> Party | None:
             one=terms.one_identifier,
             scheme="scheme_identifier",
         ),
-        legal_registration_id=_text(party, terms.legal_registration_id),
+        legal_registration_id=_identifier(party, terms.legal_registration_id),
+        additional_legal_information=None
+        if terms.additional_legal_information is None
+        else _text(party, terms.additional_legal_information),
         vat_id=_text(party, terms.vat_id),
         tax_registration_id=(
             None if terms.tax_registration is None else _text(party, terms.tax_registration)
         ),
-        electronic_address=identifier(
-            party.first(_term(terms.electronic_address), terms.electronic_address),
-            "scheme_identifier",
-        ),
+        electronic_address=_identifier(party, terms.electronic_address),
         **_address(party, terms.address),
         contact=None
         if contact_group is None
@@ -204,6 +216,34 @@ def _party(party: Node | None, terms: PartyTerms) -> Party | None:
             telephone=_text(contact_group, terms.telephone),
             email=_text(contact_group, terms.email),
         ),
+    )
+
+
+def _payee(payee: Node | None) -> Payee | None:
+    if payee is None:
+        return None
+    return none_if_empty(
+        Payee(
+            name=_text(payee, "BT-59"),
+            identifier=one_identifier(
+                payee.holding(PAYEE_IDENTIFIER, _term(PAYEE_IDENTIFIER)),
+                PAYEE_IDENTIFIER,
+                "scheme_identifier",
+            ),
+            legal_registration_id=_identifier(payee, "BT-61"),
+        )
+    )
+
+
+def _tax_representative(party: Node | None) -> TaxRepresentative | None:
+    if party is None:
+        return None
+    return none_if_empty(
+        TaxRepresentative(
+            name=_text(party, "BT-62"),
+            vat_id=_text(party, "BT-63"),
+            **_address(party, TAX_REPRESENTATIVE_ADDRESS),
+        )
     )
 
 
@@ -226,7 +266,9 @@ def _delivery(delivery: Node | None) -> Delivery | None:
     return none_if_empty(
         Delivery(
             party_name=_text(delivery, "BT-70"),
-            location=location(delivery.holding(LOCATION, _term(LOCATION)), "scheme_identifier"),
+            location=one_identifier(
+                delivery.holding(LOCATION, _term(LOCATION)), LOCATION, "scheme_identifier"
+            ),
             date=_date(delivery, "BT-72"),
             **_address(delivery, DELIVER_TO),
         )
@@ -341,7 +383,5 @@ def _line(line: Node) -> InvoiceLine:
         item_description=_text(line, "BG-31", "BT-154"),
         seller_item_id=_text(line, "BG-31", "BT-155"),
         buyer_item_id=_text(line, "BG-31", "BT-156"),
-        standard_item_id=identifier(
-            line.first(_term("BG-31", "BT-157"), "BT-157"), "scheme_identifier"
-        ),
+        standard_item_id=_identifier(line, "BG-31", "BT-157"),
     )

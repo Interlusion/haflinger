@@ -164,10 +164,11 @@ def factur_x(specification_id: str) -> bytes:
             ),
         )
     elif "basic" in specification_id:
-        # BASIC has no seller contact, and of an item only its standard identifier and its name.
+        # BASIC has no seller contact or additional legal information, and of an item only its
+        # standard identifier and its name.
         model = replace(
             model,
-            seller=replace(seller, contact=None),
+            seller=replace(seller, contact=None, additional_legal_information=None),
             lines=tuple(
                 replace(line, item_description=None, seller_item_id=None, buyer_item_id=None)
                 for line in model.lines
@@ -178,6 +179,8 @@ def factur_x(specification_id: str) -> bytes:
             model,
             vat_breakdown=(),
             buyer=Party(name=buyer.name),
+            payee=None,
+            tax_representative=None,
             payment_terms=None,
             payment_instructions=None,
             preceding_invoices=(),

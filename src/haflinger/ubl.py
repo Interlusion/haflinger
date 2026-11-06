@@ -9,14 +9,16 @@ from haflinger._parties import (
     BUYER,
     DELIVER_TO,
     LOCATION,
+    PAYEE_IDENTIFIER,
     SELLER,
+    TAX_REPRESENTATIVE_ADDRESS,
     Address,
     AddressTerms,
     PartyTerms,
     contact,
     identifier,
     identifiers,
-    location,
+    one_identifier,
 )
 from haflinger._payments import one_value, payment_means
 from haflinger._xml import (
@@ -35,14 +37,17 @@ from haflinger.model import (
     CreditTransfer,
     Delivery,
     DirectDebit,
+    Identifier,
     Invoice,
     InvoiceLine,
     Note,
     Party,
+    Payee,
     PaymentCard,
     PaymentInstructions,
     Period,
     PrecedingInvoice,
+    TaxRepresentative,
     Totals,
     VatBreakdown,
 )
@@ -104,6 +109,8 @@ def read(root: Node, specification_id: str | None, *, credit_note: bool) -> Invo
         )
     else:
         project = root.text("cac:ProjectReference/cbc:ID", "BT-11")
+    seller = root.group("cac:AccountingSupplierParty/cac:Party", "BG-4")
+    payee = root.group("cac:PayeeParty", "BG-10")
     return Invoice(
         syntax="ubl",
         number=root.text("cbc:ID", "BT-1"),
@@ -145,11 +152,13 @@ def read(root: Node, specification_id: str | None, *, credit_note: bool) -> Invo
             )
             is not None
         ),
-        seller=_party(root.group("cac:AccountingSupplierParty/cac:Party", "BG-4"), SELLER),
+        seller=_party(seller, SELLER),
         buyer=_party(root.group("cac:AccountingCustomerParty/cac:Party", "BG-7"), BUYER),
+        payee=_payee(payee),
+        tax_representative=_tax_representative(root.group("cac:TaxRepresentativeParty", "BG-11")),
         delivery=_delivery(root.group("cac:Delivery", "BG-13", *_DELIVERY)),
         invoicing_period=_period(root.group("cac:InvoicePeriod", "BG-14", *_PERIOD)),
-        payment_instructions=_payment_instructions(root),
+        payment_instructions=_payment_instructions(root, payee, seller),
         allowances=allowances,
         charges=charges,
         totals=_totals(
@@ -206,40 +215,30 @@ def _party(party: Node | None, terms: PartyTerms) -> Party | None:
     if party is None:
         return None
     # The terms of one legal entity, one address and one contact come from one element each.
+    entity_terms = (terms.name, terms.legal_registration_id, terms.additional_legal_information)
     entity = party.group(
         "cac:PartyLegalEntity",
-        f"{terms.name}, {terms.legal_registration_id} (cac:PartyLegalEntity)",
+        f"{', '.join(term for term in entity_terms if term)} (cac:PartyLegalEntity)",
     )
     address = party.group("cac:PostalAddress", terms.address.group)
     contact_element = party.group("cac:Contact", terms.contact, *_CONTACT)
-    # A tax scheme `VAT` gives the VAT identifier, another the seller's tax registration
-    # identifier, which the buyer lacks.
-    taxes = ", ".join(term for term in (terms.vat_id, terms.tax_registration) if term)
-    vat_ids: list[Node] = []
-    tax_ids: list[Node] = []
-    for scheme in party.findall("cac:PartyTaxScheme"):
-        kind = scheme.text(_TAX_SCHEME, f"{taxes} (cac:TaxScheme)")
-        if kind == "VAT":
-            vat_ids += scheme.holding(terms.vat_id, "cbc:CompanyID")
-        elif kind is not None and terms.tax_registration is not None:
-            tax_ids += scheme.holding(terms.tax_registration, "cbc:CompanyID")
-    vat_id = first_of(vat_ids, terms.vat_id)
-    tax_id = None if terms.tax_registration is None else first_of(tax_ids, terms.tax_registration)
-    # The seller's identifier with scheme SEPA is the bank assigned creditor identifier (BT-90).
-    ids = [
-        node
-        for node in party.findall("cac:PartyIdentification/cbc:ID")
-        if not (terms.creditor_identifier and node.attribute("schemeID") == "SEPA")
-        and node.plain(terms.identifier) is not None
-    ]
+    vat_id, tax_id = _tax_identifiers(party, terms.vat_id, terms.tax_registration)
+    ids = (
+        _identifier_nodes(party, terms.identifier, creditor=False)
+        if terms.creditor_identifier
+        else party.holding(terms.identifier, _IDENTIFIER)
+    )
     point, telephone, email = _CONTACT
     return Party(
         name=_text(entity, "cbc:RegistrationName", terms.name),
         trading_name=party.text("cac:PartyName/cbc:Name", terms.trading_name),
         identifiers=identifiers(ids, terms.identifier, one=terms.one_identifier),
-        legal_registration_id=_text(entity, "cbc:CompanyID", terms.legal_registration_id),
-        vat_id=None if vat_id is None else vat_id.value,
-        tax_registration_id=None if tax_id is None else tax_id.value,
+        legal_registration_id=_legal_registration(entity, terms.legal_registration_id),
+        vat_id=vat_id,
+        tax_registration_id=tax_id,
+        additional_legal_information=None
+        if terms.additional_legal_information is None
+        else _text(entity, "cbc:CompanyLegalForm", terms.additional_legal_information),
         electronic_address=identifier(party.first("cbc:EndpointID", terms.electronic_address)),
         **_address(address, terms.address),
         contact=None
@@ -249,6 +248,74 @@ def _party(party: Node | None, terms: PartyTerms) -> Party | None:
             telephone=contact_element.text(telephone, terms.telephone),
             email=contact_element.text(email, terms.email),
         ),
+    )
+
+
+def _identifier_nodes(party: Node | None, term: str, *, creditor: bool) -> list[Node]:
+    """The seller's or the payee's identifiers holding a value: with `creditor`, those with scheme
+    SEPA, which are the bank assigned creditor identifier (BT-90), else the others, of `term`."""
+    if party is None:
+        return []
+    return [
+        node
+        for node in party.findall(_IDENTIFIER)
+        if (node.attribute("schemeID") == "SEPA") == creditor and node.plain(term) is not None
+    ]
+
+
+def _legal_registration(entity: Node | None, term: str) -> Identifier | None:
+    """The legal registration identifier (BT-30, BT-47, BT-61) of a cac:PartyLegalEntity, with
+    its scheme."""
+    return None if entity is None else identifier(entity.first("cbc:CompanyID", term))
+
+
+def _tax_identifiers(
+    party: Node, vat_term: str, tax_term: str | None
+) -> tuple[str | None, str | None]:
+    """The party's VAT identifier, of tax scheme `VAT`, and, where `tax_term` names one, its tax
+    registration identifier, of another tax scheme."""
+    taxes = ", ".join(term for term in (vat_term, tax_term) if term)
+    vat_ids: list[Node] = []
+    tax_ids: list[Node] = []
+    for scheme in party.findall("cac:PartyTaxScheme"):
+        kind = scheme.text(_TAX_SCHEME, f"{taxes} (cac:TaxScheme)")
+        if kind == "VAT":
+            vat_ids += scheme.holding(vat_term, "cbc:CompanyID")
+        elif kind is not None and tax_term is not None:
+            tax_ids += scheme.holding(tax_term, "cbc:CompanyID")
+    vat_id = first_of(vat_ids, vat_term)
+    tax_id = None if tax_term is None else first_of(tax_ids, tax_term)
+    return (None if vat_id is None else vat_id.value), (None if tax_id is None else tax_id.value)
+
+
+def _payee(payee: Node | None) -> Payee | None:
+    """BG-10; its identifier with scheme SEPA is the creditor identifier (BT-90), read with the
+    direct debit."""
+    if payee is None:
+        return None
+    entity = payee.group("cac:PartyLegalEntity", "BT-61 (cac:PartyLegalEntity)")
+    return none_if_empty(
+        Payee(
+            name=payee.text("cac:PartyName/cbc:Name", "BT-59"),
+            identifier=one_identifier(
+                _identifier_nodes(payee, PAYEE_IDENTIFIER, creditor=False), PAYEE_IDENTIFIER
+            ),
+            legal_registration_id=_legal_registration(entity, "BT-61"),
+        )
+    )
+
+
+def _tax_representative(party: Node | None) -> TaxRepresentative | None:
+    if party is None:
+        return None
+    address = party.group("cac:PostalAddress", TAX_REPRESENTATIVE_ADDRESS.group)
+    vat_id, _ = _tax_identifiers(party, "BT-63", None)
+    return none_if_empty(
+        TaxRepresentative(
+            name=party.text("cac:PartyName/cbc:Name", "BT-62"),
+            vat_id=vat_id,
+            **_address(address, TAX_REPRESENTATIVE_ADDRESS),
+        )
     )
 
 
@@ -293,7 +360,9 @@ def _delivery(delivery: Node | None) -> Delivery | None:
     return none_if_empty(
         Delivery(
             party_name=delivery.text("cac:DeliveryParty/cac:PartyName/cbc:Name", "BT-70"),
-            location=location(delivery.holding(LOCATION, "cac:DeliveryLocation/cbc:ID")),
+            location=one_identifier(
+                delivery.holding(LOCATION, "cac:DeliveryLocation/cbc:ID"), LOCATION
+            ),
             date=_date(delivery, "cbc:ActualDeliveryDate", "BT-72"),
             **_address(address, DELIVER_TO),
         )
@@ -311,12 +380,17 @@ def _period(period: Node | None) -> Period | None:
     )
 
 
+# A party's identifiers.
+_IDENTIFIER = "cac:PartyIdentification/cbc:ID"
 # The elements of a contact's terms, which make a cac:Contact the contact.
 _CONTACT = ("cbc:Name", "cbc:Telephone", "cbc:ElectronicMail")
 
 
-def _payment_instructions(root: Node) -> PaymentInstructions | None:
-    """BG-16 from the payment means, repeated for each account (REQ-003-PRS-F002)."""
+def _payment_instructions(
+    root: Node, payee: Node | None, seller: Node | None
+) -> PaymentInstructions | None:
+    """BG-16 from the payment means, repeated for each account, and the creditor identifier of
+    the payee and the seller read (REQ-003-PRS-F002)."""
     means, code = payment_means(
         root.findall("cac:PaymentMeans"), lambda node: node.text("cbc:PaymentMeansCode", "BT-81")
     )
@@ -353,20 +427,21 @@ def _payment_instructions(root: Node) -> PaymentInstructions | None:
                 account_number=card.text("cbc:PrimaryAccountNumberID", "BT-87"),
                 holder_name=card.text("cbc:HolderName", "BT-88"),
             ),
-            direct_debit=_direct_debit(root, mandate),
+            direct_debit=_direct_debit(mandate, payee, seller),
         )
     )
 
 
-def _direct_debit(root: Node, mandate: Node | None) -> DirectDebit | None:
+def _direct_debit(
+    mandate: Node | None, payee: Node | None, seller: Node | None
+) -> DirectDebit | None:
     """BG-19 from the mandate and the creditor identifier: the payee's, or else the seller's,
     identifier with scheme SEPA, which without a mandate is no direct debit's
     (REQ-003-PRS-F002)."""
     creditors = [
         node
-        for party in ("cac:PayeeParty", "cac:AccountingSupplierParty/cac:Party")
-        for node in root.findall(f"{party}/cac:PartyIdentification/cbc:ID")
-        if node.attribute("schemeID") == "SEPA" and node.plain("BT-90") is not None
+        for party in (payee, seller)
+        for node in _identifier_nodes(party, "BT-90", creditor=True)
     ]
     if mandate is None:
         for node in creditors:

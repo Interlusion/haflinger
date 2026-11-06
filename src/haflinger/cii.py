@@ -19,15 +19,16 @@ from haflinger._parties import (
     BUYER,
     DELIVER_TO,
     LOCATION,
+    PAYEE_IDENTIFIER,
     SELLER,
-    TAX_REGISTRATION,
+    TAX_REPRESENTATIVE_ADDRESS,
     Address,
     AddressTerms,
     PartyTerms,
     contact,
     identifier,
     identifiers,
-    location,
+    one_identifier,
 )
 from haflinger._payments import one_value, payment_means
 from haflinger._xml import (
@@ -53,10 +54,12 @@ from haflinger.model import (
     InvoiceLine,
     Note,
     Party,
+    Payee,
     PaymentCard,
     PaymentInstructions,
     Period,
     PrecedingInvoice,
+    TaxRepresentative,
     Totals,
     VatBreakdown,
 )
@@ -161,6 +164,10 @@ def read(root: Node, specification_id: str | None) -> Invoice:
         ),
         seller=_party(root.group(f"{_AGREEMENT}/ram:SellerTradeParty", "BG-4"), SELLER),
         buyer=_party(root.group(f"{_AGREEMENT}/ram:BuyerTradeParty", "BG-7"), BUYER),
+        payee=_payee(root.group(f"{_SETTLEMENT}/ram:PayeeTradeParty", "BG-10")),
+        tax_representative=_tax_representative(
+            root.group(f"{_AGREEMENT}/ram:SellerTaxRepresentativeTradeParty", "BG-11")
+        ),
         delivery=_delivery(root),
         invoicing_period=_period(root.group(f"{_SETTLEMENT}/ram:BillingSpecifiedPeriod", "BG-14")),
         payment_instructions=_payment_instructions(root),
@@ -224,19 +231,71 @@ def _party(party: Node | None, terms: PartyTerms) -> Party | None:
             terms.identifier,
             one=terms.one_identifier,
         ),
-        legal_registration_id=_text(organization, "ram:ID", terms.legal_registration_id),
+        legal_registration_id=_legal_registration(organization, terms.legal_registration_id),
         vat_id=_registration(registrations, "VA", terms.vat_id),
         tax_registration_id=(
             None
             if terms.tax_registration is None
             else _registration(registrations, "FC", terms.tax_registration)
         ),
+        additional_legal_information=None
+        if terms.additional_legal_information is None
+        else party.text("ram:Description", terms.additional_legal_information),
         electronic_address=identifier(
             party.first("ram:URIUniversalCommunication/ram:URIID", terms.electronic_address)
         ),
         **_address(address, terms.address),
         contact=None if contact_element is None else _contact(contact_element, terms),
     )
+
+
+def _payee(payee: Node | None) -> Payee | None:
+    if payee is None:
+        return None
+    organization = payee.group(
+        "ram:SpecifiedLegalOrganization", "BT-61 (ram:SpecifiedLegalOrganization)"
+    )
+    return none_if_empty(
+        Payee(
+            name=payee.text("ram:Name", "BT-59"),
+            identifier=one_identifier(_identifier_nodes(payee, PAYEE_IDENTIFIER), PAYEE_IDENTIFIER),
+            legal_registration_id=_legal_registration(organization, "BT-61"),
+        )
+    )
+
+
+def _tax_representative(party: Node | None) -> TaxRepresentative | None:
+    if party is None:
+        return None
+    address = party.group("ram:PostalTradeAddress", TAX_REPRESENTATIVE_ADDRESS.group)
+    return none_if_empty(
+        TaxRepresentative(
+            name=party.text("ram:Name", "BT-62"),
+            vat_id=_representative_vat_id(party),
+            **_address(address, TAX_REPRESENTATIVE_ADDRESS),
+        )
+    )
+
+
+def _legal_registration(organization: Node | None, term: str) -> Identifier | None:
+    """The legal registration identifier (BT-30, BT-47, BT-61) of a ram:SpecifiedLegalOrganization,
+    with its scheme."""
+    return None if organization is None else identifier(organization.first("ram:ID", term))
+
+
+def _representative_vat_id(party: Node) -> str | None:
+    """BT-63: the tax registration with scheme `VA` or, since the tax representative has no other
+    tax term, without one; one with another scheme is left out with a finding
+    (REQ-003-PRS-F002)."""
+    nodes: list[Node] = []
+    for node in party.holding("BT-63", "ram:SpecifiedTaxRegistration/ram:ID"):
+        scheme = node.attribute("schemeID")
+        if scheme in (None, "VA"):
+            nodes.append(node)
+        else:
+            node.drop(f"BT-63 with schemeID {scheme!r}, not VA, is left out: {node.value!r}")
+    node = first_of(nodes, "BT-63")
+    return None if node is None else node.value
 
 
 def _identifier_nodes(party: Node, term: str) -> list[Node]:
@@ -279,7 +338,9 @@ def _delivery(root: Node) -> Delivery | None:
     return none_if_empty(
         Delivery(
             party_name=_text(ship_to, "ram:Name", "BT-70"),
-            location=None if ship_to is None else location(_identifier_nodes(ship_to, LOCATION)),
+            location=None
+            if ship_to is None
+            else one_identifier(_identifier_nodes(ship_to, LOCATION), LOCATION),
             date=_date(
                 root,
                 f"{_DELIVERY}/ram:ActualDeliverySupplyChainEvent/ram:OccurrenceDateTime/udt:DateTimeString",
@@ -625,6 +686,7 @@ def write(invoice: Invoice) -> bytes:
     _put_text(agreement, "ram:BuyerReference", invoice.buyer_reference, "BT-10")
     _write_party(agreement, "ram:SellerTradeParty", invoice.seller, SELLER)
     _write_party(agreement, "ram:BuyerTradeParty", invoice.buyer, BUYER)
+    _write_tax_representative(agreement, invoice.tax_representative)
     _write_references(agreement, invoice)
     delivery = SubElement(transaction, "ram:ApplicableHeaderTradeDelivery")
     _write_delivery(delivery, invoice.delivery)
@@ -658,6 +720,7 @@ def write(invoice: Invoice) -> bytes:
     )
     _put_text(settlement, "ram:TaxCurrencyCode", invoice.tax_currency_code, "BT-6")
     _put_text(settlement, "ram:InvoiceCurrencyCode", invoice.currency_code, "BT-5")
+    _write_payee(settlement, invoice.payee)
     if payment is not None:
         _write_payment_means(settlement, payment)
     for vat in _group(invoice.vat_breakdown, VatBreakdown, "BG-23"):
@@ -715,10 +778,8 @@ def _write_references(agreement: Element, invoice: Invoice) -> None:
     tender = _checked_text(invoice.tender_or_lot_reference, "BT-17")
     if tender is not None:
         _write_additional_document(agreement, tender, "50")
-    invoiced = cast(object, invoice.invoiced_object_id)
+    invoiced = _checked_identifier(invoice.invoiced_object_id, "BT-18")
     if invoiced is not None:
-        if not isinstance(invoiced, Identifier):
-            raise InvoiceWriteError(f"BT-18 is not an Identifier: {invoiced!r}")
         value, scheme = _identifier_parts(
             invoiced, "the invoice", "an invoiced object identifier", "BT-18"
         )
@@ -751,24 +812,34 @@ def _write_party(parent: Element, tag: str, party: object, terms: PartyTerms) ->
         raise InvoiceWriteError(
             f"{terms.party} holds more than one identifier ({terms.identifier})"
         )
-    if terms.tax_registration is None and party.tax_registration_id is not None:
-        raise InvoiceWriteError(
-            f"{TAX_REGISTRATION} is the seller's alone; the buyer ({terms.party}) has none"
-        )
+    if terms is not SELLER:
+        for term, value in (
+            (SELLER.tax_registration, party.tax_registration_id),
+            (SELLER.additional_legal_information, party.additional_legal_information),
+        ):
+            if value is not None:
+                raise InvoiceWriteError(
+                    f"{term} is the seller's alone; the buyer ({terms.party}) has none"
+                )
     element = SubElement(parent, tag)
     _write_identifiers(element, ids, terms.party, terms.identifier)
     _put_text(element, "ram:Name", party.name, terms.name)
+    if terms.additional_legal_information is not None:
+        _put_text(
+            element,
+            "ram:Description",
+            party.additional_legal_information,
+            terms.additional_legal_information,
+        )
     organization = SubElement(element, "ram:SpecifiedLegalOrganization")
-    _put_text(organization, "ram:ID", party.legal_registration_id, terms.legal_registration_id)
+    _write_legal_registration(
+        organization, party.legal_registration_id, terms.party, terms.legal_registration_id
+    )
     _put_text(organization, "ram:TradingBusinessName", party.trading_name, terms.trading_name)
     _write_contact(element, party.contact, terms)
     _write_address(element, party, terms.address)
-    electronic_address = cast(object, party.electronic_address)
+    electronic_address = _checked_identifier(party.electronic_address, terms.electronic_address)
     if electronic_address is not None:
-        if not isinstance(electronic_address, Identifier):
-            raise InvoiceWriteError(
-                f"{terms.electronic_address} is not an Identifier: {electronic_address!r}"
-            )
         value, scheme = _identifier_parts(
             electronic_address,
             terms.party,
@@ -794,6 +865,61 @@ def _write_party(parent: Element, tag: str, party: object, terms: PartyTerms) ->
             terms.tax_registration,
             schemeID="FC",
         )
+
+
+def _write_tax_representative(agreement: Element, representative: object) -> None:
+    """BG-11 with its postal address (BG-12), after the buyer (REQ-004-PRS-F003)."""
+    representative = _checked_group(
+        representative, TaxRepresentative, "BG-11", "a tax representative"
+    )
+    if representative is None:
+        return
+    element = SubElement(agreement, "ram:SellerTaxRepresentativeTradeParty")
+    _put_text(element, "ram:Name", representative.name, "BT-62")
+    _write_address(element, representative, TAX_REPRESENTATIVE_ADDRESS)
+    _put_text(
+        element,
+        "ram:SpecifiedTaxRegistration/ram:ID",
+        representative.vat_id,
+        "BT-63",
+        schemeID="VA",
+    )
+
+
+def _write_payee(settlement: Element, payee: object) -> None:
+    """BG-10, after the invoice currency code (REQ-004-PRS-F003)."""
+    payee = _checked_group(payee, Payee, "BG-10", "a payee")
+    if payee is None:
+        return
+    element = SubElement(settlement, "ram:PayeeTradeParty")
+    payee_id = _checked_identifier(payee.identifier, PAYEE_IDENTIFIER)
+    _write_identifiers(element, [] if payee_id is None else [payee_id], "BG-10", PAYEE_IDENTIFIER)
+    _put_text(element, "ram:Name", payee.name, "BT-59")
+    _write_legal_registration(
+        SubElement(element, "ram:SpecifiedLegalOrganization"),
+        payee.legal_registration_id,
+        "BG-10",
+        "BT-61",
+    )
+
+
+def _write_legal_registration(
+    organization: Element, legal_registration: object, group: str, term: str
+) -> None:
+    """A legal registration identifier (BT-30, BT-47, BT-61) with its scheme as schemeID."""
+    checked = _checked_identifier(legal_registration, term)
+    if checked is None:
+        return
+    value, scheme = _identifier_parts(checked, group, "a legal registration identifier", term)
+    _put_text(organization, "ram:ID", value, term, schemeID=scheme)
+
+
+def _checked_identifier(value: object, term: str) -> Identifier | None:
+    """An identifier of the model, which may hold anything, as its static types aren't checked
+    at run time."""
+    if value is not None and not isinstance(value, Identifier):
+        raise InvoiceWriteError(f"{term} is not an Identifier: {value!r}")
+    return value
 
 
 def _identifier_parts(
@@ -827,7 +953,9 @@ def _write_identifiers(
         )
 
 
-def _write_address(element: Element, holder: Party | Delivery, terms: AddressTerms) -> None:
+def _write_address(
+    element: Element, holder: Party | TaxRepresentative | Delivery, terms: AddressTerms
+) -> None:
     address = SubElement(element, "ram:PostalTradeAddress")
     _put_text(address, "ram:PostcodeCode", holder.post_code, terms.post_code)
     _put_text(address, "ram:LineOne", holder.address_line_1, terms.address_line_1)
@@ -842,15 +970,10 @@ def _write_address(element: Element, holder: Party | Delivery, terms: AddressTer
 
 def _write_delivery(element: Element, delivery: object) -> None:
     """BG-13 in ram:ApplicableHeaderTradeDelivery (REQ-004-PRS-F003)."""
+    delivery = _checked_group(delivery, Delivery, "BG-13", "delivery information")
     if delivery is None:
         return
-    if not isinstance(delivery, Delivery):
-        raise InvoiceWriteError(f"BG-13 is not a Delivery: {delivery!r}")
-    if delivery == Delivery():
-        raise InvoiceWriteError("BG-13 holds delivery information without any term")
-    location = cast(object, delivery.location)
-    if location is not None and not isinstance(location, Identifier):
-        raise InvoiceWriteError(f"{LOCATION} is not an Identifier: {location!r}")
+    location = _checked_identifier(delivery.location, LOCATION)
     ship_to = SubElement(element, "ram:ShipToTradeParty")
     if location is not None:
         _write_identifiers(ship_to, [location], "BG-13", LOCATION)
@@ -862,12 +985,9 @@ def _write_delivery(element: Element, delivery: object) -> None:
 
 
 def _write_period(settlement: Element, period: object) -> None:
+    period = _checked_group(period, Period, "BG-14", "a period")
     if period is None:
         return
-    if not isinstance(period, Period):
-        raise InvoiceWriteError(f"BG-14 is not a Period: {period!r}")
-    if period == Period():
-        raise InvoiceWriteError("BG-14 holds a period without any term")
     element = SubElement(settlement, "ram:BillingSpecifiedPeriod")
     _put_date(element, "ram:StartDateTime", period.start, "BT-73")
     _put_date(element, "ram:EndDateTime", period.end, "BT-74")
@@ -913,12 +1033,9 @@ def with_one_preceding_invoice(invoice: Invoice) -> Invoice:
 
 
 def _write_contact(party: Element, contact: object, terms: PartyTerms) -> None:
+    contact = _checked_group(contact, Contact, terms.contact, "a contact")
     if contact is None:
         return
-    if not isinstance(contact, Contact):
-        raise InvoiceWriteError(f"{terms.contact} is not a Contact: {contact!r}")
-    if contact == Contact():
-        raise InvoiceWriteError(f"{terms.contact} holds a contact without any term")
     element = SubElement(party, "ram:DefinedTradeContact")
     _put_text(element, "ram:PersonName", contact.point, terms.contact_point)
     _put_text(
@@ -943,12 +1060,9 @@ def _ends_with_discount_terms(payment_terms: str) -> bool:
 def _checked_instructions(payment: object) -> PaymentInstructions | None:
     """BG-16, with the groups in it of their classes, none of them empty, and the card with its
     number (BT-87)."""
+    payment = _checked_group(payment, PaymentInstructions, "BG-16", "payment instructions")
     if payment is None:
         return None
-    if not isinstance(payment, PaymentInstructions):
-        raise InvoiceWriteError(f"BG-16 is not a PaymentInstructions: {payment!r}")
-    if payment == PaymentInstructions():
-        raise InvoiceWriteError("BG-16 holds payment instructions without any term")
     for transfer in _group(payment.credit_transfers, CreditTransfer, "BG-17"):
         if transfer == CreditTransfer():
             raise InvoiceWriteError("BG-17 holds a credit transfer without any term")
@@ -959,12 +1073,7 @@ def _checked_instructions(payment: object) -> PaymentInstructions | None:
         # EN 16931 requires BT-87 in BG-18, and no official rule checks it in CII D16B.
         if card.account_number is None:
             raise InvoiceWriteError("BG-18 holds a card without its account number (BT-87)")
-    debit = cast(object, payment.direct_debit)
-    if debit is not None:
-        if not isinstance(debit, DirectDebit):
-            raise InvoiceWriteError(f"BG-19 is not a DirectDebit: {debit!r}")
-        if debit == DirectDebit():
-            raise InvoiceWriteError("BG-19 holds a direct debit without any term")
+    _checked_group(cast(object, payment.direct_debit), DirectDebit, "BG-19", "a direct debit")
     return payment
 
 
@@ -1072,10 +1181,8 @@ def _write_line(item: Element, line: InvoiceLine) -> None:
 
 def _write_product(product: Element, line: InvoiceLine) -> None:
     """BG-31, in the XML Schema's order."""
-    standard = cast(object, line.standard_item_id)
+    standard = _checked_identifier(line.standard_item_id, "BT-157")
     if standard is not None:
-        if not isinstance(standard, Identifier):
-            raise InvoiceWriteError(f"BT-157 is not an Identifier: {standard!r}")
         value, scheme = _identifier_parts(standard, "BG-31", "a standard identifier", "BT-157")
         _put_text(product, "ram:GlobalID", value, "BT-157", schemeID=scheme)
     _put_text(product, "ram:SellerAssignedID", line.seller_item_id, "BT-155")
@@ -1105,6 +1212,18 @@ def _write_price(agreement: Element, line: InvoiceLine) -> None:
     net = SubElement(agreement, "ram:NetPriceProductTradePrice")
     _put_amount(net, "ram:ChargeAmount", line.net_price, "BT-146")
     _put_amount(net, "ram:BasisQuantity", line.base_quantity, "BT-149", unitCode=unit)
+
+
+def _checked_group[T](value: object, kind: type[T], group: str, holds: str) -> T | None:
+    """A group the model holds once, of its class and holding a term; the model's static types
+    aren't checked at run time."""
+    if value is None:
+        return None
+    if not isinstance(value, kind):
+        raise InvoiceWriteError(f"{group} is not a {kind.__name__}: {value!r}")
+    if value == kind():
+        raise InvoiceWriteError(f"{group} holds {holds} without any term")
+    return value
 
 
 def _group[T](values: object, kind: type[T], group: str) -> list[T]:
