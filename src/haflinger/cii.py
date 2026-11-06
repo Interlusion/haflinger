@@ -33,9 +33,11 @@ from haflinger._payments import one_value, payment_means
 from haflinger._xml import (
     XML_WHITESPACE,
     Node,
+    by_code,
     choose_vat_totals,
     first_group,
     first_of,
+    first_reference,
     none_if_empty,
     vat_only,
 )
@@ -95,6 +97,17 @@ def read(root: Node, specification_id: str | None) -> Invoice:
         "ram:ChargeIndicator/udt:Indicator",
         _allowance_charge,
     )
+    # BT-17 and BT-18 are additional documents of the type codes 50 and 130; the others are
+    # supporting documents (BG-24), which the model doesn't hold.
+    documents = by_code(
+        root.findall(f"{_AGREEMENT}/ram:AdditionalReferencedDocument"),
+        "ram:TypeCode",
+        "BG-24, BT-17, BT-18 (ram:TypeCode)",
+    )
+    tender = first_reference(documents.get("50", []), "ram:IssuerAssignedID", "BT-17")
+    invoiced = first_reference(
+        documents.get("130", []), "ram:IssuerAssignedID", "BT-18", "ram:ReferenceTypeCode"
+    )
     return Invoice(
         syntax="cii",
         number=root.text(f"{_DOCUMENT}/ram:ID", "BT-1"),
@@ -108,6 +121,27 @@ def read(root: Node, specification_id: str | None) -> Invoice:
             "BT-9",
         ),
         buyer_reference=root.text(f"{_AGREEMENT}/ram:BuyerReference", "BT-10"),
+        project_reference=root.text(f"{_AGREEMENT}/ram:SpecifiedProcuringProject/ram:ID", "BT-11"),
+        contract_reference=_reference(
+            root, f"{_AGREEMENT}/ram:ContractReferencedDocument", "BT-12"
+        ),
+        purchase_order_reference=_reference(
+            root, f"{_AGREEMENT}/ram:BuyerOrderReferencedDocument", "BT-13"
+        ),
+        sales_order_reference=_reference(
+            root, f"{_AGREEMENT}/ram:SellerOrderReferencedDocument", "BT-14"
+        ),
+        receiving_advice_reference=_reference(
+            root, f"{_DELIVERY}/ram:ReceivingAdviceReferencedDocument", "BT-15"
+        ),
+        despatch_advice_reference=_reference(
+            root, f"{_DELIVERY}/ram:DespatchAdviceReferencedDocument", "BT-16"
+        ),
+        tender_or_lot_reference=_text(tender, "ram:IssuerAssignedID", "BT-17"),
+        invoiced_object_id=_invoiced_object(invoiced),
+        buyer_accounting_reference=root.text(
+            f"{_SETTLEMENT}/ram:ReceivableSpecifiedTradeAccountingAccount/ram:ID", "BT-19"
+        ),
         payment_terms=root.text(
             f"{_SETTLEMENT}/ram:SpecifiedTradePaymentTerms/ram:Description", "BT-20"
         ),
@@ -498,6 +532,30 @@ def _basis_quantity(price: Node, path: str) -> tuple[Node | None, Decimal | None
     )
 
 
+def _invoiced_object(document: Node | None) -> Identifier | None:
+    """BT-18 with its scheme, ram:ReferenceTypeCode or else the identifier's schemeID; a
+    differing schemeID beside a ram:ReferenceTypeCode is left out with a finding."""
+    if document is None:
+        return None
+    identifier = document.first("ram:IssuerAssignedID", "BT-18")
+    code = document.first("ram:ReferenceTypeCode", "BT-18-1")
+    attribute = None if identifier is None else identifier.attribute("schemeID")
+    if identifier is not None and code is not None and attribute not in (None, code.value):
+        identifier.drop(
+            "BT-18-1 as the schemeID differs from the ram:ReferenceTypeCode; it is left out:"
+            f" {attribute!r}"
+        )
+    return Identifier(
+        value=None if identifier is None else identifier.value,
+        scheme=attribute if code is None else code.value,
+    )
+
+
+def _reference(root: Node, document: str, term: str) -> str | None:
+    """The `ram:IssuerAssignedID` of the referenced document at the path `document`."""
+    return root.text(f"{document}/ram:IssuerAssignedID", term)
+
+
 def _vat_taxes(parent: Node, path: str, group: str) -> list[Node]:
     """The elements at `path` holding a value that are VAT: of type code `VAT` in any case, or of
     none."""
@@ -567,7 +625,21 @@ def write(invoice: Invoice) -> bytes:
     _put_text(agreement, "ram:BuyerReference", invoice.buyer_reference, "BT-10")
     _write_party(agreement, "ram:SellerTradeParty", invoice.seller, SELLER)
     _write_party(agreement, "ram:BuyerTradeParty", invoice.buyer, BUYER)
-    _write_delivery(SubElement(transaction, "ram:ApplicableHeaderTradeDelivery"), invoice.delivery)
+    _write_references(agreement, invoice)
+    delivery = SubElement(transaction, "ram:ApplicableHeaderTradeDelivery")
+    _write_delivery(delivery, invoice.delivery)
+    _put_text(
+        delivery,
+        "ram:DespatchAdviceReferencedDocument/ram:IssuerAssignedID",
+        invoice.despatch_advice_reference,
+        "BT-16",
+    )
+    _put_text(
+        delivery,
+        "ram:ReceivingAdviceReferencedDocument/ram:IssuerAssignedID",
+        invoice.receiving_advice_reference,
+        "BT-15",
+    )
     payment = _checked_instructions(invoice.payment_instructions)
     preceding = _preceding_invoice(invoice)
     debit = None if payment is None else payment.direct_debit
@@ -617,12 +689,56 @@ def write(invoice: Invoice) -> bytes:
         reference = SubElement(settlement, "ram:InvoiceReferencedDocument")
         _put_text(reference, "ram:IssuerAssignedID", preceding.number, "BT-25")
         _put_date(reference, "ram:FormattedIssueDateTime", preceding.issue_date, "BT-26", "qdt")
+    _put_text(
+        settlement,
+        "ram:ReceivableSpecifiedTradeAccountingAccount/ram:ID",
+        invoice.buyer_accounting_reference,
+        "BT-19",
+    )
 
     _remove_empty(root)
     # ElementTree writes a carriage return in text as it is, and XML parsers turn it into a line
     # feed; as a character reference it reads back unchanged. Text is the only place one can be.
     body = tostring(root, encoding="UTF-8", xml_declaration=False).replace(b"\r", b"&#13;")
     return b'<?xml version="1.0" encoding="UTF-8"?>\n' + body
+
+
+def _write_references(agreement: Element, invoice: Invoice) -> None:
+    """BT-14, BT-13, BT-12, BT-17, BT-18 and BT-11 after the buyer, in the XML Schema's order
+    (REQ-004-PRS-F003)."""
+    for path, value, term in (
+        ("ram:SellerOrderReferencedDocument", invoice.sales_order_reference, "BT-14"),
+        ("ram:BuyerOrderReferencedDocument", invoice.purchase_order_reference, "BT-13"),
+        ("ram:ContractReferencedDocument", invoice.contract_reference, "BT-12"),
+    ):
+        _put_text(agreement, f"{path}/ram:IssuerAssignedID", value, term)
+    tender = _checked_text(invoice.tender_or_lot_reference, "BT-17")
+    if tender is not None:
+        _write_additional_document(agreement, tender, "50")
+    invoiced = cast(object, invoice.invoiced_object_id)
+    if invoiced is not None:
+        if not isinstance(invoiced, Identifier):
+            raise InvoiceWriteError(f"BT-18 is not an Identifier: {invoiced!r}")
+        value, scheme = _identifier_parts(
+            invoiced, "the invoice", "an invoiced object identifier", "BT-18"
+        )
+        _write_additional_document(agreement, value, "130", scheme)
+    project = _checked_text(invoice.project_reference, "BT-11")
+    if project is not None:
+        element = SubElement(agreement, "ram:SpecifiedProcuringProject")
+        _leaf(element, "ram:ID", project, {})
+        # The XML Schema requires a name, which is no business term; KoSIT's test files write
+        # this one.
+        _leaf(element, "ram:Name", "Project reference", {})
+
+
+def _write_additional_document(
+    agreement: Element, issuer_id: str, type_code: str, reference_type: str | None = None
+) -> None:
+    document = SubElement(agreement, "ram:AdditionalReferencedDocument")
+    _leaf(document, "ram:IssuerAssignedID", issuer_id, {})
+    _leaf(document, "ram:TypeCode", type_code, {})
+    _leaf(document, "ram:ReferenceTypeCode", reference_type, {})
 
 
 def _write_party(parent: Element, tag: str, party: object, terms: PartyTerms) -> None:

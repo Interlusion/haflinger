@@ -45,8 +45,9 @@ class PrecedingInvoice:
 
 @dataclass(frozen=True, kw_only=True)
 class Identifier:
-    """An identifier with the scheme it belongs to: BT-29 and BT-29-1, BT-34 and BT-34-1, BT-46
-    and BT-46-1, BT-49 and BT-49-1, BT-71 and BT-71-1, BT-157 and BT-157-1."""
+    """An identifier with the scheme it belongs to: BT-18 and BT-18-1, BT-29 and BT-29-1, BT-34
+    and BT-34-1, BT-46 and BT-46-1, BT-49 and BT-49-1, BT-71 and BT-71-1, BT-157 and
+    BT-157-1."""
 
     value: str | None = None
     scheme: str | None = None
@@ -225,6 +226,15 @@ class Invoice:
     tax_currency_code: str | None = None  # BT-6
     due_date: date | None = None  # BT-9
     buyer_reference: str | None = None  # BT-10
+    project_reference: str | None = None  # BT-11
+    contract_reference: str | None = None  # BT-12
+    purchase_order_reference: str | None = None  # BT-13
+    sales_order_reference: str | None = None  # BT-14
+    receiving_advice_reference: str | None = None  # BT-15
+    despatch_advice_reference: str | None = None  # BT-16
+    tender_or_lot_reference: str | None = None  # BT-17
+    invoiced_object_id: Identifier | None = None  # BT-18
+    buyer_accounting_reference: str | None = None  # BT-19
     payment_terms: str | None = None  # BT-20
     business_process: str | None = None  # BT-23
     specification_id: str | None = None  # BT-24

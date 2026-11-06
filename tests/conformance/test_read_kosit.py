@@ -61,6 +61,13 @@ CONTACT_POINT = {
         NOT_YET_REPORTED,
     ),
 }
+PURCHASE_ORDER = {
+    "purchase_order_reference": (
+        "BT-13",
+        "only the UBL file has one, Dummywert",
+        "ask whether it is deliberate (ITEM-006)",
+    ),
+}
 SECOND_LINES_BASE_QUANTITY = {
     "lines.1.base_quantity": ("BT-149", "only the UBL file has one", NOT_YET_REPORTED),
     "lines.1.base_quantity_unit_code": ("BT-150", "only the UBL file has one", NOT_YET_REPORTED),
@@ -73,6 +80,7 @@ ONE_PRECEDING_INVOICE = {
     ),
 }
 KNOWN_DIFFERENCES: dict[str, dict[str, tuple[str, str, str]]] = {
+    **{f"standard/01.{n:02}a-INVOICE": PURCHASE_ORDER for n in (2, 8, 9, 10, 11, 12, 13)},
     "standard/01.20a-INVOICE": {
         "seller.address_line_1": ("BT-35", "[Street] in CII, [Seller street] in UBL", PLACEHOLDERS),
         "seller.city": ("BT-37", "[City] in CII, [Seller city] in UBL", PLACEHOLDERS),

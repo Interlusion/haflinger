@@ -22,9 +22,11 @@ from haflinger._payments import one_value, payment_means
 from haflinger._xml import (
     XML_WHITESPACE,
     Node,
+    by_code,
     choose_vat_totals,
     first_group,
     first_of,
+    first_reference,
     none_if_empty,
     vat_only,
 )
@@ -87,6 +89,21 @@ def read(root: Node, specification_id: str | None, *, credit_note: bool) -> Invo
         if credit_note
         else ("cac:InvoiceLine", "cbc:InvoicedQuantity")
     )
+    # BT-18 is the additional document of the type code 130, and in a credit note, which has no
+    # cac:ProjectReference, BT-11 the one of 50; the others are supporting documents (BG-24),
+    # which the model doesn't hold.
+    documents = by_code(
+        root.findall("cac:AdditionalDocumentReference"),
+        "cbc:DocumentTypeCode",
+        f"BG-24{', BT-11' if credit_note else ''}, BT-18 (cbc:DocumentTypeCode)",
+    )
+    invoiced = first_reference(documents.get("130", []), "cbc:ID", "BT-18")
+    if credit_note:
+        project = _text(
+            first_reference(documents.get("50", []), "cbc:ID", "BT-11"), "cbc:ID", "BT-11"
+        )
+    else:
+        project = root.text("cac:ProjectReference/cbc:ID", "BT-11")
     return Invoice(
         syntax="ubl",
         number=root.text("cbc:ID", "BT-1"),
@@ -100,6 +117,17 @@ def read(root: Node, specification_id: str | None, *, credit_note: bool) -> Invo
             root, "cac:PaymentMeans/cbc:PaymentDueDate" if credit_note else "cbc:DueDate", "BT-9"
         ),
         buyer_reference=root.text("cbc:BuyerReference", "BT-10"),
+        project_reference=project,
+        contract_reference=root.text("cac:ContractDocumentReference/cbc:ID", "BT-12"),
+        purchase_order_reference=root.text("cac:OrderReference/cbc:ID", "BT-13"),
+        sales_order_reference=root.text("cac:OrderReference/cbc:SalesOrderID", "BT-14"),
+        receiving_advice_reference=root.text("cac:ReceiptDocumentReference/cbc:ID", "BT-15"),
+        despatch_advice_reference=root.text("cac:DespatchDocumentReference/cbc:ID", "BT-16"),
+        tender_or_lot_reference=root.text("cac:OriginatorDocumentReference/cbc:ID", "BT-17"),
+        invoiced_object_id=None
+        if invoiced is None
+        else identifier(invoiced.first("cbc:ID", "BT-18")),
+        buyer_accounting_reference=root.text("cbc:AccountingCost", "BT-19"),
         payment_terms=root.text("cac:PaymentTerms/cbc:Note", "BT-20"),
         business_process=root.text("cbc:ProfileID", "BT-23"),
         specification_id=specification_id,

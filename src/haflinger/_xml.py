@@ -207,7 +207,7 @@ class Node:
             [
                 node
                 for node in self.findall(path)
-                if not terms or any(term.holds_value() for p in terms for term in node.findall(p))
+                if not terms or any(_holds(node, term) for term in terms)
             ],
             group,
         )
@@ -314,12 +314,47 @@ def vat_only(nodes: list[Node], kind: str, group: str) -> list[Node]:
     return taxes
 
 
+def by_code(nodes: list[Node], path: str, label: str) -> dict[str, list[Node]]:
+    """`nodes` by the code at `path`, such as a referenced document's type code, each code's in
+    document order; one without a code is left out."""
+    found: dict[str, list[Node]] = {}
+    for node in nodes:
+        code = node.text(path, label)
+        if code is not None:
+            found.setdefault(code, []).append(node)
+    return found
+
+
+def first_reference(
+    documents: list[Node], path: str, term: str, scheme: str | None = None
+) -> Node | None:
+    """The first of `documents` holding a value at `path`, the identifier of a document
+    reference the model holds once (BT-11, BT-17, BT-18); each further one is left out with a
+    finding naming `term` and its identifier, and so is one that holds only the identifier's
+    scheme at `scheme`."""
+    found: list[Node] = []
+    for document in documents:
+        if _holds(document, path):
+            found.append(document)
+        elif scheme is not None and _holds(document, scheme):
+            document.drop(f"{term}-1 without its identifier ({term}) is left out")
+    for document in found[1:]:
+        value = next((node.value for node in document.findall(path) if node.holds_value()), None)
+        document.drop(f"{term} appears more than once; this one is left out: {value!r}")
+    return found[0] if found else None
+
+
 def first_of(nodes: list[Node], term: str) -> Node | None:
     """The first of `nodes`, which hold values of `term`; each further one is left out with a
     finding."""
     for node in nodes[1:]:
         node.drop(f"{term} appears more than once; this one is left out: {node.value!r}")
     return nodes[0] if nodes else None
+
+
+def _holds(node: Node, path: str) -> bool:
+    """Whether an element at `path` below `node` holds a value."""
+    return any(found.holds_value() for found in node.findall(path))
 
 
 def _stripped(text: str | None) -> str | None:
