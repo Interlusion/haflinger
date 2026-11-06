@@ -3,7 +3,7 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Draft |
-| **Version** | 0.11 |
+| **Version** | 0.12 |
 | **Date** | 2026-11-06 |
 | **Author** | loxy (drafted with Claude) |
 
@@ -161,9 +161,10 @@ General vocabulary (CIUS, Leitweg-ID, Peppol …): the [E-Invoicing 101 glossary
 | `Party.name` | BT-27, BT-44 | Seller name, buyer name | required |
 | `Party.trading_name` | BT-28, BT-45 | Trading name |  |
 | `Party.identifiers` | BT-29, BT-46 | Seller identifiers, any number; buyer identifier, at most one; each an Identifier: `value` BT-29, BT-46 (required in the group), `scheme` BT-29-1, BT-46-1 |  |
-| `Party.legal_registration_id` | BT-30, BT-47 | Legal registration identifier |  |
+| `Party.legal_registration_id` | BT-30, BT-47 | Legal registration identifier, an Identifier: `value` BT-30, BT-47 (required in the group), `scheme` BT-30-1, BT-47-1 |  |
 | `Party.vat_id` | BT-31, BT-48 | VAT identifier |  |
 | `Party.tax_registration_id` | BT-32 | Seller tax registration identifier; the seller's alone |  |
+| `Party.additional_legal_information` | BT-33 | Seller additional legal information; the seller's alone |  |
 | `Party.electronic_address` | BT-34, BT-49 | Electronic address, an Identifier: `value` BT-34, BT-49 (required in the group), `scheme` BT-34-1, BT-49-1 (required in the group) |  |
 | `Party.address_line_1` | BT-35, BT-50 | Address line 1 |  |
 | `Party.address_line_2` | BT-36, BT-51 | Address line 2 |  |
@@ -173,6 +174,8 @@ General vocabulary (CIUS, Leitweg-ID, Peppol …): the [E-Invoicing 101 glossary
 | `Party.country_subdivision` | BT-39, BT-54 | Country subdivision |  |
 | `Party.country_code` | BT-40, BT-55 | Country code | required |
 | `Party.contact` | BG-6, BG-9 | Contact: `point` BT-41, BT-56, `telephone` BT-42, BT-57, `email` BT-43, BT-58 |  |
+| `Invoice.payee` | BG-10 | Payee, where it isn't the seller: `name` BT-59 (required in the group), `identifier` BT-60, an Identifier with its scheme BT-60-1, `legal_registration_id` BT-61, an Identifier with its scheme BT-61-1 |  |
+| `Invoice.tax_representative` | BG-11 | Seller tax representative party: `name` BT-62 (required in the group), `vat_id` BT-63 (required in the group), and its postal address (BG-12, required in the group): `address_line_1` BT-64, `address_line_2` BT-65, `address_line_3` BT-164, `city` BT-66, `post_code` BT-67, `country_subdivision` BT-68, `country_code` BT-69 (required in the group) |  |
 | `Invoice.delivery` | BG-13 | Delivery information: `party_name` BT-70, `location` BT-71, an Identifier with its scheme BT-71-1, `date` BT-72, and the deliver to address (BG-15): `address_line_1` BT-75, `address_line_2` BT-76, `address_line_3` BT-165, `city` BT-77, `post_code` BT-78, `country_subdivision` BT-79, `country_code` BT-80 (required in the address) |  |
 | `Invoice.invoicing_period` | BG-14 | Invoicing period: `start` BT-73, `end` BT-74 |  |
 | `Invoice.payment_instructions` | BG-16 | Payment instructions: `means_code` BT-81 (required in the group), `means_text` BT-82, `remittance_information` BT-83 |  |
