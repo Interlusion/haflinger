@@ -57,6 +57,8 @@ NAMESPACES = {
 _ISO_DATE = re.compile(r"([0-9]{4})-([0-9]{2})-([0-9]{2})")
 # BT-21 at the start of a note, the convention of XRechnung and Peppol.
 _SUBJECT_CODE = re.compile(r"#([A-Z]{3})#(.*)", re.DOTALL)
+# The tax a UBL tax category belongs to.
+_TAX_SCHEME = "cac:TaxScheme/cbc:ID"
 
 
 def specification(root: Node) -> Node | None:
@@ -188,7 +190,7 @@ def _party(party: Node | None, terms: PartyTerms) -> Party | None:
     vat_ids: list[Node] = []
     tax_ids: list[Node] = []
     for scheme in party.findall("cac:PartyTaxScheme"):
-        kind = scheme.text("cac:TaxScheme/cbc:ID", f"{taxes} (cac:TaxScheme)")
+        kind = scheme.text(_TAX_SCHEME, f"{taxes} (cac:TaxScheme)")
         if kind == "VAT":
             vat_ids += scheme.holding(terms.vat_id, "cbc:CompanyID")
         elif kind is not None and terms.tax_registration is not None:
@@ -389,9 +391,7 @@ def _totals(
 
 def _allowance_charge(node: Node, terms: AllowanceChargeTerms) -> AllowanceCharge:
     label = f"{terms.vat} (cac:TaxCategory)"
-    category = first_group(
-        vat_only(node.findall("cac:TaxCategory"), "cac:TaxScheme/cbc:ID", label), label
-    )
+    category = first_group(vat_only(node.findall("cac:TaxCategory"), _TAX_SCHEME, label), label)
     return AllowanceCharge(
         amount=node.decimal("cbc:Amount", terms.amount),
         base_amount=node.decimal("cbc:BaseAmount", terms.base_amount),

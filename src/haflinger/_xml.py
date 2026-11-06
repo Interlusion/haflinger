@@ -299,16 +299,15 @@ def first_group(nodes: list[Node], group: str) -> Node | None:
 
 
 def vat_only(nodes: list[Node], kind: str, group: str) -> list[Node]:
-    """Those of `nodes` holding a value that are VAT: whose element at `kind` holds `VAT`, or that
-    have none. Another tax, which Factur-X EXTENDED allows, is left out with a finding
-    (REQ-003-PRS-F002)."""
+    """Those of `nodes` holding a value that are VAT: whose first element at `kind` holding a
+    value holds `VAT` in any case, as CEN's rules compare it, or that have none. Another tax,
+    which Factur-X EXTENDED allows, is left out with a finding (REQ-003-PRS-F002)."""
     taxes: list[Node] = []
     for node in nodes:
         if not node.holds_value():
             continue
-        element = node.find(kind)
-        value = None if element is None else element.value
-        if value in (None, "VAT"):
+        value = node.text(kind, f"{group} ({kind})")
+        if value is None or value.upper() == "VAT":
             taxes.append(node)
         else:
             node.drop(f"{group} of a tax other than VAT ({value}) is left out")

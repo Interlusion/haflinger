@@ -66,6 +66,14 @@ _ISO_DATE = re.compile(r"([0-9]{4})-([0-9]{2})-([0-9]{2})")
 def read_invoice(data: bytes) -> ReadResult:
     """Like `haflinger.read_invoice` for XML, through KoSIT's stylesheets. The findings are
     those of reading the semantic XML, with its locations."""
+    semantic, syntax = semantic_xml(data)
+    reading = Reading(parse(semantic), {"xr": XR}, "xr:invoice")
+    return ReadResult(invoice=_invoice(reading.root, syntax), findings=reading.findings())
+
+
+def semantic_xml(data: bytes) -> tuple[bytes, Syntax]:
+    """The semantic XML KoSIT's stylesheet makes of a CII or UBL invoice, with the syntax it was
+    read from."""
     root = parse(data)
     if root.tag not in _STYLESHEETS:
         raise InvoiceReadError(
@@ -73,8 +81,7 @@ def read_invoice(data: bytes) -> ReadResult:
         )
     stylesheet, syntax = _STYLESHEETS[root.tag]
     (semantic,) = _saxon.transform(data, stylesheet)
-    reading = Reading(parse(semantic), {"xr": XR}, "xr:invoice")
-    return ReadResult(invoice=_invoice(reading.root, syntax), findings=reading.findings())
+    return semantic, syntax
 
 
 # REQ-003-PRS-F005: the limits of KoSIT's stylesheet, to apply to its model before comparing it

@@ -1888,6 +1888,53 @@ def test_an_allowances_vat_category_is_the_first_of_vat() -> None:
         assert dropped(result) == ["BT-95", "BT-102"]
 
 
+def test_a_tax_vat_counts_in_any_case() -> None:
+    """REQ-003-PRS-F002: CEN's rules compare the type code and the tax scheme in upper case, so
+    `vat` is VAT; the tax scheme is the first one holding a value."""
+    data = CII.replace(b"<ram:TypeCode>VAT</ram:TypeCode>", b"<ram:TypeCode>vat</ram:TypeCode>")
+    assert read_invoice(data) == read_invoice(CII)
+    cii, ubl = with_allowances_and_charges(
+        [
+            cii_allowance_charge(
+                b"false",
+                b"1.00",
+                after=b"<ram:CategoryTradeTax><ram:TypeCode> vat </ram:TypeCode>"
+                b"<ram:CategoryCode>Z</ram:CategoryCode>"
+                b"<ram:RateApplicablePercent>0</ram:RateApplicablePercent></ram:CategoryTradeTax>",
+            ),
+        ],
+        [
+            ubl_allowance_charge(
+                b"false",
+                b"1.00",
+                after=b"<cac:TaxCategory><cbc:ID>Z</cbc:ID><cbc:Percent>0</cbc:Percent>"
+                b"<cac:TaxScheme><cbc:ID> vat </cbc:ID></cac:TaxScheme></cac:TaxCategory>",
+            ),
+        ],
+    )
+    for data in (cii, ubl):
+        result = read_invoice(data)
+        assert result.invoice.allowances == (
+            AllowanceCharge(amount=Decimal("1.00"), vat_category_code="Z", vat_rate=Decimal(0)),
+        )
+        assert dropped(result) == ["BT-95"]
+    ubl = with_allowances_and_charges(
+        [],
+        [
+            ubl_allowance_charge(
+                b"true",
+                b"4.50",
+                after=b"<cac:TaxCategory><cbc:ID>Z</cbc:ID><cbc:Percent>0</cbc:Percent>"
+                b"<cac:TaxScheme><cbc:ID/></cac:TaxScheme>"
+                b"<cac:TaxScheme><cbc:ID>LOC</cbc:ID></cac:TaxScheme></cac:TaxCategory>",
+            ),
+        ],
+    )[1]
+    result = read_invoice(ubl)
+    assert result.invoice.charges == (replace(STANDARD_RATE, amount=Decimal("4.50")),)
+    assert dropped(result) == ["BT-102"]
+
+
 def test_a_ubl_lines_allowance_isnt_the_invoices() -> None:
     ubl = edit(
         UBL,

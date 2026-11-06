@@ -21,6 +21,7 @@ tests/
 typings/                  type stubs for saxonche and factur-x, which ship none
 scripts/
   corpus_report.py        runs a corpus of invoices through Haflinger
+  term_report.py          the business terms invoices carry that the model lacks
   benchmark.py            time and memory against the specs' limits
 docs/                     specs, architecture, ADRs, guides, backlog
 AGENTS.md                 rules for coding agents; CLAUDE.md imports it
@@ -125,6 +126,14 @@ The same clone serves the benchmark of [REQ-002-PRS-NF002](../specs/req-002-conf
 
 ```sh
 uv run python scripts/benchmark.py /path/to/zugferd-corpus
+```
+
+## The terms the model doesn't hold yet
+
+`scripts/term_report.py` orders the model's growth by what invoices commonly carry ([ADR-007](../arc42/adr/ADR-007-model-scope-and-editions.md)). It runs every PDF and XML file of the KoSIT test suite, and of each directory given, through KoSIT's reading stylesheet, which names every business term it finds, and prints a Markdown table of the terms of EN 16931 that the model doesn't hold (those REQ-001-PRS-F001's table doesn't name), with each one's group and how many files of each directory carry it. XRechnung's extension is left out, the terms within its groups too (such as a sub-invoice line's), and so are files above 5 MB, as in the corpus report; a file KoSIT's stylesheet fails on, by its time limit or a crash, is counted apart from those refused. The KoSIT suite is made to cover every term, so its counts show what the tests exercise; a clone of the ZUGFeRD corpus shows what invoices carry:
+
+```sh
+uv run python scripts/term_report.py /path/to/zugferd-corpus
 ```
 
 ## References

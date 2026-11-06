@@ -57,6 +57,13 @@ class Row:
     seconds: str = ""
 
 
+def invoice_files(directory: Path) -> list[Path]:
+    """The PDF and XML files below `directory`, in order."""
+    return sorted(
+        p for p in directory.rglob("*") if p.is_file() and p.suffix.lower() in (".pdf", ".xml")
+    )
+
+
 def outcome(error: Exception) -> str:
     if isinstance(error, InvoiceReadError):
         return f"refused: {error}"
@@ -154,9 +161,7 @@ def main(arguments: list[str]) -> int:
         print(__doc__, file=sys.stderr)
         return 2
     base = Path(arguments[0])
-    files = sorted(
-        p for p in base.rglob("*") if p.is_file() and p.suffix.lower() in (".pdf", ".xml")
-    )
+    files = invoice_files(base)
     rows: list[Row] = []
     for path in files:
         start = time.perf_counter()
