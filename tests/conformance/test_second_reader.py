@@ -47,3 +47,21 @@ def test_kosit_still_leaves_the_subject_code_in_ubl_notes() -> None:
     (note,) = kosit.read_invoice(data).invoice.notes
     assert note.subject_code is None
     assert (note.text or "").startswith("#ADU#")
+
+
+def test_kosit_leaves_out_the_references_documents_as_supporting_documents() -> None:
+    """KoSIT's stylesheets give BT-17's and BT-18's additional documents as supporting documents
+    too where they hold a description or location; REQ-003-PRS-F002 reads neither as one."""
+    data = (SUITE / "standard/01.01a-INVOICE_uncefact.xml").read_bytes()
+    documents = (
+        b"<ram:AdditionalReferencedDocument><ram:IssuerAssignedID>T-17</ram:IssuerAssignedID>"
+        b"<ram:TypeCode>50</ram:TypeCode><ram:Name>Ausschreibung</ram:Name>"
+        b"</ram:AdditionalReferencedDocument><ram:AdditionalReferencedDocument>"
+        b"<ram:IssuerAssignedID>O-18</ram:IssuerAssignedID>"
+        b"<ram:URIID>https://example.com/o-18</ram:URIID><ram:TypeCode>130</ram:TypeCode>"
+        b"</ram:AdditionalReferencedDocument>"
+    )
+    end = b"</ram:BuyerTradeParty>"
+    assert data.count(end) == 1
+    invoice = kosit.read_invoice(data.replace(end, end + documents)).invoice
+    assert (invoice.tender_or_lot_reference, invoice.supporting_documents) == ("T-17", ())

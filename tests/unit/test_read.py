@@ -29,6 +29,7 @@ from haflinger import (
     Period,
     PrecedingInvoice,
     ReadResult,
+    SupportingDocument,
     TaxRepresentative,
     read_invoice,
 )
@@ -2281,6 +2282,7 @@ CII_REFERENCES = edit(
             + cii_referenced(b"BuyerOrderReferencedDocument", b"PO-13")
             + cii_referenced(b"ContractReferencedDocument", b"C-12")
             + cii_document(b"916", b"Anhang")
+            + cii_document(b"916", b"Ausschreibung")
             + cii_document(b"50", b"T-17")
             + cii_document(b" 130 ", b"O-18", b"<ram:ReferenceTypeCode>ABZ</ram:ReferenceTypeCode>")
             + b"<ram:SpecifiedProcuringProject><ram:ID>P-11</ram:ID>"
@@ -2297,7 +2299,8 @@ CII_REFERENCES = edit(
     b"</ram:ReceivableSpecifiedTradeAccountingAccount></ram:ApplicableHeaderTradeSettlement>",
 )
 # In UBL's order; an additional document of type code 50 is a project reference only in a
-# credit note.
+# credit note, and in an invoice a supporting document, as one of any type code other than 130
+# is.
 UBL_REFERENCES = edit(
     edit(
         UBL,
@@ -2331,6 +2334,10 @@ def with_references(invoice: Invoice) -> Invoice:
         tender_or_lot_reference="T-17",
         invoiced_object_id=Identifier(value="O-18", scheme="ABZ"),
         buyer_accounting_reference="A-19",
+        supporting_documents=(
+            SupportingDocument(reference="Anhang"),
+            SupportingDocument(reference="Ausschreibung"),
+        ),
     )
 
 
@@ -2338,7 +2345,8 @@ def with_references(invoice: Invoice) -> Invoice:
     ("base", "data"), [(CII, CII_REFERENCES), (UBL, UBL_REFERENCES)], ids=["cii", "ubl"]
 )
 def test_the_document_references(base: bytes, data: bytes) -> None:
-    """BT-11 to BT-19; a supporting document (BG-24) is neither BT-17 nor BT-18."""
+    """BT-11 to BT-19; a supporting document (BG-24) is neither BT-17 nor BT-18, and a UBL
+    one has any type code but 130."""
     result = read_invoice(data)
     assert result.invoice == with_references(read_invoice(base).invoice)
     assert result.findings == ()
@@ -2451,6 +2459,212 @@ def test_a_supporting_documents_findings_name_bg_24() -> None:
     )
     result = read_invoice(data)
     assert [f.text.split(" (")[0] for f in result.findings] == ["BG-24, BT-17, BT-18"]
+
+
+# REQ-003-PRS-F002: the supporting documents
+
+ATTACHMENT = b'mimeCode="application/pdf" filename="a-1.pdf">JVBERi0xLjcK'
+CII_SUPPORTING = (
+    b"<ram:AdditionalReferencedDocument><ram:IssuerAssignedID>A-1</ram:IssuerAssignedID>"
+    b"<ram:URIID>https://example.com/a-1.pdf</ram:URIID><ram:TypeCode>916</ram:TypeCode>"
+    b"<ram:Name>Stundenzettel</ram:Name><ram:AttachmentBinaryObject "
+    + ATTACHMENT
+    + b"</ram:AttachmentBinaryObject></ram:AdditionalReferencedDocument>"
+    + cii_document(b"916", b"A-2")
+)
+UBL_SUPPORTING = (
+    b"<cac:AdditionalDocumentReference><cbc:ID>A-1</cbc:ID>"
+    b"<cbc:DocumentDescription>Stundenzettel</cbc:DocumentDescription><cac:Attachment>"
+    b"<cbc:EmbeddedDocumentBinaryObject "
+    + ATTACHMENT
+    + b"</cbc:EmbeddedDocumentBinaryObject><cac:ExternalReference>"
+    b"<cbc:URI>https://example.com/a-1.pdf</cbc:URI></cac:ExternalReference></cac:Attachment>"
+    b"</cac:AdditionalDocumentReference>"
+    b"<cac:AdditionalDocumentReference><cbc:ID>A-2</cbc:ID></cac:AdditionalDocumentReference>"
+)
+SUPPORTING_DOCUMENTS = (
+    SupportingDocument(
+        reference="A-1",
+        description="Stundenzettel",
+        external_location="https://example.com/a-1.pdf",
+    ),
+    SupportingDocument(reference="A-2"),
+)
+
+
+@pytest.mark.parametrize(
+    ("base", "data"),
+    [
+        (CII, edit(CII, CII_BUYER_END, CII_BUYER_END + CII_SUPPORTING)),
+        (UBL, edit(UBL, UBL_SUPPLIER, UBL_SUPPORTING + UBL_SUPPLIER)),
+    ],
+    ids=["cii", "ubl"],
+)
+def test_the_supporting_documents(base: bytes, data: bytes) -> None:
+    """BG-24 with every term the model holds, in document order; the attached document (BT-125)
+    isn't held."""
+    result = read_invoice(data)
+    assert result.invoice == replace(
+        read_invoice(base).invoice, supporting_documents=SUPPORTING_DOCUMENTS
+    )
+    assert result.findings == ()
+
+
+def test_a_credit_notes_supporting_document_beside_its_project_reference() -> None:
+    note = (ROOT / "tests/data/cen-en16931/ubl/examples/ubl-tc434-creditnote1.xml").read_bytes()
+    data = edit(
+        note,
+        b"<cac:AccountingSupplierParty>",
+        ubl_document(b"50", b"<cbc:ID>P-11</cbc:ID>")
+        + b"<cac:AdditionalDocumentReference><cbc:ID>A-1</cbc:ID>"
+        b"</cac:AdditionalDocumentReference><cac:AccountingSupplierParty>",
+    )
+    invoice = read_invoice(data).invoice
+    assert invoice.project_reference == "P-11"
+    assert invoice.supporting_documents == (SupportingDocument(reference="A-1"),)
+
+
+@pytest.mark.parametrize(
+    "type_code",
+    [b"<ram:TypeCode>751</ram:TypeCode>", b""],
+    ids=["other-type-code", "without-type-code"],
+)
+def test_a_cii_additional_document_of_another_type_code_is_dropped(type_code: bytes) -> None:
+    """EN 16931-3-3 binds BG-24 to the type code 916."""
+    document = (
+        b"<ram:AdditionalReferencedDocument><ram:IssuerAssignedID>A-1</ram:IssuerAssignedID>"
+        + type_code
+        + b"<ram:Name>Stundenzettel</ram:Name></ram:AdditionalReferencedDocument>"
+    )
+    result = read_invoice(edit(CII, CII_BUYER_END, CII_BUYER_END + document))
+    assert result.invoice.supporting_documents == ()
+    assert dropped(result) == ["BG-24"]
+
+
+@pytest.mark.parametrize(
+    ("base", "data"),
+    [
+        (
+            CII,
+            edit(
+                CII,
+                CII_BUYER_END,
+                CII_BUYER_END
+                + b"<ram:AdditionalReferencedDocument><ram:TypeCode>916</ram:TypeCode>"
+                b"<ram:AttachmentBinaryObject "
+                + ATTACHMENT
+                + b"</ram:AttachmentBinaryObject></ram:AdditionalReferencedDocument>",
+            ),
+        ),
+        (
+            UBL,
+            edit(
+                UBL,
+                UBL_SUPPLIER,
+                b"<cac:AdditionalDocumentReference><cac:Attachment>"
+                b"<cbc:EmbeddedDocumentBinaryObject "
+                + ATTACHMENT
+                + b"</cbc:EmbeddedDocumentBinaryObject></cac:Attachment>"
+                b"</cac:AdditionalDocumentReference>" + UBL_SUPPLIER,
+            ),
+        ),
+    ],
+    ids=["cii", "ubl"],
+)
+def test_a_supporting_document_holding_only_an_attachment_isnt_read(
+    base: bytes, data: bytes
+) -> None:
+    result = read_invoice(data)
+    assert result.invoice == read_invoice(base).invoice
+    assert result.findings == ()
+
+
+@pytest.mark.parametrize(
+    "type_code",
+    [b"<ram:TypeCode>751</ram:TypeCode>", b"<ram:TypeCode>916</ram:TypeCode>"],
+    ids=["other-type-code", "916"],
+)
+def test_a_cii_document_holding_only_an_attachment_isnt_reported(type_code: bytes) -> None:
+    """The attached document (BT-125) isn't held, whatever the type code; no term is lost."""
+    document = (
+        b"<ram:AdditionalReferencedDocument>"
+        + type_code
+        + b"<ram:AttachmentBinaryObject "
+        + ATTACHMENT
+        + b"</ram:AttachmentBinaryObject></ram:AdditionalReferencedDocument>"
+    )
+    result = read_invoice(edit(CII, CII_BUYER_END, CII_BUYER_END + document))
+    assert result.invoice.supporting_documents == ()
+    assert result.findings == ()
+
+
+@pytest.mark.parametrize(
+    ("data", "tender", "invoiced", "drops"),
+    [
+        (
+            edit(
+                CII,
+                CII_BUYER_END,
+                CII_BUYER_END + cii_document(b"50", b"T-17", b"<ram:Name>Ausschreibung</ram:Name>"),
+            ),
+            "T-17",
+            None,
+            ["BT-123"],
+        ),
+        (
+            edit(
+                CII,
+                CII_BUYER_END,
+                CII_BUYER_END + b"<ram:AdditionalReferencedDocument>"
+                b"<ram:URIID>https://example.com/a-1.pdf</ram:URIID>"
+                b"<ram:TypeCode>130</ram:TypeCode><ram:Name>Stundenzettel</ram:Name>"
+                b"</ram:AdditionalReferencedDocument>",
+            ),
+            None,
+            None,
+            ["BT-124", "BT-123"],
+        ),
+        (
+            edit(
+                UBL,
+                UBL_SUPPLIER,
+                b"<cac:AdditionalDocumentReference><cbc:ID>O-18</cbc:ID>"
+                b"<cbc:DocumentTypeCode>130</cbc:DocumentTypeCode>"
+                b"<cbc:DocumentDescription>Stundenzettel</cbc:DocumentDescription>"
+                b"</cac:AdditionalDocumentReference>" + UBL_SUPPLIER,
+            ),
+            None,
+            Identifier(value="O-18"),
+            ["BT-123"],
+        ),
+        (
+            edit(
+                UBL,
+                UBL_SUPPLIER,
+                b"<cac:AdditionalDocumentReference>"
+                b"<cbc:DocumentTypeCode>130</cbc:DocumentTypeCode>"
+                b"<cbc:DocumentDescription>Stundenzettel</cbc:DocumentDescription><cac:Attachment>"
+                b"<cac:ExternalReference><cbc:URI>https://example.com/a-1.pdf</cbc:URI>"
+                b"</cac:ExternalReference></cac:Attachment></cac:AdditionalDocumentReference>"
+                + UBL_SUPPLIER,
+            ),
+            None,
+            None,
+            ["BT-123", "BT-124"],
+        ),
+    ],
+    ids=["cii-tender", "cii-130-without-identifier", "ubl-invoiced", "ubl-130-without-identifier"],
+)
+def test_a_description_or_location_in_a_references_document_is_dropped(
+    data: bytes, tender: str | None, invoiced: Identifier | None, drops: list[str]
+) -> None:
+    """The type code decides: an additional document of BT-17's or BT-18's type code holds only
+    its identifier, and is no supporting document even without one."""
+    result = read_invoice(data)
+    assert result.invoice.tender_or_lot_reference == tender
+    assert result.invoice.invoiced_object_id == invoiced
+    assert result.invoice.supporting_documents == ()
+    assert dropped(result) == drops
 
 
 # REQ-003-PRS-F002: the payee, the tax representative and the parties' remaining terms
