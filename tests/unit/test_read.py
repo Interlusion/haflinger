@@ -5,6 +5,7 @@ REQ-001-PRS-F005, REQ-001-PRS-NF001 and REQ-001-PRS-NF003 for reading. Most inpu
 case 01.01a with one change.
 """
 
+import re
 from dataclasses import replace
 from datetime import date
 from decimal import Decimal
@@ -1990,6 +1991,7 @@ CII_NET_PRICE = b"<ram:NetPriceProductTradePrice>"
 CII_NET_END = b"</ram:NetPriceProductTradePrice>"
 UBL_SELLER_ITEM = b"<cac:SellersItemIdentification>"
 UBL_PRICE_AMOUNT = b'<cbc:PriceAmount currencyID="EUR">288.79</cbc:PriceAmount>'
+FIRST_LINE_PERIOD = Period(start=date(2016, 1, 1), end=date(2016, 12, 31))
 FIRST_LINE = InvoiceLine(
     id="Zeitschrift [...]",
     note="Die letzte Lieferung im Rahmen des abgerechneten Abonnements erfolgt in 12/2016"
@@ -1997,6 +1999,7 @@ FIRST_LINE = InvoiceLine(
     quantity=Decimal(1),
     unit_code="XPP",
     net_amount=Decimal("288.79"),
+    period=FIRST_LINE_PERIOD,
     net_price=Decimal("288.79"),
     vat_category_code="S",
     vat_rate=Decimal(7),
@@ -2053,8 +2056,8 @@ def ubl_price(*parts: bytes) -> bytes:
 
 
 def test_a_lines_note_price_and_item_details() -> None:
-    """Every term of BT-127 and BG-29 to BG-31; the gross price less the discount is the net
-    price."""
+    """Every term of BT-127 and BG-26 to BG-31 the model holds, BG-26 from 01.01a's first line;
+    the gross price less the discount is the net price."""
     cii = cii_gross_price(
         b"<ram:ChargeAmount>300.00</ram:ChargeAmount>",
         b'<ram:BasisQuantity unitCode="XPP">1</ram:BasisQuantity>',
@@ -2101,6 +2104,64 @@ def test_a_credit_notes_item_details() -> None:
     note = (ROOT / "tests/data/cen-en16931/ubl/examples/ubl-tc434-creditnote1.xml").read_bytes()
     line = read_invoice(note).invoice.lines[0]
     assert (line.item_description, line.seller_item_id) == ("Exonération du versement du PP", "V55")
+
+
+# REQ-003-PRS-F002: a line's period, read as the invoicing period is
+
+CII_LINE_DATES = {
+    "start": re.compile(rb"<ram:StartDateTime>.*?</ram:StartDateTime>", re.DOTALL),
+    "end": re.compile(rb"<ram:EndDateTime>.*?</ram:EndDateTime>", re.DOTALL),
+}
+UBL_LINE_DATES = {
+    "start": b"<cbc:StartDate>2016-01-01</cbc:StartDate>",
+    "end": b"<cbc:EndDate>2016-12-31</cbc:EndDate>",
+}
+UBL_LINE_PERIOD = b"<cac:InvoicePeriod>"
+
+
+@pytest.mark.parametrize("left_out", ["start", "end"])
+def test_a_line_period_with_only_a_start_or_an_end(left_out: str) -> None:
+    cii, count = CII_LINE_DATES[left_out].subn(b"", CII)
+    assert count == 1
+    ubl = edit(UBL, UBL_LINE_DATES[left_out], b"")
+    for data in (cii, ubl):
+        result = read_invoice(data)
+        assert result.invoice.lines[0].period == replace(FIRST_LINE_PERIOD, **{left_out: None})
+        assert result.invoice.invoicing_period is None
+        assert result.findings == ()
+
+
+def test_a_ubl_lines_period_without_the_models_terms_doesnt_count() -> None:
+    """A line's first cac:InvoicePeriod holding only a term the model doesn't read leaves the
+    period to the next one; a further one holding a date is dropped."""
+    ubl = edit(
+        UBL,
+        UBL_LINE_PERIOD,
+        b"<cac:InvoicePeriod><cbc:DescriptionCode>35</cbc:DescriptionCode></cac:InvoicePeriod>"
+        + UBL_LINE_PERIOD,
+    )
+    ubl = edit(
+        ubl,
+        b"<cac:OrderLineReference>",
+        b"<cac:InvoicePeriod><cbc:StartDate>2016-02-01</cbc:StartDate></cac:InvoicePeriod>"
+        b"<cac:OrderLineReference>",
+    )
+    result = read_invoice(ubl)
+    assert result.invoice.lines[0].period == FIRST_LINE_PERIOD
+    assert dropped(result) == ["BG-26"]
+
+
+def test_a_credit_notes_line_period() -> None:
+    note = (ROOT / "tests/data/cen-en16931/ubl/examples/ubl-tc434-creditnote1.xml").read_bytes()
+    end = b"</cbc:CreditedQuantity>"
+    note = edit(
+        note,
+        end,
+        end + b"<cac:InvoicePeriod><cbc:EndDate>2017-01-31</cbc:EndDate></cac:InvoicePeriod>",
+    )
+    result = read_invoice(note)
+    assert result.invoice.lines[0].period == Period(end=date(2017, 1, 31))
+    assert result.findings == ()
 
 
 GROSS_AMOUNT = b"<ram:ChargeAmount>288.79</ram:ChargeAmount>"
