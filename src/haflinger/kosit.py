@@ -4,9 +4,10 @@
 KoSIT's stylesheets turn a CII invoice, a UBL invoice or a UBL credit note into one semantic XML
 in which every element carries its business term ID (`xr:id="BT-1"`). This module reads the
 model from that XML by business term ID alone, apart from the root elements that pick the
-stylesheet and two limits of KoSIT's stylesheet: the UBL notes' subject codes, which
-`with_subject_codes` evens out, and a CII account given in two forms, for which `_account` reads
-the source path KoSIT's stylesheet records.
+stylesheet and three limits of KoSIT's stylesheet: the UBL notes' subject codes, which
+`with_subject_codes` evens out, and a CII account given in two forms and BT-17's and BT-18's
+additional documents given as supporting documents too, for which `_account` and
+`_supporting_documents` read the source path KoSIT's stylesheet records.
 """
 
 import re
@@ -48,6 +49,7 @@ from haflinger.model import (
     PaymentInstructions,
     Period,
     PrecedingInvoice,
+    SupportingDocument,
     Syntax,
     TaxRepresentative,
     Totals,
@@ -181,6 +183,7 @@ def _invoice(invoice: Node, syntax: Syntax) -> Invoice:
         charges=tuple(_allowance_charge(node, CHARGE) for node in invoice.findall(_term("BG-21"))),
         totals=_totals(invoice.find(_term("BG-22"))),
         vat_breakdown=tuple(_vat_breakdown(vat) for vat in invoice.findall(_term("BG-23"))),
+        supporting_documents=_supporting_documents(invoice),
         lines=tuple(_line(line) for line in invoice.findall(_term("BG-25"))),
     )
 
@@ -315,12 +318,45 @@ def _payment_instructions(payment: Node | None) -> PaymentInstructions | None:
     )
 
 
+def _supporting_documents(invoice: Node) -> tuple[SupportingDocument, ...]:
+    """BG-24. KoSIT's stylesheets give BT-17's and BT-18's additional documents as supporting
+    documents too, the CII ones where they hold a description or location, where
+    REQ-003-PRS-F002 reads neither as one: one that BT-17's or BT-18's source path lies in is
+    left out (REQ-003-PRS-F005)."""
+    references = [
+        _source(node) for term in ("BT-17", "BT-18") for node in invoice.findall(_term(term))
+    ]
+    return tuple(
+        document
+        for node in invoice.findall(_term("BG-24"))
+        if not (
+            (source := _source(node))
+            and any(reference.startswith(f"{source}/") for reference in references)
+        )
+        and (
+            document := none_if_empty(
+                SupportingDocument(
+                    reference=_text(node, "BT-122"),
+                    description=_text(node, "BT-123"),
+                    external_location=_text(node, "BT-124"),
+                )
+            )
+        )
+        is not None
+    )
+
+
+def _source(node: Node) -> str:
+    """The path of the element in the invoice that KoSIT's stylesheet read `node` from."""
+    return node.element.get(f"{{{XR}}}src", "")
+
+
 def _account(transfer: Node) -> str | None:
     """BT-84. KoSIT's stylesheet gives a CII account's `ram:ProprietaryID` and `ram:IBANID` both
     as BT-84, the first first, where REQ-003-PRS-F002 reads the IBAN: the one from `ram:IBANID`
     is taken (REQ-003-PRS-F005)."""
     accounts = transfer.holding("BT-84", _term("BT-84"))
-    ibans = [node for node in accounts if _IBAN_SOURCE.search(node.element.get(f"{{{XR}}}src", ""))]
+    ibans = [node for node in accounts if _IBAN_SOURCE.search(_source(node))]
     chosen = ibans or accounts
     return chosen[0].value if chosen else None
 

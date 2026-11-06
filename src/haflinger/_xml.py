@@ -195,8 +195,10 @@ class Node:
             found = following
         return [Node(self.reading, element, location) for element, location in found]
 
-    def holds_value(self) -> bool:
-        """Whether the element or one below it holds text."""
+    def holds_value(self, *paths: str) -> bool:
+        """Whether the element or one below it holds text; with `paths`, one at any of them."""
+        if paths:
+            return any(node.holds_value() for path in paths for node in self.findall(path))
         return any(_stripped(element.text) is not None for element in self.element.iter())
 
     def group(self, path: str, group: str, *terms: str) -> Node | None:
@@ -204,11 +206,7 @@ class Node:
         further one holding a value is left out with a finding. Where `terms` gives the paths of
         the group's terms, only an element holding a value at one of them counts."""
         return first_group(
-            [
-                node
-                for node in self.findall(path)
-                if not terms or any(_holds(node, term) for term in terms)
-            ],
+            [node for node in self.findall(path) if not terms or node.holds_value(*terms)],
             group,
         )
 
@@ -314,15 +312,25 @@ def vat_only(nodes: list[Node], kind: str, group: str) -> list[Node]:
     return taxes
 
 
-def by_code(nodes: list[Node], path: str, label: str) -> dict[str, list[Node]]:
-    """`nodes` by the code at `path`, such as a referenced document's type code, each code's in
-    document order; one without a code is left out."""
-    found: dict[str, list[Node]] = {}
+def by_code(nodes: list[Node], path: str, label: str) -> dict[str | None, list[Node]]:
+    """Those of `nodes` holding a value by the code at `path`, such as a referenced document's
+    type code, each code's in document order; those without a code under None."""
+    found: dict[str | None, list[Node]] = {}
     for node in nodes:
-        code = node.text(path, label)
-        if code is not None:
-            found.setdefault(code, []).append(node)
+        if node.holds_value():
+            found.setdefault(node.text(path, label), []).append(node)
     return found
+
+
+def identifier_only(documents: list[Node], terms: tuple[tuple[str, str], ...], label: str) -> None:
+    """`documents` are the additional documents of a reference, such as BT-18's, which hold only
+    its identifier: each value at the paths of `terms`, the paths and IDs of the terms only a
+    supporting document holds, is left out with a finding naming its term and `label`
+    (REQ-003-PRS-F002)."""
+    for document in documents:
+        for path, term in terms:
+            for node in document.holding(term, path):
+                node.drop(f"{term} in {label} is left out: {node.value!r}")
 
 
 def first_reference(
@@ -334,9 +342,9 @@ def first_reference(
     scheme at `scheme`."""
     found: list[Node] = []
     for document in documents:
-        if _holds(document, path):
+        if document.holds_value(path):
             found.append(document)
-        elif scheme is not None and _holds(document, scheme):
+        elif scheme is not None and document.holds_value(scheme):
             document.drop(f"{term}-1 without its identifier ({term}) is left out")
     for document in found[1:]:
         value = next((node.value for node in document.findall(path) if node.holds_value()), None)
@@ -350,11 +358,6 @@ def first_of(nodes: list[Node], term: str) -> Node | None:
     for node in nodes[1:]:
         node.drop(f"{term} appears more than once; this one is left out: {node.value!r}")
     return nodes[0] if nodes else None
-
-
-def _holds(node: Node, path: str) -> bool:
-    """Whether an element at `path` below `node` holds a value."""
-    return any(found.holds_value() for found in node.findall(path))
 
 
 def _stripped(text: str | None) -> str | None:
