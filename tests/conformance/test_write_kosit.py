@@ -21,9 +21,9 @@ MISSING_TERMS = {
     "BR-CO-16": "BG-DEX-09 third party payments of the XRechnung extension, which the extension"
     " allows into BT-115; outside the model by ADR-007, so the entry stays while the extension"
     " case is written as XRechnung",
-    "BR-CL-10": "BT-29-1 and BT-46-1 with the schemes XR01 and XR03 for digital health apps, which"
-    " only XRechnung's extension allows beside the ISO 6523 list; the entry stays while the"
-    " extension case is written as XRechnung",
+    "BR-CL-10": "BT-29-1, BT-46-1 and BT-60-1 with the schemes XR01 and XR03 for digital health"
+    " apps, which only XRechnung's extension allows beside the ISO 6523 list; the entry stays"
+    " while the extension case is written as XRechnung",
 }
 # Rules listed above that may fail only on these files.
 ONLY_ON = {"BR-CO-16": {"05.01a-INVOICE_ubl.xml"}, "BR-CL-10": {"04.05a-INVOICE_uncefact.xml"}}

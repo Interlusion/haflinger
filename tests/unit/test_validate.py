@@ -225,13 +225,16 @@ MINIMUM = replace(
     WITHOUT_LINES,
     vat_breakdown=(),
     buyer=Party(name=MODEL.buyer.name),
+    payee=None,
+    tax_representative=None,
     payment_terms=None,
     payment_instructions=None,
 )
-# BASIC has no seller contact, and of an item only its standard identifier and its name.
+# BASIC has no seller contact or additional legal information, and of an item only its standard
+# identifier and its name.
 BASIC = replace(
     MODEL,
-    seller=replace(MODEL.seller, contact=None),
+    seller=replace(MODEL.seller, contact=None, additional_legal_information=None),
     lines=tuple(
         replace(line, item_description=None, seller_item_id=None, buyer_item_id=None)
         for line in MODEL.lines

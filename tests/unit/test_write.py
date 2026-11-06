@@ -21,10 +21,12 @@ from haflinger import (
     InvoiceReadError,
     InvoiceWriteError,
     Note,
+    Payee,
     PaymentCard,
     PaymentInstructions,
     Period,
     PrecedingInvoice,
+    TaxRepresentative,
     read_invoice,
     write_cii,
 )
@@ -113,6 +115,12 @@ def test_refuses_an_invalid_invoice_after_writing() -> None:
             "BT-157 is not an Identifier",
         ),
         (replace(INVOICE, invoiced_object_id="O-18"), "BT-18 is not an Identifier"),
+        (replace(INVOICE, payee="Example Factoring GmbH"), "BG-10 is not a Payee"),
+        (replace(INVOICE, tax_representative="Example"), "BG-11 is not a TaxRepresentative"),
+        (
+            replace(INVOICE, seller=replace(SELLER, legal_registration_id="HRB 1")),
+            "BT-30 is not an Identifier",
+        ),
         (replace(INVOICE, notes=[Note(text="a list")]), "BG-1 is not a tuple of Note"),
         (replace(INVOICE, seller="Example GmbH"), "BG-4 is not a Party"),
         (replace(INVOICE, seller=replace(SELLER, contact="Sales")), "BG-6 is not a Contact"),
@@ -141,6 +149,9 @@ def test_refuses_an_invalid_invoice_after_writing() -> None:
         "bt-150-without-bt-149",
         "str-standard-item-id",
         "str-invoiced-object",
+        "str-payee",
+        "str-tax-representative",
+        "str-legal-registration",
         "list",
         "str-party",
         "str-contact",
@@ -497,6 +508,29 @@ def test_refuses_what_cant_be_written_sensibly(invoice: Any, reason: str) -> Non
             replace(INVOICE, invoiced_object_id=Identifier(scheme="ABZ")),
             "the invoice holds an invoiced object identifier without its value (BT-18)",
         ),
+        (replace(INVOICE, payee=Payee()), "BG-10 holds a payee without any term"),
+        (
+            replace(INVOICE, tax_representative=TaxRepresentative()),
+            "BG-11 holds a tax representative without any term",
+        ),
+        (
+            replace(INVOICE, buyer=replace(BUYER, additional_legal_information="GmbH")),
+            "BT-33 is the seller's alone; the buyer (BG-7) has none",
+        ),
+        (
+            replace(INVOICE, buyer=replace(BUYER, additional_legal_information="")),
+            "BT-33 is the seller's alone; the buyer (BG-7) has none",
+        ),
+        (
+            replace(
+                INVOICE, seller=replace(SELLER, legal_registration_id=Identifier(scheme="0002"))
+            ),
+            "BG-4 holds a legal registration identifier without its value (BT-30)",
+        ),
+        (
+            replace(INVOICE, payee=Payee(name="Example", identifier=Identifier(scheme="0088"))),
+            "BG-10 holds an identifier without its value (BT-60)",
+        ),
     ],
     ids=[
         "empty-seller-contact",
@@ -525,6 +559,12 @@ def test_refuses_what_cant_be_written_sensibly(invoice: Any, reason: str) -> Non
         "two-buyer-identifiers",
         "standard-item-id-without-value",
         "invoiced-object-without-value",
+        "empty-payee",
+        "empty-tax-representative",
+        "buyer-bt-33",
+        "empty-buyer-bt-33",
+        "legal-registration-without-value",
+        "payee-identifier-without-value",
     ],
 )
 def test_refuses_parties_that_cant_be_written(invoice: Any, reason: str) -> None:
@@ -809,6 +849,65 @@ def test_writes_allowances_and_charges_and_reads_them_back(specification_id: str
         in document
     )
     assert document.index(b"<udt:Indicator>false") < document.index(b"<udt:Indicator>true")
+    assert read_invoice(document).invoice == invoice
+
+
+# REQ-004-PRS-F003: the payee, the tax representative and the parties' remaining terms
+
+PAYEE_AND_REPRESENTATIVE = replace(
+    INVOICE,
+    seller=replace(
+        SELLER,
+        legal_registration_id=Identifier(value="[HRA-Eintrag]", scheme="0002"),
+        additional_legal_information="Kapitalgesellschaft",
+    ),
+    payee=Payee(
+        name="Example Factoring GmbH",
+        identifier=Identifier(value="4000001000005", scheme="0088"),
+        legal_registration_id=Identifier(value="HRB 12345", scheme="0002"),
+    ),
+    tax_representative=TaxRepresentative(
+        name="Example Steuervertretung GmbH",
+        vat_id="DE123456789",
+        address_line_1="Musterstrasse 1",
+        address_line_2="Hinterhaus",
+        address_line_3="3. OG",
+        city="Berlin",
+        post_code="10115",
+        country_subdivision="Berlin",
+        country_code="DE",
+    ),
+)
+
+
+@pytest.mark.parametrize("specification_id", [EN16931, XRECHNUNG])
+def test_writes_the_payee_and_tax_representative_and_reads_them_back(
+    specification_id: str,
+) -> None:
+    invoice = replace(PAYEE_AND_REPRESENTATIVE, specification_id=specification_id)
+    document = write_cii(invoice)
+    assert (
+        b"<ram:Name>[Seller name]</ram:Name><ram:Description>Kapitalgesellschaft</ram:Description>"
+        b'<ram:SpecifiedLegalOrganization><ram:ID schemeID="0002">[HRA-Eintrag]</ram:ID>'
+        in document
+    )
+    assert (
+        b"</ram:BuyerTradeParty><ram:SellerTaxRepresentativeTradeParty>"
+        b"<ram:Name>Example Steuervertretung GmbH</ram:Name><ram:PostalTradeAddress>"
+        b"<ram:PostcodeCode>10115</ram:PostcodeCode><ram:LineOne>Musterstrasse 1</ram:LineOne>"
+        b"<ram:LineTwo>Hinterhaus</ram:LineTwo><ram:LineThree>3. OG</ram:LineThree>"
+        b"<ram:CityName>Berlin</ram:CityName><ram:CountryID>DE</ram:CountryID>"
+        b"<ram:CountrySubDivisionName>Berlin</ram:CountrySubDivisionName></ram:PostalTradeAddress>"
+        b'<ram:SpecifiedTaxRegistration><ram:ID schemeID="VA">DE123456789</ram:ID>'
+        b"</ram:SpecifiedTaxRegistration></ram:SellerTaxRepresentativeTradeParty>" in document
+    )
+    assert (
+        b"<ram:InvoiceCurrencyCode>EUR</ram:InvoiceCurrencyCode><ram:PayeeTradeParty>"
+        b'<ram:GlobalID schemeID="0088">4000001000005</ram:GlobalID>'
+        b"<ram:Name>Example Factoring GmbH</ram:Name><ram:SpecifiedLegalOrganization>"
+        b'<ram:ID schemeID="0002">HRB 12345</ram:ID></ram:SpecifiedLegalOrganization>'
+        b"</ram:PayeeTradeParty>" in document
+    )
     assert read_invoice(document).invoice == invoice
 
 
