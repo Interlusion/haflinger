@@ -228,7 +228,15 @@ MINIMUM = replace(
     payment_terms=None,
     payment_instructions=None,
 )
-BASIC = replace(MODEL, seller=replace(MODEL.seller, contact=None))
+# BASIC has no seller contact, and of an item only its standard identifier and its name.
+BASIC = replace(
+    MODEL,
+    seller=replace(MODEL.seller, contact=None),
+    lines=tuple(
+        replace(line, item_description=None, seller_item_id=None, buyer_item_id=None)
+        for line in MODEL.lines
+    ),
+)
 BASIC_WL = replace(
     WITHOUT_LINES,
     totals=replace(WITHOUT_LINES.totals, line_net_total=MODEL.totals.line_net_total),  # type: ignore[arg-type]

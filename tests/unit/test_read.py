@@ -19,6 +19,7 @@ from haflinger import (
     Delivery,
     DirectDebit,
     Identifier,
+    InvoiceLine,
     InvoiceReadError,
     Note,
     PaymentCard,
@@ -896,6 +897,28 @@ def test_an_empty_vat_breakdown_is_missing() -> None:
             "BG-31",
         ),
         (
+            CII,
+            b"</ram:SpecifiedTradeProduct>",
+            b"</ram:SpecifiedTradeProduct><ram:SpecifiedTradeProduct><ram:Name>Other item"
+            b"</ram:Name></ram:SpecifiedTradeProduct>",
+            "BG-31",
+        ),
+        (
+            CII,
+            b"</ram:SpecifiedLineTradeAgreement>",
+            b"</ram:SpecifiedLineTradeAgreement><ram:SpecifiedLineTradeAgreement>"
+            b"<ram:GrossPriceProductTradePrice><ram:ChargeAmount>999.00</ram:ChargeAmount>"
+            b"</ram:GrossPriceProductTradePrice></ram:SpecifiedLineTradeAgreement>",
+            "BG-29",
+        ),
+        (
+            UBL,
+            b"</cac:Price>",
+            b'</cac:Price><cac:Price><cbc:PriceAmount currencyID="EUR">1.00</cbc:PriceAmount>'
+            b"</cac:Price>",
+            "BG-29",
+        ),
+        (
             UBL,
             b"</cac:ClassifiedTaxCategory>",
             b"</cac:ClassifiedTaxCategory><cac:ClassifiedTaxCategory><cbc:ID>E</cbc:ID>"
@@ -910,7 +933,17 @@ def test_an_empty_vat_breakdown_is_missing() -> None:
             "BT-31",
         ),
     ],
-    ids=["cii-address", "cii-organization", "ubl-address", "ubl-item", "ubl-bg-30", "ubl-bt-31"],
+    ids=[
+        "cii-address",
+        "cii-organization",
+        "ubl-address",
+        "ubl-item",
+        "cii-item",
+        "cii-price",
+        "ubl-price",
+        "ubl-bg-30",
+        "ubl-bt-31",
+    ],
 )
 def test_each_group_is_read_from_one_element(
     data: bytes, old: bytes, new: bytes, term: str
@@ -1943,4 +1976,253 @@ def test_a_ubl_lines_allowance_isnt_the_invoices() -> None:
     )
     result = read_invoice(ubl)
     assert result.invoice.allowances == ()
+    assert result.findings == ()
+
+
+# REQ-003-PRS-F002: a line's price and item details
+
+CII_SELLER_ITEM = b"<ram:SellerAssignedID>246</ram:SellerAssignedID>"
+CII_NET_PRICE = b"<ram:NetPriceProductTradePrice>"
+CII_NET_END = b"</ram:NetPriceProductTradePrice>"
+UBL_SELLER_ITEM = b"<cac:SellersItemIdentification>"
+UBL_PRICE_AMOUNT = b'<cbc:PriceAmount currencyID="EUR">288.79</cbc:PriceAmount>'
+FIRST_LINE = InvoiceLine(
+    id="Zeitschrift [...]",
+    note="Die letzte Lieferung im Rahmen des abgerechneten Abonnements erfolgt in 12/2016"
+    " Lieferung erfolgt / erfolgte direkt vom Verlag",
+    quantity=Decimal(1),
+    unit_code="XPP",
+    net_amount=Decimal("288.79"),
+    net_price=Decimal("288.79"),
+    vat_category_code="S",
+    vat_rate=Decimal(7),
+    item_name="Zeitschrift [...]",
+    item_description="Zeitschrift Inland",
+    seller_item_id="246",
+)
+
+
+def cii_gross_price(*parts: bytes) -> bytes:
+    """01.01a with a gross price of these parts before the first line's net price."""
+    return CII.replace(
+        CII_NET_PRICE,
+        b"<ram:GrossPriceProductTradePrice>"
+        + b"".join(parts)
+        + b"</ram:GrossPriceProductTradePrice>"
+        + CII_NET_PRICE,
+        1,
+    )
+
+
+def cii_price_allowance(indicator: bytes | None, amount: bytes) -> bytes:
+    """An allowance on the price; without its charge indicator where `indicator` is None."""
+    return (
+        b"<ram:AppliedTradeAllowanceCharge>"
+        + (
+            b""
+            if indicator is None
+            else b"<ram:ChargeIndicator><udt:Indicator>"
+            + indicator
+            + b"</udt:Indicator></ram:ChargeIndicator>"
+        )
+        + b"<ram:ActualAmount>"
+        + amount
+        + b"</ram:ActualAmount></ram:AppliedTradeAllowanceCharge>"
+    )
+
+
+def ubl_price_allowance(indicator: bytes, amount: bytes, base_amount: bytes) -> bytes:
+    return (
+        b"<cac:AllowanceCharge><cbc:ChargeIndicator>"
+        + indicator
+        + b'</cbc:ChargeIndicator><cbc:Amount currencyID="EUR">'
+        + amount
+        + b'</cbc:Amount><cbc:BaseAmount currencyID="EUR">'
+        + base_amount
+        + b"</cbc:BaseAmount></cac:AllowanceCharge>"
+    )
+
+
+def ubl_price(*parts: bytes) -> bytes:
+    """01.01a with these parts after the first line's net price."""
+    return UBL.replace(UBL_PRICE_AMOUNT, UBL_PRICE_AMOUNT + b"".join(parts), 1)
+
+
+def test_a_lines_note_price_and_item_details() -> None:
+    """Every term of BT-127 and BG-29 to BG-31; the gross price less the discount is the net
+    price."""
+    cii = cii_gross_price(
+        b"<ram:ChargeAmount>300.00</ram:ChargeAmount>",
+        b'<ram:BasisQuantity unitCode="XPP">1</ram:BasisQuantity>',
+        cii_price_allowance(b"false", b"11.21"),
+    ).replace(
+        CII_SELLER_ITEM,
+        b'<ram:GlobalID schemeID="0160">4000001000005</ram:GlobalID>'
+        + CII_SELLER_ITEM
+        + b"<ram:BuyerAssignedID>B-246</ram:BuyerAssignedID>",
+        1,
+    )
+    ubl = ubl_price(
+        b'<cbc:BaseQuantity unitCode="XPP">1</cbc:BaseQuantity>',
+        ubl_price_allowance(b"false", b"11.21", b"300.00"),
+    )
+    # In UBL's order: the buyer's identifier, the seller's, then the standard one.
+    ubl = edit(
+        ubl,
+        UBL_SELLER_ITEM,
+        b"<cac:BuyersItemIdentification><cbc:ID>B-246</cbc:ID></cac:BuyersItemIdentification>"
+        + UBL_SELLER_ITEM,
+    )
+    ubl = edit(
+        ubl,
+        b"</cac:SellersItemIdentification>",
+        b"</cac:SellersItemIdentification><cac:StandardItemIdentification>"
+        b'<cbc:ID schemeID="0160">4000001000005</cbc:ID></cac:StandardItemIdentification>',
+    )
+    for data in (cii, ubl):
+        result = read_invoice(data)
+        assert result.invoice.lines[0] == replace(
+            FIRST_LINE,
+            price_discount=Decimal("11.21"),
+            gross_price=Decimal("300.00"),
+            base_quantity=Decimal(1),
+            base_quantity_unit_code="XPP",
+            buyer_item_id="B-246",
+            standard_item_id=Identifier(value="4000001000005", scheme="0160"),
+        )
+        assert result.findings == ()
+
+
+def test_a_credit_notes_item_details() -> None:
+    note = (ROOT / "tests/data/cen-en16931/ubl/examples/ubl-tc434-creditnote1.xml").read_bytes()
+    line = read_invoice(note).invoice.lines[0]
+    assert (line.item_description, line.seller_item_id) == ("Exonération du versement du PP", "V55")
+
+
+GROSS_AMOUNT = b"<ram:ChargeAmount>288.79</ram:ChargeAmount>"
+
+
+def cii_base_quantities(gross: bytes | None, net: bytes | None) -> bytes:
+    """01.01a with a gross price and these base quantities in the first line's prices."""
+    data = CII if gross is None else cii_gross_price(GROSS_AMOUNT, gross)
+    return data if net is None else data.replace(CII_NET_END, net + CII_NET_END, 1)
+
+
+def basis(attributes: bytes, value: bytes) -> bytes:
+    return b"<ram:BasisQuantity" + attributes + b">" + value + b"</ram:BasisQuantity>"
+
+
+C62 = b' unitCode="C62"'
+
+
+@pytest.mark.parametrize(
+    ("data", "quantity", "dropped_terms"),
+    [
+        (cii_base_quantities(basis(C62, b"2"), None), (Decimal(2), "C62"), []),
+        (cii_base_quantities(None, basis(C62, b"2")), (Decimal(2), "C62"), []),
+        (cii_base_quantities(basis(C62, b"2.0"), basis(C62, b"2")), (Decimal(2), "C62"), []),
+        (cii_base_quantities(basis(C62, b"2"), basis(C62, b"1")), (Decimal(1), "C62"), ["BT-149"]),
+        (
+            cii_base_quantities(basis(C62, b"2"), basis(b' unitCode="KGM"', b"2")),
+            (Decimal(2), "KGM"),
+            ["BT-150"],
+        ),
+        (cii_base_quantities(basis(b"", b"1"), basis(C62, b"1")), (Decimal(1), "C62"), []),
+        (cii_base_quantities(basis(C62, b"1"), basis(b"", b"1")), (Decimal(1), "C62"), []),
+        (
+            ubl_price(b'<cbc:BaseQuantity unitCode="C62"> </cbc:BaseQuantity>'),
+            (None, "C62"),
+            [],
+        ),
+    ],
+    ids=[
+        "gross",
+        "net",
+        "both-the-same",
+        "both-differing",
+        "units-differing",
+        "unit-on-the-net-price",
+        "unit-on-the-gross-price",
+        "ubl-unit-alone",
+    ],
+)
+def test_a_lines_base_quantity(
+    data: bytes, quantity: tuple[Decimal | None, str], dropped_terms: list[str]
+) -> None:
+    """In CII the net price's, to which BT-146 applies, else the gross price's; a unit that only
+    one of them gives counts, and also where the quantity's element is empty."""
+    result = read_invoice(data)
+    line = result.invoice.lines[0]
+    assert (line.base_quantity, line.base_quantity_unit_code) == quantity
+    assert dropped(result) == dropped_terms
+    assert [f.rule for f in result.findings if f.rule != "HAFL-DROPPED"] == []
+
+
+def test_a_base_quantity_is_a_number_as_any_other() -> None:
+    """A gross price's `1E0` isn't an xs:decimal: missing, with a finding, and the net price's
+    is read."""
+    result = read_invoice(cii_base_quantities(basis(C62, b"1E0"), basis(C62, b"1")))
+    line = result.invoice.lines[0]
+    assert (line.base_quantity, line.base_quantity_unit_code) == (Decimal(1), "C62")
+    assert [(f.rule, f.text.split()[0]) for f in result.findings] == [("HAFL-VALUE", "BT-149")]
+
+
+def test_only_an_allowance_on_the_price_gives_the_discount() -> None:
+    """A charge, which EN 16931 doesn't have on a price, one whose indicator is neither, and a
+    second allowance are left out; a CII one without its indicator is an allowance."""
+    cii = cii_gross_price(
+        GROSS_AMOUNT,
+        cii_price_allowance(b"true", b"5.00"),
+        cii_price_allowance(b"maybe", b"3.00"),
+        cii_price_allowance(b"", b"4.00"),
+        cii_price_allowance(None, b"1.00"),
+        cii_price_allowance(b"false", b"2.00"),
+    )
+    ubl = ubl_price(
+        ubl_price_allowance(b"true", b"5.00", b"290.00"),
+        ubl_price_allowance(b"maybe", b"3.00", b"291.00"),
+        ubl_price_allowance(b"0", b"1.00", b"288.79"),
+        ubl_price_allowance(b"false", b"2.00", b"292.00"),
+    )
+    for data, drops in ((cii, 4), (ubl, 3)):
+        result = read_invoice(data)
+        line = result.invoice.lines[0]
+        assert (line.price_discount, line.gross_price) == (Decimal("1.00"), Decimal("288.79"))
+        assert [term.rstrip(",") for term in dropped(result)] == ["BT-147"] * drops
+
+
+def test_a_price_allowance_without_an_amount_gives_nothing() -> None:
+    """It holds no term of BG-29, so the allowance after it gives the discount."""
+    cii = cii_gross_price(
+        GROSS_AMOUNT,
+        b"<ram:AppliedTradeAllowanceCharge><ram:ChargeIndicator><udt:Indicator>false"
+        b"</udt:Indicator></ram:ChargeIndicator></ram:AppliedTradeAllowanceCharge>",
+        cii_price_allowance(b"false", b"2.00"),
+    )
+    ubl = ubl_price(
+        b"<cac:AllowanceCharge><cbc:ChargeIndicator>false</cbc:ChargeIndicator>"
+        b"<cbc:AllowanceChargeReason>Rabatt</cbc:AllowanceChargeReason></cac:AllowanceCharge>",
+        ubl_price_allowance(b"false", b"2.00", b"290.79"),
+    )
+    for data in (cii, ubl):
+        result = read_invoice(data)
+        assert result.invoice.lines[0].price_discount == Decimal("2.00")
+        assert result.findings == ()
+
+
+def test_a_cii_gross_price_without_a_discount() -> None:
+    result = read_invoice(cii_gross_price(b"<ram:ChargeAmount>288.79</ram:ChargeAmount>"))
+    line = result.invoice.lines[0]
+    assert (line.gross_price, line.price_discount) == (Decimal("288.79"), None)
+    assert result.findings == ()
+
+
+def test_a_standard_item_identifier_without_a_scheme() -> None:
+    """Read without one, which BR-64 reports."""
+    result = read_invoice(
+        CII.replace(
+            CII_SELLER_ITEM, b"<ram:GlobalID>4000001000005</ram:GlobalID>" + CII_SELLER_ITEM, 1
+        )
+    )
+    assert result.invoice.lines[0].standard_item_id == Identifier(value="4000001000005")
     assert result.findings == ()

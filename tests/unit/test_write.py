@@ -95,6 +95,23 @@ def test_refuses_an_invalid_invoice_after_writing() -> None:
             replace(INVOICE, lines=(replace(LINE, quantity=None), *INVOICE.lines[1:])),
             "BT-130 needs the invoiced quantity (BT-129)",
         ),
+        (
+            replace(INVOICE, lines=(replace(LINE, price_discount=Decimal(1)), *INVOICE.lines[1:])),
+            "BT-147 needs the item gross price (BT-148)",
+        ),
+        (
+            replace(
+                INVOICE,
+                lines=(replace(LINE, base_quantity_unit_code="C62"), *INVOICE.lines[1:]),
+            ),
+            "BT-150 needs the item price base quantity (BT-149)",
+        ),
+        (
+            replace(
+                INVOICE, lines=(replace(LINE, standard_item_id="4000001000005"), *INVOICE.lines[1:])
+            ),
+            "BT-157 is not an Identifier",
+        ),
         (replace(INVOICE, notes=[Note(text="a list")]), "BG-1 is not a tuple of Note"),
         (replace(INVOICE, seller="Example GmbH"), "BG-4 is not a Party"),
         (replace(INVOICE, seller=replace(SELLER, contact="Sales")), "BG-6 is not a Contact"),
@@ -119,6 +136,9 @@ def test_refuses_an_invalid_invoice_after_writing() -> None:
         "control-character",
         "bt-111-without-bt-6",
         "bt-130-without-bt-129",
+        "bt-147-without-bt-148",
+        "bt-150-without-bt-149",
+        "str-standard-item-id",
         "list",
         "str-party",
         "str-contact",
@@ -198,6 +218,10 @@ def test_missing_terms_are_left_out() -> None:
             contact=None,
         ),
         buyer=replace(BUYER, identifiers=(), electronic_address=None, address_line_1=None),
+        lines=tuple(
+            replace(line, note=None, item_description=None, seller_item_id=None)
+            for line in INVOICE.lines
+        ),
     )
     document = written(invoice)
     for tag in (
@@ -211,6 +235,9 @@ def test_missing_terms_are_left_out() -> None:
         b"ram:IncludedNote",
         b"ram:TaxCurrencyCode",
         b"ram:SpecifiedLegalOrganization",
+        b"ram:SellerAssignedID",
+        b"ram:GrossPriceProductTradePrice",
+        b"ram:BasisQuantity",
     ):
         assert tag not in document
     assert b"<ram:ApplicableHeaderTradeDelivery />" in document
@@ -449,6 +476,16 @@ def test_refuses_what_cant_be_written_sensibly(invoice: Any, reason: str) -> Non
             ),
             "BG-7 holds more than one identifier (BT-46)",
         ),
+        (
+            replace(
+                INVOICE,
+                lines=(
+                    replace(LINE, standard_item_id=Identifier(scheme="0160")),
+                    *INVOICE.lines[1:],
+                ),
+            ),
+            "BG-31 holds a standard identifier without its value (BT-157)",
+        ),
     ],
     ids=[
         "empty-seller-contact",
@@ -475,6 +512,7 @@ def test_refuses_what_cant_be_written_sensibly(invoice: Any, reason: str) -> Non
         "list-preceding-invoices",
         "buyer-tax-registration",
         "two-buyer-identifiers",
+        "standard-item-id-without-value",
     ],
 )
 def test_refuses_parties_that_cant_be_written(invoice: Any, reason: str) -> None:
@@ -759,6 +797,66 @@ def test_writes_allowances_and_charges_and_reads_them_back(specification_id: str
         in document
     )
     assert document.index(b"<udt:Indicator>false") < document.index(b"<udt:Indicator>true")
+    assert read_invoice(document).invoice == invoice
+
+
+# REQ-004-PRS-F003: a line's price and item details
+
+LINE_DETAILS = replace(
+    LINE,
+    note="Lieferung direkt vom Verlag",
+    price_discount=Decimal("11.21"),
+    gross_price=Decimal("300.00"),
+    base_quantity=Decimal(1),
+    base_quantity_unit_code="XPP",
+    item_description="Zeitschrift Inland",
+    seller_item_id="246",
+    buyer_item_id="B-246",
+    standard_item_id=Identifier(value="4000001000005", scheme="0160"),
+)
+
+
+@pytest.mark.parametrize("specification_id", [EN16931, XRECHNUNG])
+def test_writes_a_lines_price_and_item_details_and_reads_them_back(specification_id: str) -> None:
+    """The base quantity in both prices; the item's terms in the XML Schema's order."""
+    invoice = replace(
+        INVOICE, specification_id=specification_id, lines=(LINE_DETAILS, *INVOICE.lines[1:])
+    )
+    document = write_cii(invoice)
+    assert (
+        b"<ram:LineID>Zeitschrift [...]</ram:LineID><ram:IncludedNote>"
+        b"<ram:Content>Lieferung direkt vom Verlag</ram:Content></ram:IncludedNote>" in document
+    )
+    assert (
+        b'<ram:SpecifiedTradeProduct><ram:GlobalID schemeID="0160">4000001000005</ram:GlobalID>'
+        b"<ram:SellerAssignedID>246</ram:SellerAssignedID>"
+        b"<ram:BuyerAssignedID>B-246</ram:BuyerAssignedID><ram:Name>Zeitschrift [...]</ram:Name>"
+        b"<ram:Description>Zeitschrift Inland</ram:Description></ram:SpecifiedTradeProduct>"
+        in document
+    )
+    assert (
+        b"<ram:GrossPriceProductTradePrice><ram:ChargeAmount>300.00</ram:ChargeAmount>"
+        b'<ram:BasisQuantity unitCode="XPP">1</ram:BasisQuantity><ram:AppliedTradeAllowanceCharge>'
+        b"<ram:ChargeIndicator><udt:Indicator>false</udt:Indicator></ram:ChargeIndicator>"
+        b"<ram:ActualAmount>11.21</ram:ActualAmount></ram:AppliedTradeAllowanceCharge>"
+        b"</ram:GrossPriceProductTradePrice><ram:NetPriceProductTradePrice>"
+        b"<ram:ChargeAmount>288.79</ram:ChargeAmount>"
+        b'<ram:BasisQuantity unitCode="XPP">1</ram:BasisQuantity></ram:NetPriceProductTradePrice>'
+        in document
+    )
+    assert read_invoice(document).invoice == invoice
+
+
+def test_a_base_quantity_without_a_gross_price_is_the_net_prices() -> None:
+    line = replace(LINE, base_quantity=Decimal(1), base_quantity_unit_code="XPP")
+    invoice = replace(INVOICE, lines=(line, *INVOICE.lines[1:]))
+    document = write_cii(invoice)
+    assert b"GrossPriceProductTradePrice" not in document
+    assert (
+        b"<ram:NetPriceProductTradePrice><ram:ChargeAmount>288.79</ram:ChargeAmount>"
+        b'<ram:BasisQuantity unitCode="XPP">1</ram:BasisQuantity></ram:NetPriceProductTradePrice>'
+        in document
+    )
     assert read_invoice(document).invoice == invoice
 
 
