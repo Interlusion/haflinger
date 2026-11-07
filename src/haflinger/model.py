@@ -46,7 +46,7 @@ class PrecedingInvoice:
 @dataclass(frozen=True, kw_only=True)
 class Identifier:
     """An identifier with the scheme it belongs to: BT-18, BT-29, BT-30, BT-34, BT-46, BT-47,
-    BT-49, BT-60, BT-61, BT-71 and BT-157, each with its scheme (BT-18-1 and so on)."""
+    BT-49, BT-60, BT-61, BT-71, BT-128 and BT-157, each with its scheme (BT-18-1 and so on)."""
 
     value: str | None = None
     scheme: str | None = None
@@ -228,9 +228,12 @@ class InvoiceLine:
 
     id: str | None = None  # BT-126
     note: str | None = None  # BT-127
+    object_id: Identifier | None = None  # BT-128
     quantity: Decimal | None = None  # BT-129
     unit_code: str | None = None  # BT-130
     net_amount: Decimal | None = None  # BT-131
+    purchase_order_line_reference: str | None = None  # BT-132
+    buyer_accounting_reference: str | None = None  # BT-133
     period: Period | None = None  # BG-26
     net_price: Decimal | None = None  # BT-146
     price_discount: Decimal | None = None  # BT-147

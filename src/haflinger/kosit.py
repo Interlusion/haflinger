@@ -4,10 +4,11 @@
 KoSIT's stylesheets turn a CII invoice, a UBL invoice or a UBL credit note into one semantic XML
 in which every element carries its business term ID (`xr:id="BT-1"`). This module reads the
 model from that XML by business term ID alone, apart from the root elements that pick the
-stylesheet and three limits of KoSIT's stylesheet: the UBL notes' subject codes, which
-`with_subject_codes` evens out, and a CII account given in two forms and BT-17's and BT-18's
-additional documents given as supporting documents too, for which `_account` and
-`_supporting_documents` read the source path KoSIT's stylesheet records.
+stylesheet and four limits of KoSIT's stylesheet: the UBL notes' subject codes and a CII
+invoiced or line object identifier's scheme, which `comparable` evens out between the two
+models; and a CII account given in two forms and BT-17's and BT-18's additional documents given
+as supporting documents too, for which `_account` and `_supporting_documents` read the source
+path KoSIT's stylesheet records.
 """
 
 import re
@@ -105,7 +106,7 @@ def semantic_xml(data: bytes) -> tuple[bytes, Syntax]:
 _SUBJECT_CODE = re.compile(r"#([A-Z]{3})#(.*)", re.DOTALL)
 
 
-def with_subject_codes(invoice: Invoice) -> Invoice:
+def _with_subject_codes(invoice: Invoice) -> Invoice:
     """The model KoSIT's stylesheet gives, with each UBL note's `#XXX#` read as BT-21."""
     if invoice.syntax != "ubl":
         return invoice
@@ -116,6 +117,36 @@ def with_subject_codes(invoice: Invoice) -> Invoice:
             note = Note(subject_code=match[1], text=match[2].strip(XML_WHITESPACE) or None)
         notes.append(note)
     return replace(invoice, notes=tuple(notes))
+
+
+def comparable(ours: Invoice, theirs: Invoice) -> tuple[Invoice, Invoice]:
+    """Haflinger's model and KoSIT's of one invoice, with the limits of KoSIT's stylesheet that
+    the models show evened out: the UBL notes' subject codes, read as BT-21 in `theirs`; and the
+    scheme of a CII invoiced object identifier (BT-18-1) and of a line object identifier
+    (BT-128-1), left out of `ours` where `theirs` holds the identifier without one. KoSIT's CII
+    stylesheet gives `ram:ReferenceTypeCode` as the scheme only where the `ram:IssuerAssignedID`
+    has a `schemeID` too (the template `identifier-with-scheme` in `common-xr.xsl` tests
+    `@schemeID`), where REQ-003-PRS-F002 reads it; every scheme it gives is still compared, and
+    the CII and UBL files of a case agree on it (REQ-003-PRS-F004, ITEM-006)."""
+    if theirs.syntax == "ubl":
+        return ours, _with_subject_codes(theirs)
+    if theirs.syntax != "cii":
+        return ours, theirs
+    lines = ours.lines
+    if len(lines) == len(theirs.lines):
+        lines = tuple(
+            replace(line, object_id=_without_lost_scheme(line.object_id, their.object_id))
+            for line, their in zip(lines, theirs.lines, strict=True)
+        )
+    invoiced_object = _without_lost_scheme(ours.invoiced_object_id, theirs.invoiced_object_id)
+    return replace(ours, invoiced_object_id=invoiced_object, lines=lines), theirs
+
+
+def _without_lost_scheme(ours: Identifier | None, theirs: Identifier | None) -> Identifier | None:
+    """`ours` without its scheme where `theirs` is the same identifier without one."""
+    if ours is None or theirs is None or theirs.scheme is not None or ours.value != theirs.value:
+        return ours
+    return replace(ours, scheme=None)
 
 
 def _term(*terms: str) -> str:
@@ -408,9 +439,12 @@ def _line(line: Node) -> InvoiceLine:
     return InvoiceLine(
         id=_text(line, "BT-126"),
         note=_text(line, "BT-127"),
+        object_id=_identifier(line, "BT-128"),
         quantity=_decimal(line, "BT-129"),
         unit_code=_text(line, "BT-130"),
         net_amount=_decimal(line, "BT-131"),
+        purchase_order_line_reference=_text(line, "BT-132"),
+        buyer_accounting_reference=_text(line, "BT-133"),
         period=_period(line, LINE_PERIOD),
         net_price=_decimal(line, "BG-29", "BT-146"),
         price_discount=_decimal(line, "BG-29", "BT-147"),
