@@ -65,7 +65,8 @@ def test_reads_back_with_kosit(path: Path) -> None:
     invoice, document, _ = write(path)
     result = kosit.read_invoice(document)
     assert result.findings == ()
-    assert result.invoice == invoice
+    expected, read = kosit.comparable(invoice, result.invoice)
+    assert read == expected
 
 
 @pytest.mark.parametrize("path", FILES, ids=lambda path: path.name)
@@ -97,4 +98,5 @@ def test_written_as_en16931_passes_both_schemas_and_reads_back(path: Path) -> No
     assert document is not None
     assert "HAFL-XSD" not in {finding.rule for finding in findings}
     assert read_invoice(document).invoice == invoice
-    assert kosit.read_invoice(document).invoice == invoice
+    expected, read = kosit.comparable(invoice, kosit.read_invoice(document).invoice)
+    assert read == expected

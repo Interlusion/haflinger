@@ -282,6 +282,7 @@ EXPECTED_01_01A = Invoice(
             quantity=Decimal(1),
             unit_code="XPP",
             net_amount=Decimal("288.79"),
+            purchase_order_line_reference="6171175.1",
             period=Period(start=date(2016, 1, 1), end=date(2016, 12, 31)),
             net_price=Decimal("288.79"),
             vat_category_code="S",

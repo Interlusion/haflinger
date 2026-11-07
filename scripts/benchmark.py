@@ -165,14 +165,22 @@ def factur_x(specification_id: str) -> bytes:
             ),
         )
     elif "basic" in specification_id:
-        # BASIC has no seller contact, additional legal information or supporting documents, and
-        # of an item only its standard identifier and its name.
+        # BASIC has no seller contact, additional legal information or supporting documents, no
+        # line references, and of an item only its standard identifier and its name.
         model = replace(
             model,
             supporting_documents=(),
             seller=replace(seller, contact=None, additional_legal_information=None),
             lines=tuple(
-                replace(line, item_description=None, seller_item_id=None, buyer_item_id=None)
+                replace(
+                    line,
+                    object_id=None,
+                    purchase_order_line_reference=None,
+                    buyer_accounting_reference=None,
+                    item_description=None,
+                    seller_item_id=None,
+                    buyer_item_id=None,
+                )
                 for line in model.lines
             ),
         )

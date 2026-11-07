@@ -333,13 +333,32 @@ def identifier_only(documents: list[Node], terms: tuple[tuple[str, str], ...], l
                 node.drop(f"{term} in {label} is left out: {node.value!r}")
 
 
+def of_code(
+    documents: dict[str | None, list[Node]], code: str, paths: tuple[str, ...], label: str
+) -> list[Node]:
+    """The documents of the type code `code`, to which EN 16931 binds what `label` names (BG-24,
+    BT-128); each other one holding a value at one of `paths` is left out with a finding
+    (REQ-003-PRS-F002)."""
+    for other, nodes in documents.items():
+        if other == code:
+            continue
+        for node in nodes:
+            if node.holds_value(*paths):
+                node.drop(
+                    f"{label} without a type code is left out"
+                    if other is None
+                    else f"{label} of the type code {other!r}, not {code}, is left out"
+                )
+    return documents.get(code, [])
+
+
 def first_reference(
     documents: list[Node], path: str, term: str, scheme: str | None = None
 ) -> Node | None:
     """The first of `documents` holding a value at `path`, the identifier of a document
-    reference the model holds once (BT-11, BT-17, BT-18); each further one is left out with a
-    finding naming `term` and its identifier, and so is one that holds only the identifier's
-    scheme at `scheme`."""
+    reference the model holds once (BT-11, BT-17, BT-18, BT-128); each further one is left out
+    with a finding naming `term` and its identifier, and so is one that holds only the
+    identifier's scheme at `scheme`."""
     found: list[Node] = []
     for document in documents:
         if document.holds_value(path):

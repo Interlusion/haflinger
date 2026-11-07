@@ -3,8 +3,8 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Draft |
-| **Version** | 0.14 |
-| **Date** | 2026-11-06 |
+| **Version** | 0.15 |
+| **Date** | 2026-11-07 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Intended Use
@@ -206,9 +206,12 @@ General vocabulary (CIUS, Leitweg-ID, Peppol …): the [E-Invoicing 101 glossary
 | `Invoice.lines` | BG-25 | Invoice lines, at least one | required |
 | `InvoiceLine.id` | BT-126 | Invoice line identifier | required |
 | `InvoiceLine.note` | BT-127 | Invoice line note |  |
+| `InvoiceLine.object_id` | BT-128 | Invoice line object identifier, an Identifier: `value` BT-128 (required in the group), `scheme` BT-128-1 |  |
 | `InvoiceLine.quantity` | BT-129 | Invoiced quantity | required |
 | `InvoiceLine.unit_code` | BT-130 | Invoiced quantity unit of measure | required |
 | `InvoiceLine.net_amount` | BT-131 | Invoice line net amount | required |
+| `InvoiceLine.purchase_order_line_reference` | BT-132 | Referenced purchase order line reference |  |
+| `InvoiceLine.buyer_accounting_reference` | BT-133 | Invoice line Buyer accounting reference |  |
 | `InvoiceLine.period` | BG-26 | Invoice line period: `start` BT-134, `end` BT-135 |  |
 | `InvoiceLine.net_price` | BT-146 | Item net price | required |
 | `InvoiceLine.price_discount` | BT-147 | Item price discount |  |

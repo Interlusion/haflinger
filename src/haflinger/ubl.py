@@ -32,6 +32,7 @@ from haflinger._xml import (
     first_reference,
     identifier_only,
     none_if_empty,
+    of_code,
     vat_only,
 )
 from haflinger.model import (
@@ -572,12 +573,25 @@ def _line(line: Node, quantity_path: str) -> InvoiceLine:
     )
     item = line.group("cac:Item", "BG-31")
     tax = None if item is None else item.group("cac:ClassifiedTaxCategory", "BG-30")
+    documents = by_code(
+        line.findall("cac:DocumentReference"),
+        "cbc:DocumentTypeCode",
+        "BT-128 (cbc:DocumentTypeCode)",
+    )
+    line_object = first_reference(
+        of_code(documents, "130", ("cbc:ID",), "BT-128"), "cbc:ID", "BT-128"
+    )
     return InvoiceLine(
         id=line.text("cbc:ID", "BT-126"),
         note=line.text("cbc:Note", "BT-127"),
+        object_id=None
+        if line_object is None
+        else identifier(line_object.first("cbc:ID", "BT-128")),
         quantity=None if quantity is None else quantity.as_decimal("BT-129"),
         unit_code=None if unit is None else unit.attribute("unitCode"),
         net_amount=line.decimal("cbc:LineExtensionAmount", "BT-131"),
+        purchase_order_line_reference=line.text("cac:OrderLineReference/cbc:LineID", "BT-132"),
+        buyer_accounting_reference=line.text("cbc:AccountingCost", "BT-133"),
         period=_period(line, LINE_PERIOD),
         net_price=None if price is None else price.decimal("cbc:PriceAmount", "BT-146"),
         price_discount=None if discount is None else discount.decimal("cbc:Amount", "BT-147"),

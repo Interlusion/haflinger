@@ -121,7 +121,7 @@ def run(path: Path, base: Path) -> Row:
         return row
     try:
         semantic = kosit.read_invoice(xml)
-        theirs = kosit.with_subject_codes(semantic.invoice)
+        ours, theirs = kosit.comparable(ours, semantic.invoice)
         row.kosit = "ok"
         # A limit of KoSIT's stylesheet shows here: two EXTENDED due dates joined into one value
         # are a HAFL-VALUE for BT-9 (ADR-005).

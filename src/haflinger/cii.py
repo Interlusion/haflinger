@@ -42,6 +42,7 @@ from haflinger._xml import (
     first_reference,
     identifier_only,
     none_if_empty,
+    of_code,
     vat_only,
 )
 from haflinger.errors import InvoiceWriteError
@@ -149,7 +150,7 @@ def read(root: Node, specification_id: str | None) -> Invoice:
             root, f"{_DELIVERY}/ram:DespatchAdviceReferencedDocument", "BT-16"
         ),
         tender_or_lot_reference=_text(tender, "ram:IssuerAssignedID", "BT-17"),
-        invoiced_object_id=_invoiced_object(invoiced),
+        invoiced_object_id=_object_identifier(invoiced, "BT-18"),
         buyer_accounting_reference=root.text(
             f"{_SETTLEMENT}/ram:ReceivableSpecifiedTradeAccountingAccount/ram:ID", "BT-19"
         ),
@@ -213,19 +214,10 @@ def _supporting_documents(
     """BG-24: of the additional documents other than BT-17's and BT-18's, those of the type code
     916, to which EN 16931-3-3 binds the group; one of another type code, or without one, holding
     a term of the group is left out with a finding (REQ-003-PRS-F002)."""
-    for code, nodes in documents.items():
-        if code == "916":
-            continue
-        for node in nodes:
-            if node.holds_value("ram:IssuerAssignedID", *(path for path, _ in _SUPPORTING_ONLY)):
-                node.drop(
-                    "BG-24 without a type code (ram:TypeCode) is left out"
-                    if code is None
-                    else f"BG-24 of the type code {code!r}, not 916, is left out"
-                )
+    paths = ("ram:IssuerAssignedID", *(path for path, _ in _SUPPORTING_ONLY))
     return tuple(
         document
-        for node in documents.get("916", [])
+        for node in of_code(documents, "916", paths, "BG-24")
         if (
             document := none_if_empty(
                 SupportingDocument(
@@ -580,6 +572,17 @@ def _line(line: Node) -> InvoiceLine:
     )
     product = line.group("ram:SpecifiedTradeProduct", "BG-31")
     settlement = "ram:SpecifiedLineTradeSettlement"
+    documents = by_code(
+        line.findall(f"{settlement}/ram:AdditionalReferencedDocument"),
+        "ram:TypeCode",
+        "BT-128 (ram:TypeCode)",
+    )
+    line_object = first_reference(
+        of_code(documents, "130", ("ram:IssuerAssignedID",), "BT-128"),
+        "ram:IssuerAssignedID",
+        "BT-128",
+        "ram:ReferenceTypeCode",
+    )
     taxes = _vat_taxes(line, f"{settlement}/ram:ApplicableTradeTax", "BG-30")
     for node in taxes[1:]:
         node.drop("BG-30 appears more than once; this one is left out")
@@ -587,11 +590,18 @@ def _line(line: Node) -> InvoiceLine:
     return InvoiceLine(
         id=line.text("ram:AssociatedDocumentLineDocument/ram:LineID", "BT-126"),
         note=line.text("ram:AssociatedDocumentLineDocument/ram:IncludedNote/ram:Content", "BT-127"),
+        object_id=_object_identifier(line_object, "BT-128"),
         quantity=None if quantity is None else quantity.as_decimal("BT-129"),
         unit_code=None if unit is None else unit.attribute("unitCode"),
         net_amount=line.decimal(
             f"{settlement}/ram:SpecifiedTradeSettlementLineMonetarySummation/ram:LineTotalAmount",
             "BT-131",
+        ),
+        purchase_order_line_reference=line.text(
+            "ram:SpecifiedLineTradeAgreement/ram:BuyerOrderReferencedDocument/ram:LineID", "BT-132"
+        ),
+        buyer_accounting_reference=line.text(
+            f"{settlement}/ram:ReceivableSpecifiedTradeAccountingAccount/ram:ID", "BT-133"
         ),
         period=_period(line, f"{settlement}/ram:BillingSpecifiedPeriod", LINE_PERIOD),
         net_price=None
@@ -643,17 +653,17 @@ def _basis_quantity(price: Node, path: str) -> tuple[Node | None, Decimal | None
     )
 
 
-def _invoiced_object(document: Node | None) -> Identifier | None:
-    """BT-18 with its scheme, ram:ReferenceTypeCode or else the identifier's schemeID; a
-    differing schemeID beside a ram:ReferenceTypeCode is left out with a finding."""
+def _object_identifier(document: Node | None, term: str) -> Identifier | None:
+    """BT-18 or BT-128 with its scheme, ram:ReferenceTypeCode or else the identifier's schemeID;
+    a differing schemeID beside a ram:ReferenceTypeCode is left out with a finding."""
     if document is None:
         return None
-    identifier = document.first("ram:IssuerAssignedID", "BT-18")
-    code = document.first("ram:ReferenceTypeCode", "BT-18-1")
+    identifier = document.first("ram:IssuerAssignedID", term)
+    code = document.first("ram:ReferenceTypeCode", f"{term}-1")
     attribute = None if identifier is None else identifier.attribute("schemeID")
     if identifier is not None and code is not None and attribute not in (None, code.value):
         identifier.drop(
-            "BT-18-1 as the schemeID differs from the ram:ReferenceTypeCode; it is left out:"
+            f"{term}-1 as the schemeID differs from the ram:ReferenceTypeCode; it is left out:"
             f" {attribute!r}"
         )
     return Identifier(
@@ -852,9 +862,10 @@ def _write_references(agreement: Element, invoice: Invoice) -> None:
 
 
 def _write_additional_document(
-    agreement: Element, issuer_id: str, type_code: str, reference_type: str | None = None
+    parent: Element, issuer_id: str, type_code: str, reference_type: str | None = None
 ) -> None:
-    document = SubElement(agreement, "ram:AdditionalReferencedDocument")
+    """BT-17, BT-18 or BT-128, with its scheme as ram:ReferenceTypeCode."""
+    document = SubElement(parent, "ram:AdditionalReferencedDocument")
     _leaf(document, "ram:IssuerAssignedID", issuer_id, {})
     _leaf(document, "ram:TypeCode", type_code, {})
     _leaf(document, "ram:ReferenceTypeCode", reference_type, {})
@@ -1210,7 +1221,14 @@ def _write_line(item: Element, line: InvoiceLine) -> None:
     _put_text(document, "ram:LineID", line.id, "BT-126")
     _put_text(document, "ram:IncludedNote/ram:Content", line.note, "BT-127")
     _write_product(SubElement(item, "ram:SpecifiedTradeProduct"), line)
-    _write_price(SubElement(item, "ram:SpecifiedLineTradeAgreement"), line)
+    agreement = SubElement(item, "ram:SpecifiedLineTradeAgreement")
+    _put_text(
+        agreement,
+        "ram:BuyerOrderReferencedDocument/ram:LineID",
+        line.purchase_order_line_reference,
+        "BT-132",
+    )
+    _write_price(agreement, line)
     if line.unit_code is not None and line.quantity is None:
         raise InvoiceWriteError("BT-130 needs the invoiced quantity (BT-129), which is missing")
     _put_amount(
@@ -1232,6 +1250,16 @@ def _write_line(item: Element, line: InvoiceLine) -> None:
         "ram:SpecifiedTradeSettlementLineMonetarySummation/ram:LineTotalAmount",
         line.net_amount,
         "BT-131",
+    )
+    line_object = _checked_identifier(line.object_id, "BT-128")
+    if line_object is not None:
+        value, scheme = _identifier_parts(line_object, "BG-25", "an object identifier", "BT-128")
+        _write_additional_document(settlement, value, "130", scheme)
+    _put_text(
+        settlement,
+        "ram:ReceivableSpecifiedTradeAccountingAccount/ram:ID",
+        line.buyer_accounting_reference,
+        "BT-133",
     )
 
 
