@@ -65,11 +65,11 @@ def test_term_report_lists_only_terms_the_model_doesnt_hold() -> None:
     rows = term_rows(output)
     held = held_by_the_model()
     assert {"BT-1", "BT-153", "BG-23"} <= held
-    assert "BT-158" not in held
+    assert "BT-160" not in held
     assert rows
     assert not held & set(rows)
     assert rows["BT-125"] == ["Attached document", "BG-24", "32"]
-    assert rows["BT-158"] == ["Item classification identifier", "BG-31", "23"]
+    assert rows["BT-160"] == ["Item attribute name", "BG-32", "12"]
 
 
 def test_term_report_counts_a_column_per_directory() -> None:
@@ -80,20 +80,20 @@ def test_term_report_counts_a_column_per_directory() -> None:
 
 
 def test_term_report_leaves_out_xrechnungs_extension(tmp_path: Path) -> None:
-    """KoSIT case 04.03a with an item classification (BT-158) only in a sub-invoice line, a group
-    of XRechnung's extension."""
+    """KoSIT case 04.03a with an item attribute (BT-160) only in a sub-invoice line, a group of
+    XRechnung's extension."""
     name = "04.03a-INVOICE_ubl.xml"
     source = ROOT / "tests/data/kosit-testsuite/instances/extension" / name
     item = b"<cbc:Name>Baustelle einrichten</cbc:Name>"
-    classification = (
-        b'<cac:CommodityClassification><cbc:ItemClassificationCode listID="STI">4711'
-        b"</cbc:ItemClassificationCode></cac:CommodityClassification>"
+    attribute = (
+        b"<cac:AdditionalItemProperty><cbc:Name>Farbe</cbc:Name><cbc:Value>Rot</cbc:Value>"
+        b"</cac:AdditionalItemProperty>"
     )
     data = source.read_bytes()
     assert data.count(item) == 1
-    (tmp_path / name).write_bytes(data.replace(item, item + classification))
+    (tmp_path / name).write_bytes(data.replace(item, item + attribute))
     rows = term_rows(script("term_report.py", tmp_path))
-    assert rows["BT-158"][-1] == "0"
+    assert rows["BT-160"][-1] == "0"
 
 
 def test_term_report_counts_files_it_cant_read(tmp_path: Path) -> None:

@@ -23,6 +23,7 @@ from haflinger import (
     Invoice,
     InvoiceLine,
     InvoiceReadError,
+    ItemClassification,
     Note,
     Payee,
     PaymentCard,
@@ -2007,6 +2008,7 @@ FIRST_LINE = InvoiceLine(
     item_name="Zeitschrift [...]",
     item_description="Zeitschrift Inland",
     seller_item_id="246",
+    item_classifications=(ItemClassification(value="0721-880X", scheme="IB"),),
 )
 
 
@@ -2103,8 +2105,169 @@ def test_a_lines_note_price_and_item_details() -> None:
 
 def test_a_credit_notes_item_details() -> None:
     note = (ROOT / "tests/data/cen-en16931/ubl/examples/ubl-tc434-creditnote1.xml").read_bytes()
-    line = read_invoice(note).invoice.lines[0]
+    end = b"</cac:SellersItemIdentification>"
+    note = edit(
+        note,
+        end,
+        end + b"<cac:OriginCountry><cbc:IdentificationCode>FR</cbc:IdentificationCode>"
+        b"</cac:OriginCountry><cac:CommodityClassification>"
+        b'<cbc:ItemClassificationCode listID="HS" listVersionID="2022">49021000'
+        b"</cbc:ItemClassificationCode></cac:CommodityClassification>",
+    )
+    result = read_invoice(note)
+    line = result.invoice.lines[0]
     assert (line.item_description, line.seller_item_id) == ("Exonération du versement du PP", "V55")
+    assert (line.item_classifications, line.item_country_of_origin) == ((HS,), "FR")
+    assert result.findings == ()
+
+
+# REQ-003-PRS-F002: an item's classification and country of origin
+
+CII_CLASSIFICATION_END = b"</ram:DesignatedProductClassification>"
+UBL_CLASSIFICATION = b"<cac:CommodityClassification>"
+UBL_CLASSIFICATION_END = b"</cac:CommodityClassification>"
+HS = ItemClassification(value="49021000", scheme="HS", scheme_version="2022")
+
+
+def cii_classification(code: bytes, after: bytes = b"") -> bytes:
+    """01.01a with a further classification of this ram:ClassCode after the first line's, and
+    `after` after it."""
+    return edit(
+        CII,
+        CII_CLASSIFICATION_END,
+        CII_CLASSIFICATION_END
+        + b"<ram:DesignatedProductClassification>"
+        + code
+        + CII_CLASSIFICATION_END
+        + after,
+    )
+
+
+def ubl_classification(code: bytes) -> bytes:
+    """01.01a with a further classification of this cbc:ItemClassificationCode after the first
+    line's."""
+    return edit(
+        UBL,
+        UBL_CLASSIFICATION_END,
+        UBL_CLASSIFICATION_END + UBL_CLASSIFICATION + code + UBL_CLASSIFICATION_END,
+    )
+
+
+def test_an_items_classifications_and_country_of_origin() -> None:
+    """01.01a's classification, then one with a scheme version, in document order."""
+    cii = cii_classification(
+        b'<ram:ClassCode listID="HS" listVersionID="2022">49021000</ram:ClassCode>',
+        b"<ram:OriginTradeCountry><ram:ID>DE</ram:ID></ram:OriginTradeCountry>",
+    )
+    # In UBL's order: the country of origin before the classifications.
+    ubl = ubl_classification(
+        b'<cbc:ItemClassificationCode listID="HS" listVersionID="2022">49021000'
+        b"</cbc:ItemClassificationCode>"
+    ).replace(
+        UBL_CLASSIFICATION,
+        b"<cac:OriginCountry><cbc:IdentificationCode>DE</cbc:IdentificationCode>"
+        b"</cac:OriginCountry>" + UBL_CLASSIFICATION,
+        1,
+    )
+    for data in (cii, ubl):
+        result = read_invoice(data)
+        assert result.invoice.lines[0] == replace(
+            FIRST_LINE,
+            item_classifications=(*FIRST_LINE.item_classifications, HS),
+            item_country_of_origin="DE",
+        )
+        assert result.invoice.lines[1].item_classifications == ()
+        assert result.findings == ()
+
+
+@pytest.mark.parametrize(
+    ("cii", "ubl", "expected"),
+    [
+        (
+            b"<ram:ClassCode>49021000</ram:ClassCode>",
+            b"<cbc:ItemClassificationCode>49021000</cbc:ItemClassificationCode>",
+            ItemClassification(value="49021000"),
+        ),
+        (
+            b'<ram:ClassCode listID="HS" listVersionID="2022"> </ram:ClassCode>',
+            b'<cbc:ItemClassificationCode listID="HS" listVersionID="2022"> '
+            b"</cbc:ItemClassificationCode>",
+            None,
+        ),
+    ],
+    ids=["without-a-scheme", "only-a-scheme"],
+)
+def test_an_item_classification_with_a_part_missing(
+    cii: bytes, ubl: bytes, expected: ItemClassification | None
+) -> None:
+    """One without a scheme is read, which BR-65 reports; one without its value is not."""
+    for data in (cii_classification(cii), ubl_classification(ubl)):
+        result = read_invoice(data)
+        assert result.invoice.lines[0].item_classifications == (
+            *FIRST_LINE.item_classifications,
+            *(() if expected is None else (expected,)),
+        )
+        assert result.findings == ()
+
+
+def test_an_items_second_country_of_origin_is_dropped() -> None:
+    def cii_origin(code: bytes) -> bytes:
+        return b"<ram:OriginTradeCountry><ram:ID>" + code + b"</ram:ID></ram:OriginTradeCountry>"
+
+    def ubl_origin(code: bytes) -> bytes:
+        return (
+            b"<cac:OriginCountry><cbc:IdentificationCode>"
+            + code
+            + b"</cbc:IdentificationCode></cac:OriginCountry>"
+        )
+
+    cii = edit(
+        CII, CII_CLASSIFICATION_END, CII_CLASSIFICATION_END + cii_origin(b"DE") + cii_origin(b"IT")
+    )
+    ubl = edit(UBL, UBL_CLASSIFICATION, ubl_origin(b"DE") + ubl_origin(b"IT") + UBL_CLASSIFICATION)
+    for data in (cii, ubl):
+        result = read_invoice(data)
+        assert result.invoice.lines[0].item_country_of_origin == "DE"
+        assert dropped(result) == ["BT-159"]
+
+
+@pytest.mark.parametrize(
+    ("cii", "ubl", "term"),
+    [
+        (
+            cii_classification(
+                b'<ram:ClassCode listID="HS"><ram:Name>49021000</ram:Name></ram:ClassCode>'
+            ),
+            ubl_classification(
+                b'<cbc:ItemClassificationCode listID="HS"><cbc:Name>49021000</cbc:Name>'
+                b"</cbc:ItemClassificationCode>"
+            ),
+            "BT-158",
+        ),
+        (
+            edit(
+                CII,
+                CII_CLASSIFICATION_END,
+                CII_CLASSIFICATION_END
+                + b"<ram:OriginTradeCountry><ram:ID><ram:Name>DE</ram:Name></ram:ID>"
+                b"</ram:OriginTradeCountry>",
+            ),
+            edit(
+                UBL,
+                UBL_CLASSIFICATION,
+                b"<cac:OriginCountry><cbc:IdentificationCode><cbc:Name>DE</cbc:Name>"
+                b"</cbc:IdentificationCode></cac:OriginCountry>" + UBL_CLASSIFICATION,
+            ),
+            "BT-159",
+        ),
+    ],
+    ids=["classification", "country-of-origin"],
+)
+def test_an_item_term_holding_an_element_is_missing(cii: bytes, ubl: bytes, term: str) -> None:
+    for data in (cii, ubl):
+        result = read_invoice(data)
+        assert result.invoice.lines[0] == FIRST_LINE
+        assert [(f.rule, f.text.split()[0]) for f in result.findings] == [("HAFL-VALUE", term)]
 
 
 # REQ-003-PRS-F002: a line's period, read as the invoicing period is
