@@ -20,6 +20,7 @@ from haflinger import (
     Invoice,
     InvoiceReadError,
     InvoiceWriteError,
+    ItemClassification,
     Note,
     Payee,
     PaymentCard,
@@ -120,6 +121,53 @@ def test_refuses_an_invalid_invoice_after_writing() -> None:
             replace(INVOICE, lines=(replace(LINE, object_id="O-1"), *INVOICE.lines[1:])),
             "BT-128 is not an Identifier",
         ),
+        (
+            replace(
+                INVOICE,
+                lines=(
+                    replace(LINE, item_classifications=[ItemClassification(value="49021000")]),
+                    *INVOICE.lines[1:],
+                ),
+            ),
+            "BT-158 is not a tuple of ItemClassification",
+        ),
+        (
+            replace(
+                INVOICE,
+                lines=(replace(LINE, item_classifications=("49021000",)), *INVOICE.lines[1:]),
+            ),
+            "BT-158 holds something other than ItemClassification",
+        ),
+        (
+            replace(
+                INVOICE,
+                lines=(
+                    replace(
+                        LINE,
+                        item_classifications=(ItemClassification(value="49021000", scheme=1),),  # pyright: ignore[reportArgumentType]
+                    ),
+                    *INVOICE.lines[1:],
+                ),
+            ),
+            "BT-158-1 is not a str",
+        ),
+        (
+            replace(
+                INVOICE,
+                lines=(
+                    replace(
+                        LINE,
+                        item_classifications=(
+                            ItemClassification(
+                                value="49021000", scheme="HS", scheme_version=" 2022"
+                            ),
+                        ),
+                    ),
+                    *INVOICE.lines[1:],
+                ),
+            ),
+            "BT-158-2 has whitespace around it",
+        ),
         (replace(INVOICE, invoiced_object_id="O-18"), "BT-18 is not an Identifier"),
         (
             replace(INVOICE, supporting_documents=[SupportingDocument(reference="A-1")]),
@@ -166,6 +214,10 @@ def test_refuses_an_invalid_invoice_after_writing() -> None:
         "bt-150-without-bt-149",
         "str-standard-item-id",
         "str-line-object",
+        "list-item-classifications",
+        "str-item-classification",
+        "int-classification-scheme",
+        "whitespace-classification-version",
         "str-invoiced-object",
         "list-supporting-documents",
         "int-supporting-document-reference",
@@ -259,6 +311,7 @@ def test_missing_terms_are_left_out() -> None:
                 period=None,
                 item_description=None,
                 seller_item_id=None,
+                item_classifications=(),
             )
             for line in INVOICE.lines
         ),
@@ -284,6 +337,8 @@ def test_missing_terms_are_left_out() -> None:
         b"ram:SpecifiedProcuringProject",
         b"ram:DespatchAdviceReferencedDocument",
         b"ram:ReceivableSpecifiedTradeAccountingAccount",
+        b"ram:DesignatedProductClassification",
+        b"ram:OriginTradeCountry",
     ):
         assert tag not in document
     assert b"<ram:ApplicableHeaderTradeDelivery />" in document
@@ -548,6 +603,16 @@ def test_refuses_what_cant_be_written_sensibly(invoice: Any, reason: str) -> Non
             "BG-25 holds an object identifier without its value (BT-128)",
         ),
         (
+            replace(
+                INVOICE,
+                lines=(
+                    replace(LINE, item_classifications=(ItemClassification(scheme="HS"),)),
+                    *INVOICE.lines[1:],
+                ),
+            ),
+            "BG-31 holds an item classification without its value (BT-158)",
+        ),
+        (
             replace(INVOICE, invoiced_object_id=Identifier(scheme="ABZ")),
             "the invoice holds an invoiced object identifier without its value (BT-18)",
         ),
@@ -608,6 +673,7 @@ def test_refuses_what_cant_be_written_sensibly(invoice: Any, reason: str) -> Non
         "two-buyer-identifiers",
         "standard-item-id-without-value",
         "line-object-without-value",
+        "item-classification-without-value",
         "invoiced-object-without-value",
         "empty-payee",
         "empty-supporting-document",
@@ -1091,6 +1157,11 @@ LINE_DETAILS = replace(
     seller_item_id="246",
     buyer_item_id="B-246",
     standard_item_id=Identifier(value="4000001000005", scheme="0160"),
+    item_classifications=(
+        ItemClassification(value="0721-880X", scheme="IB"),
+        ItemClassification(value="49021000", scheme="HS", scheme_version="2022"),
+    ),
+    item_country_of_origin="DE",
 )
 
 
@@ -1111,8 +1182,14 @@ def test_writes_a_lines_price_and_item_details_and_reads_them_back(specification
         b'<ram:SpecifiedTradeProduct><ram:GlobalID schemeID="0160">4000001000005</ram:GlobalID>'
         b"<ram:SellerAssignedID>246</ram:SellerAssignedID>"
         b"<ram:BuyerAssignedID>B-246</ram:BuyerAssignedID><ram:Name>Zeitschrift [...]</ram:Name>"
-        b"<ram:Description>Zeitschrift Inland</ram:Description></ram:SpecifiedTradeProduct>"
-        in document
+        b"<ram:Description>Zeitschrift Inland</ram:Description>"
+        b"<ram:DesignatedProductClassification>"
+        b'<ram:ClassCode listID="IB">0721-880X</ram:ClassCode>'
+        b"</ram:DesignatedProductClassification><ram:DesignatedProductClassification>"
+        b'<ram:ClassCode listID="HS" listVersionID="2022">49021000</ram:ClassCode>'
+        b"</ram:DesignatedProductClassification>"
+        b"<ram:OriginTradeCountry><ram:ID>DE</ram:ID></ram:OriginTradeCountry>"
+        b"</ram:SpecifiedTradeProduct>" in document
     )
     assert (
         b"<ram:GrossPriceProductTradePrice><ram:ChargeAmount>300.00</ram:ChargeAmount>"
@@ -1156,6 +1233,30 @@ def test_a_line_period_that_ends_before_it_starts_fails_br_30() -> None:
         write_cii(invoice)
     assert "BR-30" in {finding.rule for finding in refusal.value.findings}
     assert refusal.value.document is not None
+    assert read_invoice(refusal.value.document).invoice == invoice
+
+
+@pytest.mark.parametrize(
+    ("classification", "written"),
+    [
+        (ItemClassification(value="49021000"), b"<ram:ClassCode>49021000</ram:ClassCode>"),
+        (
+            ItemClassification(value="49021000", scheme_version="2022"),
+            b'<ram:ClassCode listVersionID="2022">49021000</ram:ClassCode>',
+        ),
+    ],
+    ids=["without-a-scheme", "a-version-without-a-scheme"],
+)
+def test_an_item_classification_without_a_scheme_fails_br_65(
+    classification: ItemClassification, written: bytes
+) -> None:
+    """Written without listID, and refused after writing (REQ-004-PRS-F001)."""
+    line = replace(LINE, item_classifications=(classification,))
+    invoice = replace(INVOICE, lines=(line, *INVOICE.lines[1:]))
+    with pytest.raises(InvoiceWriteError, match="BR-65") as refusal:
+        write_cii(invoice)
+    assert refusal.value.document is not None
+    assert written in refusal.value.document
     assert read_invoice(refusal.value.document).invoice == invoice
 
 

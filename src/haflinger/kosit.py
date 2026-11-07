@@ -18,6 +18,7 @@ from decimal import Decimal
 
 from haflinger import _saxon, cii, ubl
 from haflinger._allowances import ALLOWANCE, CHARGE, AllowanceChargeTerms
+from haflinger._items import classifications
 from haflinger._parties import (
     BUYER,
     DELIVER_TO,
@@ -458,4 +459,12 @@ def _line(line: Node) -> InvoiceLine:
         seller_item_id=_text(line, "BG-31", "BT-155"),
         buyer_item_id=_text(line, "BG-31", "BT-156"),
         standard_item_id=_identifier(line, "BG-31", "BT-157"),
+        # KoSIT's stylesheets give a classification's scheme and its version as
+        # `scheme_identifier` and `scheme_version_identifier`.
+        item_classifications=classifications(
+            line.holding("BT-158", _term("BG-31", "BT-158")),
+            "scheme_identifier",
+            "scheme_version_identifier",
+        ),
+        item_country_of_origin=_text(line, "BG-31", "BT-159"),
     )

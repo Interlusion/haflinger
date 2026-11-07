@@ -180,6 +180,8 @@ def factur_x(specification_id: str) -> bytes:
                     item_description=None,
                     seller_item_id=None,
                     buyer_item_id=None,
+                    item_classifications=(),
+                    item_country_of_origin=None,
                 )
                 for line in model.lines
             ),

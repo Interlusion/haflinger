@@ -18,6 +18,7 @@ from haflinger import (
     Identifier,
     Invoice,
     InvoiceLine,
+    ItemClassification,
     Note,
     Party,
     PaymentInstructions,
@@ -290,6 +291,7 @@ EXPECTED_01_01A = Invoice(
             item_name="Zeitschrift [...]",
             item_description="Zeitschrift Inland",
             seller_item_id="246",
+            item_classifications=(ItemClassification(value="0721-880X", scheme="IB"),),
         ),
         InvoiceLine(
             id="Porto + Versandkosten",
