@@ -15,6 +15,7 @@ from haflinger._allowances import (
     allowances_and_charges,
     price_allowance,
 )
+from haflinger._items import classifications
 from haflinger._parties import (
     BUYER,
     DELIVER_TO,
@@ -55,6 +56,7 @@ from haflinger.model import (
     Identifier,
     Invoice,
     InvoiceLine,
+    ItemClassification,
     Note,
     Party,
     Payee,
@@ -622,6 +624,12 @@ def _line(line: Node) -> InvoiceLine:
         standard_item_id=None
         if product is None
         else identifier(product.first("ram:GlobalID", "BT-157")),
+        item_classifications=()
+        if product is None
+        else classifications(
+            product.holding("BT-158", "ram:DesignatedProductClassification/ram:ClassCode")
+        ),
+        item_country_of_origin=_text(product, "ram:OriginTradeCountry/ram:ID", "BT-159"),
     )
 
 
@@ -992,7 +1000,7 @@ def _checked_identifier(value: object, term: str) -> Identifier | None:
 
 
 def _identifier_parts(
-    identifier: Identifier,
+    identifier: Identifier | ItemClassification,
     group: str,
     kind: str,
     term: str,
@@ -1273,6 +1281,19 @@ def _write_product(product: Element, line: InvoiceLine) -> None:
     _put_text(product, "ram:BuyerAssignedID", line.buyer_item_id, "BT-156")
     _put_text(product, "ram:Name", line.item_name, "BT-153")
     _put_text(product, "ram:Description", line.item_description, "BT-154")
+    for classification in _group(line.item_classifications, ItemClassification, "BT-158"):
+        value, scheme = _identifier_parts(
+            classification, "BG-31", "an item classification", "BT-158"
+        )
+        _put_text(
+            SubElement(product, "ram:DesignatedProductClassification"),
+            "ram:ClassCode",
+            value,
+            "BT-158",
+            listID=scheme,
+            listVersionID=_checked_text(classification.scheme_version, "BT-158-2"),
+        )
+    _put_text(product, "ram:OriginTradeCountry/ram:ID", line.item_country_of_origin, "BT-159")
 
 
 def _write_price(agreement: Element, line: InvoiceLine) -> None:

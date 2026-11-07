@@ -5,6 +5,7 @@ import re
 from datetime import date
 
 from haflinger._allowances import AllowanceChargeTerms, allowances_and_charges, price_allowance
+from haflinger._items import classifications
 from haflinger._parties import (
     BUYER,
     DELIVER_TO,
@@ -607,6 +608,12 @@ def _line(line: Node, quantity_path: str) -> InvoiceLine:
         standard_item_id=None
         if item is None
         else identifier(item.first("cac:StandardItemIdentification/cbc:ID", "BT-157")),
+        item_classifications=()
+        if item is None
+        else classifications(
+            item.holding("BT-158", "cac:CommodityClassification/cbc:ItemClassificationCode")
+        ),
+        item_country_of_origin=_text(item, "cac:OriginCountry/cbc:IdentificationCode", "BT-159"),
     )
 
 

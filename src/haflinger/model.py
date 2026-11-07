@@ -53,6 +53,16 @@ class Identifier:
 
 
 @dataclass(frozen=True, kw_only=True)
+class ItemClassification:
+    """An item classification identifier (BT-158) with the scheme it belongs to (BT-158-1) and
+    the scheme's version (BT-158-2)."""
+
+    value: str | None = None  # BT-158
+    scheme: str | None = None  # BT-158-1
+    scheme_version: str | None = None  # BT-158-2
+
+
+@dataclass(frozen=True, kw_only=True)
 class Contact:
     """BG-6 seller contact or BG-9 buyer contact."""
 
@@ -247,6 +257,8 @@ class InvoiceLine:
     seller_item_id: str | None = None  # BT-155
     buyer_item_id: str | None = None  # BT-156
     standard_item_id: Identifier | None = None  # BT-157
+    item_classifications: tuple[ItemClassification, ...] = ()  # BT-158
+    item_country_of_origin: str | None = None  # BT-159
 
 
 @dataclass(frozen=True, kw_only=True)
