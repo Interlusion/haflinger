@@ -116,6 +116,10 @@ def test_refuses_an_invalid_invoice_after_writing() -> None:
             ),
             "BT-157 is not an Identifier",
         ),
+        (
+            replace(INVOICE, lines=(replace(LINE, object_id="O-1"), *INVOICE.lines[1:])),
+            "BT-128 is not an Identifier",
+        ),
         (replace(INVOICE, invoiced_object_id="O-18"), "BT-18 is not an Identifier"),
         (
             replace(INVOICE, supporting_documents=[SupportingDocument(reference="A-1")]),
@@ -161,6 +165,7 @@ def test_refuses_an_invalid_invoice_after_writing() -> None:
         "bt-147-without-bt-148",
         "bt-150-without-bt-149",
         "str-standard-item-id",
+        "str-line-object",
         "str-invoiced-object",
         "list-supporting-documents",
         "int-supporting-document-reference",
@@ -247,7 +252,14 @@ def test_missing_terms_are_left_out() -> None:
         ),
         buyer=replace(BUYER, identifiers=(), electronic_address=None, address_line_1=None),
         lines=tuple(
-            replace(line, note=None, period=None, item_description=None, seller_item_id=None)
+            replace(
+                line,
+                note=None,
+                purchase_order_line_reference=None,
+                period=None,
+                item_description=None,
+                seller_item_id=None,
+            )
             for line in INVOICE.lines
         ),
     )
@@ -529,6 +541,13 @@ def test_refuses_what_cant_be_written_sensibly(invoice: Any, reason: str) -> Non
             "BG-31 holds a standard identifier without its value (BT-157)",
         ),
         (
+            replace(
+                INVOICE,
+                lines=(replace(LINE, object_id=Identifier(scheme="ABZ")), *INVOICE.lines[1:]),
+            ),
+            "BG-25 holds an object identifier without its value (BT-128)",
+        ),
+        (
             replace(INVOICE, invoiced_object_id=Identifier(scheme="ABZ")),
             "the invoice holds an invoiced object identifier without its value (BT-18)",
         ),
@@ -588,6 +607,7 @@ def test_refuses_what_cant_be_written_sensibly(invoice: Any, reason: str) -> Non
         "buyer-tax-registration",
         "two-buyer-identifiers",
         "standard-item-id-without-value",
+        "line-object-without-value",
         "invoiced-object-without-value",
         "empty-payee",
         "empty-supporting-document",
@@ -1059,6 +1079,9 @@ def test_the_advice_references_follow_the_delivery_information() -> None:
 LINE_DETAILS = replace(
     LINE,
     note="Lieferung direkt vom Verlag",
+    object_id=Identifier(value="ANG987654321", scheme="ABZ"),
+    purchase_order_line_reference="6171175.2",
+    buyer_accounting_reference="4711-K",
     period=Period(start=date(2016, 7, 1), end=date(2016, 12, 31)),
     price_discount=Decimal("11.21"),
     gross_price=Decimal("300.00"),
@@ -1074,7 +1097,8 @@ LINE_DETAILS = replace(
 @pytest.mark.parametrize("specification_id", [EN16931, XRECHNUNG])
 def test_writes_a_lines_price_and_item_details_and_reads_them_back(specification_id: str) -> None:
     """The base quantity in both prices; the item's terms in the XML Schema's order; the period
-    after the line's VAT."""
+    after the line's VAT; the purchase order line before the prices, the object identifier and
+    the accounting reference after the line's totals."""
     invoice = replace(
         INVOICE, specification_id=specification_id, lines=(LINE_DETAILS, *INVOICE.lines[1:])
     )
@@ -1106,6 +1130,19 @@ def test_writes_a_lines_price_and_item_details_and_reads_them_back(specification
         b"20160701</udt:DateTimeString></ram:StartDateTime><ram:EndDateTime>"
         b'<udt:DateTimeString format="102">20161231</udt:DateTimeString></ram:EndDateTime>'
         b"</ram:BillingSpecifiedPeriod><ram:SpecifiedTradeSettlementLineMonetarySummation>"
+        in document
+    )
+    assert (
+        b"<ram:SpecifiedLineTradeAgreement><ram:BuyerOrderReferencedDocument>"
+        b"<ram:LineID>6171175.2</ram:LineID></ram:BuyerOrderReferencedDocument>"
+        b"<ram:GrossPriceProductTradePrice>" in document
+    )
+    assert (
+        b"</ram:SpecifiedTradeSettlementLineMonetarySummation><ram:AdditionalReferencedDocument>"
+        b"<ram:IssuerAssignedID>ANG987654321</ram:IssuerAssignedID><ram:TypeCode>130</ram:TypeCode>"
+        b"<ram:ReferenceTypeCode>ABZ</ram:ReferenceTypeCode></ram:AdditionalReferencedDocument>"
+        b"<ram:ReceivableSpecifiedTradeAccountingAccount><ram:ID>4711-K</ram:ID>"
+        b"</ram:ReceivableSpecifiedTradeAccountingAccount></ram:SpecifiedLineTradeSettlement>"
         in document
     )
     assert read_invoice(document).invoice == invoice

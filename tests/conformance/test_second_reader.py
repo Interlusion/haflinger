@@ -1,11 +1,12 @@
 """KoSIT's reading stylesheet as the second reader: it reads every official file to the same model
 as Haflinger (REQ-003-PRS-F005, ADR-005)."""
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
-from haflinger import InvoiceReadError, kosit, read_invoice
+from haflinger import Identifier, InvoiceReadError, kosit, read_invoice
 from haflinger.pdf import extract_xml
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -38,11 +39,68 @@ def test_kosit_reads_what_haflinger_reads(path: Path) -> None:
     ours, theirs = read_invoice(data), kosit.read_invoice(xml)
     assert theirs.findings == ()
     assert theirs.invoice.syntax == ours.invoice.syntax
-    assert kosit.with_subject_codes(theirs.invoice) == ours.invoice
+    expected, read = kosit.comparable(ours.invoice, theirs.invoice)
+    assert read == expected
+
+
+def test_kosit_still_loses_a_cii_line_objects_scheme() -> None:
+    """Once a new release gives `ram:ReferenceTypeCode` as BT-128-1 without a schemeID,
+    `kosit.comparable` stops evening it out."""
+    data = (SUITE / "standard/03.07a-INVOICE_uncefact.xml").read_bytes()
+    ours = [line.object_id for line in read_invoice(data).invoice.lines if line.object_id]
+    theirs = [line.object_id for line in kosit.read_invoice(data).invoice.lines if line.object_id]
+    assert ours == [Identifier(value="ANG987654321", scheme="ABZ")]
+    assert theirs == [Identifier(value="ANG987654321")]
+
+
+def test_kosit_still_loses_a_cii_invoiced_objects_scheme() -> None:
+    """Once a new release gives `ram:ReferenceTypeCode` as BT-18-1 without a schemeID,
+    `kosit.comparable` stops evening it out."""
+    data = with_invoiced_object(b"<ram:ReferenceTypeCode>ABZ</ram:ReferenceTypeCode>")
+    ours, theirs = read_invoice(data).invoice, kosit.read_invoice(data).invoice
+    assert ours.invoiced_object_id == Identifier(value="O-18", scheme="ABZ")
+    assert theirs.invoiced_object_id == Identifier(value="O-18")
+    expected, read = kosit.comparable(ours, theirs)
+    assert read == expected
+
+
+def with_invoiced_object(after: bytes) -> bytes:
+    """01.01a with an invoiced object identifier `O-18`, `after` after its type code."""
+    data = (SUITE / "standard/01.01a-INVOICE_uncefact.xml").read_bytes()
+    end = b"</ram:BuyerTradeParty>"
+    assert data.count(end) == 1
+    document = (
+        b"<ram:AdditionalReferencedDocument><ram:IssuerAssignedID>O-18</ram:IssuerAssignedID>"
+        b"<ram:TypeCode>130</ram:TypeCode>" + after + b"</ram:AdditionalReferencedDocument>"
+    )
+    return data.replace(end, end + document)
+
+
+def test_comparable_still_compares_the_schemes_kosit_gives() -> None:
+    """A scheme KoSIT's CII stylesheet gives, and every one in UBL, is compared: only one it
+    loses is evened out."""
+    ours = read_invoice(with_invoiced_object(b"")).invoice
+    other = Identifier(value="O-18", scheme="AAA")
+    line = replace(ours.lines[0], object_id=Identifier(value="O-1", scheme="ABZ"))
+    ours = replace(ours, invoiced_object_id=other, lines=(line, *ours.lines[1:]))
+    theirs = replace(
+        ours,
+        invoiced_object_id=Identifier(value="O-18", scheme="ABZ"),
+        lines=(replace(line, object_id=Identifier(value="O-1", scheme="AAA")), *ours.lines[1:]),
+    )
+    expected, read = kosit.comparable(ours, theirs)
+    assert read.invoiced_object_id != expected.invoiced_object_id
+    assert read.lines[0].object_id != expected.lines[0].object_id
+    lost = replace(theirs, invoiced_object_id=Identifier(value="O-18"))
+    assert kosit.comparable(ours, lost)[0].invoiced_object_id == Identifier(value="O-18")
+    ubl = replace(ours, syntax="ubl")
+    expected, read = kosit.comparable(ubl, replace(lost, syntax="ubl"))
+    assert expected.invoiced_object_id == other
+    assert read.invoiced_object_id == Identifier(value="O-18")
 
 
 def test_kosit_still_leaves_the_subject_code_in_ubl_notes() -> None:
-    """Once a new release reads `#XXX#` as BT-21, `kosit.with_subject_codes` goes."""
+    """Once a new release reads `#XXX#` as BT-21, `kosit.comparable` stops evening it out."""
     data = (SUITE / "standard/01.01a-INVOICE_ubl.xml").read_bytes()
     (note,) = kosit.read_invoice(data).invoice.notes
     assert note.subject_code is None

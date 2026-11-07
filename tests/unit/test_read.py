@@ -1999,6 +1999,7 @@ FIRST_LINE = InvoiceLine(
     quantity=Decimal(1),
     unit_code="XPP",
     net_amount=Decimal("288.79"),
+    purchase_order_line_reference="6171175.1",
     period=FIRST_LINE_PERIOD,
     net_price=Decimal("288.79"),
     vat_category_code="S",
@@ -2149,6 +2150,200 @@ def test_a_ubl_lines_period_without_the_models_terms_doesnt_count() -> None:
     result = read_invoice(ubl)
     assert result.invoice.lines[0].period == FIRST_LINE_PERIOD
     assert dropped(result) == ["BG-26"]
+
+
+# REQ-003-PRS-F002: a line's references
+
+CII_LINE_TOTALS_END = b"</ram:SpecifiedTradeSettlementLineMonetarySummation>"
+UBL_LINE_AMOUNT = b'<cbc:LineExtensionAmount currencyID="EUR">288.79</cbc:LineExtensionAmount>'
+UBL_ORDER_LINE_END = b"</cac:OrderLineReference>"
+CII_ACCOUNT = (
+    b"<ram:ReceivableSpecifiedTradeAccountingAccount><ram:ID>4711-K</ram:ID>"
+    b"</ram:ReceivableSpecifiedTradeAccountingAccount>"
+)
+LINE_OBJECT = Identifier(value="ANG987654321", scheme="ABZ")
+
+
+def cii_line_settlement(*parts: bytes) -> bytes:
+    """01.01a with these parts after the first line's totals."""
+    return CII.replace(CII_LINE_TOTALS_END, CII_LINE_TOTALS_END + b"".join(parts), 1)
+
+
+def ubl_line_documents(*parts: bytes) -> bytes:
+    """01.01a with these parts after the first line's order line reference."""
+    return edit(UBL, UBL_ORDER_LINE_END, UBL_ORDER_LINE_END + b"".join(parts))
+
+
+def ubl_line_document(type_code: bytes | None, identifier: bytes) -> bytes:
+    """A line's document reference of this document type code, `identifier` its cbc:ID."""
+    return (
+        b"<cac:DocumentReference>"
+        + identifier
+        + (
+            b""
+            if type_code is None
+            else b"<cbc:DocumentTypeCode>%s</cbc:DocumentTypeCode>" % type_code
+        )
+        + b"</cac:DocumentReference>"
+    )
+
+
+def test_a_lines_references() -> None:
+    """BT-128 with its scheme, BT-132 from 01.01a and BT-133, none of them the invoice's."""
+    cii = cii_line_settlement(
+        cii_document(
+            b"130", b"ANG987654321", b"<ram:ReferenceTypeCode>ABZ</ram:ReferenceTypeCode>"
+        ),
+        CII_ACCOUNT,
+    )
+    ubl = ubl_line_documents(
+        ubl_line_document(b"130", b'<cbc:ID schemeID="ABZ">ANG987654321</cbc:ID>')
+    )
+    ubl = edit(
+        ubl, UBL_LINE_AMOUNT, UBL_LINE_AMOUNT + b"<cbc:AccountingCost>4711-K</cbc:AccountingCost>"
+    )
+    for data in (cii, ubl):
+        result = read_invoice(data)
+        assert result.invoice.lines[0] == replace(
+            FIRST_LINE, object_id=LINE_OBJECT, buyer_accounting_reference="4711-K"
+        )
+        assert result.invoice.lines[1].purchase_order_line_reference is None
+        assert result.invoice.invoiced_object_id is None
+        assert result.invoice.buyer_accounting_reference is None
+        assert result.invoice.purchase_order_reference is None
+        assert result.findings == ()
+
+
+def test_a_credit_notes_line_references() -> None:
+    note = (ROOT / "tests/data/cen-en16931/ubl/examples/ubl-tc434-creditnote1.xml").read_bytes()
+    amount = (
+        b"</cbc:CreditedQuantity>\n\t\t"
+        b'<cbc:LineExtensionAmount currencyID="EUR">100.11</cbc:LineExtensionAmount>'
+    )
+    note = edit(
+        note,
+        amount,
+        amount
+        + b"<cbc:AccountingCost>4711-K</cbc:AccountingCost>"
+        + b"<cac:OrderLineReference><cbc:LineID>1</cbc:LineID></cac:OrderLineReference>"
+        + ubl_line_document(b"130", b"<cbc:ID>O-1</cbc:ID>"),
+    )
+    result = read_invoice(note)
+    line = result.invoice.lines[0]
+    assert (
+        line.object_id,
+        line.purchase_order_line_reference,
+        line.buyer_accounting_reference,
+    ) == (
+        Identifier(value="O-1"),
+        "1",
+        "4711-K",
+    )
+    assert result.findings == ()
+
+
+def test_a_cii_line_objects_scheme() -> None:
+    """As BT-18's: ram:ReferenceTypeCode, or else the schemeID; a differing schemeID beside it,
+    and a scheme without its identifier, are left out."""
+    attribute = b'<ram:IssuerAssignedID schemeID="AAA">O-1</ram:IssuerAssignedID>'
+    code = b"<ram:ReferenceTypeCode>ABZ</ram:ReferenceTypeCode>"
+    cases: list[tuple[bytes, Identifier | None, list[str]]] = [
+        (
+            attribute + b"<ram:TypeCode>130</ram:TypeCode>",
+            Identifier(value="O-1", scheme="AAA"),
+            [],
+        ),
+        (
+            attribute + b"<ram:TypeCode>130</ram:TypeCode>" + code,
+            Identifier(value="O-1", scheme="ABZ"),
+            ["BT-128-1"],
+        ),
+        (b"<ram:TypeCode>130</ram:TypeCode>" + code, None, ["BT-128-1"]),
+    ]
+    for document, expected, drops in cases:
+        data = cii_line_settlement(
+            b"<ram:AdditionalReferencedDocument>"
+            + document
+            + b"</ram:AdditionalReferencedDocument>"
+        )
+        result = read_invoice(data)
+        assert result.invoice.lines[0].object_id == expected
+        assert dropped(result) == drops
+        assert [f.rule for f in result.findings if f.rule != "HAFL-DROPPED"] == []
+
+
+@pytest.mark.parametrize(
+    ("cii", "ubl"),
+    [
+        (
+            cii_line_settlement(
+                b"<ram:AdditionalReferencedDocument><ram:IssuerAssignedID>A-1"
+                b"</ram:IssuerAssignedID><ram:TypeCode>916</ram:TypeCode>"
+                b"</ram:AdditionalReferencedDocument>"
+            ),
+            ubl_line_documents(ubl_line_document(b"916", b"<cbc:ID>A-1</cbc:ID>")),
+        ),
+        (
+            cii_line_settlement(
+                b"<ram:AdditionalReferencedDocument><ram:IssuerAssignedID>A-1"
+                b"</ram:IssuerAssignedID></ram:AdditionalReferencedDocument>"
+            ),
+            ubl_line_documents(ubl_line_document(None, b"<cbc:ID>A-1</cbc:ID>")),
+        ),
+    ],
+    ids=["another-type-code", "without-a-type-code"],
+)
+def test_a_lines_additional_document_not_of_bt_128_is_dropped(cii: bytes, ubl: bytes) -> None:
+    """EN 16931 binds a line's additional document to BT-128 alone, of the type code 130; the
+    finding names the term, not the syntax's element."""
+    texts = {
+        b"916": "BT-128 of the type code '916', not 130, is left out",
+        None: "BT-128 without a type code is left out",
+    }
+    for data in (cii, ubl):
+        result = read_invoice(data)
+        assert result.invoice.lines[0].object_id is None
+        assert result.invoice.supporting_documents == ()
+        assert [f.text for f in result.findings if f.rule == "HAFL-DROPPED"] == [
+            texts[b"916" if b"916" in data else None]
+        ]
+
+
+def test_a_lines_object_documents_other_elements_are_ignored() -> None:
+    """A description or location in BT-128's document is no term of the model, and no supporting
+    document (BG-24) either, which EN 16931 has only for the invoice: ignored, as an element
+    outside EN 16931 is, without a finding."""
+    cii = cii_line_settlement(
+        cii_document(
+            b"130",
+            b"O-1",
+            b"<ram:Name>Beschreibung</ram:Name><ram:URIID>https://example.com/o-1</ram:URIID>",
+        )
+    )
+    ubl = ubl_line_documents(
+        b"<cac:DocumentReference><cbc:ID>O-1</cbc:ID>"
+        b"<cbc:DocumentTypeCode>130</cbc:DocumentTypeCode>"
+        b"<cbc:DocumentDescription>Beschreibung</cbc:DocumentDescription>"
+        b"<cac:Attachment><cac:ExternalReference><cbc:URI>https://example.com/o-1</cbc:URI>"
+        b"</cac:ExternalReference></cac:Attachment></cac:DocumentReference>"
+    )
+    for data in (cii, ubl):
+        result = read_invoice(data)
+        assert result.invoice.lines[0].object_id == Identifier(value="O-1")
+        assert result.invoice.supporting_documents == ()
+        assert result.findings == ()
+
+
+def test_a_lines_second_object_identifier_is_dropped() -> None:
+    cii = cii_line_settlement(cii_document(b"130", b"O-1"), cii_document(b"130", b"O-2"))
+    ubl = ubl_line_documents(
+        ubl_line_document(b"130", b"<cbc:ID>O-1</cbc:ID>"),
+        ubl_line_document(b"130", b"<cbc:ID>O-2</cbc:ID>"),
+    )
+    for data in (cii, ubl):
+        result = read_invoice(data)
+        assert result.invoice.lines[0].object_id == Identifier(value="O-1")
+        assert dropped(result) == ["BT-128"]
 
 
 def test_a_credit_notes_line_period() -> None:
@@ -2463,6 +2658,7 @@ def test_a_cii_lines_object_identifier_isnt_the_invoices() -> None:
     data = CII.replace(summation, summation + cii_document(b"130", b"ANG-1"), 1)
     result = read_invoice(data)
     assert result.invoice.invoiced_object_id is None
+    assert result.invoice.lines[0].object_id == Identifier(value="ANG-1")
     assert result.findings == ()
 
 
