@@ -4,6 +4,7 @@ REQ-003-PRS-F001, REQ-003-PRS-F002 (VAT totals by currency), REQ-003-PRS-F004; R
 REQ-002-PRS-F008 for the differences between the CII and UBL files of a business case.
 """
 
+from collections.abc import Callable
 from dataclasses import replace
 from datetime import date
 from decimal import Decimal
@@ -157,18 +158,40 @@ KNOWN_DIFFERENCES: dict[str, dict[str, tuple[str, str, str]]] = {
     },
 }
 
+# REQ-002-PRS-F008: where the CII and UBL file of a case give the same values in another order, by
+# case and model path, recorded as above. The comparison takes them in any order.
+ORDER_DIFFERENCES: dict[str, dict[str, tuple[str, str, str]]] = {
+    "technical-cases/cvd/02.01a-cvd_INVOICE": {
+        "lines.0.item_attributes": (
+            "BG-32",
+            "the first line's six attributes, cva first in UBL, last in CII",
+            NOT_YET_REPORTED,
+        ),
+    },
+}
+
 # An optional sum one file gives as zero and the other leaves out counts as agreeing.
 ZERO_OR_ABSENT = ("allowance_total", "charge_total", "prepaid_amount", "rounding_amount")
 
 
-def without(value: Any, path: str) -> Any:
-    """`value` with the term at the dotted `path` set to None."""
+def changed(value: Any, path: str, change: Callable[[Any], Any]) -> Any:
+    """`value` with the term at the dotted `path` changed by `change`."""
     head, _, rest = path.partition(".")
     if isinstance(value, tuple):
         items = list(cast(tuple[Any, ...], value))
-        items[int(head)] = without(items[int(head)], rest)
+        items[int(head)] = changed(items[int(head)], rest, change)
         return tuple(items)
-    return replace(value, **{head: without(getattr(value, head), rest) if rest else None})
+    inner = getattr(value, head)
+    return replace(value, **{head: changed(inner, rest, change) if rest else change(inner)})
+
+
+def without(value: Any, path: str) -> Any:
+    """`value` with the term at the dotted `path` set to None."""
+    return changed(value, path, lambda _: None)
+
+
+def in_any_order(values: tuple[Any, ...]) -> tuple[Any, ...]:
+    return tuple(sorted(values, key=repr))
 
 
 def term(value: Any, path: str) -> Any:
@@ -180,6 +203,8 @@ def term(value: Any, path: str) -> Any:
 def comparable(invoice: Invoice, case: str) -> Invoice:
     for path in KNOWN_DIFFERENCES.get(case, {}):
         invoice = without(invoice, path)
+    for path in ORDER_DIFFERENCES.get(case, {}):
+        invoice = changed(invoice, path, in_any_order)
     if invoice.totals is not None:
         zeros = {name: None for name in ZERO_OR_ABSENT if getattr(invoice.totals, name) == 0}
         invoice = replace(invoice, totals=replace(invoice.totals, **zeros))
@@ -215,6 +240,16 @@ def test_known_differences_are_still_there(case: str, path: str) -> None:
     """Once a new release of the suite removes a difference, its record goes."""
     cii, ubl = CASES[case]
     assert term(read(cii), path) != term(read(ubl), path)
+
+
+@pytest.mark.parametrize(
+    ("case", "path"), [(case, path) for case, paths in ORDER_DIFFERENCES.items() for path in paths]
+)
+def test_order_differences_are_still_there(case: str, path: str) -> None:
+    """The same values in another order; once a release puts them in one order, the record goes."""
+    cii, ubl = (term(read(file), path) for file in CASES[case])
+    assert cii != ubl
+    assert in_any_order(cii) == in_any_order(ubl)
 
 
 EXPECTED_01_01A = Invoice(

@@ -53,6 +53,14 @@ class Identifier:
 
 
 @dataclass(frozen=True, kw_only=True)
+class ItemAttribute:
+    """BG-32 item attribute."""
+
+    name: str | None = None  # BT-160
+    value: str | None = None  # BT-161
+
+
+@dataclass(frozen=True, kw_only=True)
 class ItemClassification:
     """An item classification identifier (BT-158) with the scheme it belongs to (BT-158-1) and
     the scheme's version (BT-158-2)."""
@@ -235,7 +243,8 @@ class SupportingDocument:
 @dataclass(frozen=True, kw_only=True)
 class InvoiceLine:
     """BG-25, with its period (BG-26), its allowances and charges (BG-27, BG-28), the price
-    details (BG-29), the VAT information (BG-30) and the item (BG-31)."""
+    details (BG-29), the VAT information (BG-30) and the item (BG-31) with its attributes
+    (BG-32)."""
 
     id: str | None = None  # BT-126
     note: str | None = None  # BT-127
@@ -262,6 +271,7 @@ class InvoiceLine:
     standard_item_id: Identifier | None = None  # BT-157
     item_classifications: tuple[ItemClassification, ...] = ()  # BT-158
     item_country_of_origin: str | None = None  # BT-159
+    item_attributes: tuple[ItemAttribute, ...] = ()  # BG-32
 
 
 @dataclass(frozen=True, kw_only=True)

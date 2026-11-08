@@ -23,6 +23,7 @@ from haflinger import (
     Invoice,
     InvoiceLine,
     InvoiceReadError,
+    ItemAttribute,
     ItemClassification,
     Note,
     Payee,
@@ -34,6 +35,7 @@ from haflinger import (
     SupportingDocument,
     TaxRepresentative,
     read_invoice,
+    validate,
 )
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -2427,6 +2429,149 @@ def test_an_item_term_holding_an_element_is_missing(cii: bytes, ubl: bytes, term
         result = read_invoice(data)
         assert result.invoice.lines[0] == FIRST_LINE
         assert [(f.rule, f.text.split()[0]) for f in result.findings] == [("HAFL-VALUE", term)]
+
+
+# REQ-003-PRS-F002: an item's attributes
+
+CII_ITEM_DESCRIPTION = b"<ram:Description>Zeitschrift Inland</ram:Description>"
+COLOUR = ItemAttribute(name="Farbe", value="Rot")
+SIZE = ItemAttribute(name="Größe", value="XL")
+
+
+def cii_attribute(*parts: bytes) -> bytes:
+    return (
+        b"<ram:ApplicableProductCharacteristic>"
+        + b"".join(parts)
+        + b"</ram:ApplicableProductCharacteristic>"
+    )
+
+
+def ubl_attribute(*parts: bytes) -> bytes:
+    return b"<cac:AdditionalItemProperty>" + b"".join(parts) + b"</cac:AdditionalItemProperty>"
+
+
+def with_attributes(cii: list[bytes], ubl: list[bytes]) -> tuple[bytes, bytes]:
+    """01.01a with these attributes on its first line's item, in both syntaxes."""
+    return (
+        edit(CII, CII_ITEM_DESCRIPTION, CII_ITEM_DESCRIPTION + b"".join(cii)),
+        # In UBL's order: the attributes last in the item.
+        UBL.replace(b"</cac:Item>", b"".join(ubl) + b"</cac:Item>", 1),
+    )
+
+
+def cii_name_value(name: bytes, value: bytes) -> bytes:
+    return cii_attribute(
+        b"<ram:Description>" + name + b"</ram:Description><ram:Value>" + value + b"</ram:Value>"
+    )
+
+
+def ubl_name_value(name: bytes, value: bytes) -> bytes:
+    return ubl_attribute(b"<cbc:Name>" + name + b"</cbc:Name><cbc:Value>" + value + b"</cbc:Value>")
+
+
+def test_an_items_attributes() -> None:
+    cii, ubl = with_attributes(
+        [cii_name_value(b"Farbe", b"Rot"), cii_name_value("Größe".encode(), b"XL")],
+        [ubl_name_value(b"Farbe", b"Rot"), ubl_name_value("Größe".encode(), b"XL")],
+    )
+    for data in (cii, ubl):
+        result = read_invoice(data)
+        assert result.invoice.lines[0] == replace(FIRST_LINE, item_attributes=(COLOUR, SIZE))
+        assert result.invoice.lines[1].item_attributes == ()
+        assert result.findings == ()
+
+
+def test_a_credit_notes_item_attribute() -> None:
+    note = (ROOT / "tests/data/cen-en16931/ubl/examples/ubl-tc434-creditnote1.xml").read_bytes()
+    note = edit(note, b"</cac:Item>", ubl_name_value(b"Farbe", b"Rot") + b"</cac:Item>")
+    result = read_invoice(note)
+    assert result.invoice.lines[0].item_attributes == (
+        ItemAttribute(name="2", value="Contributions - précompte professionnel"),
+        COLOUR,
+    )
+    assert result.findings == ()
+
+
+@pytest.mark.parametrize(
+    ("cii", "ubl", "expected"),
+    [
+        (
+            cii_attribute(b"<ram:Description>Farbe</ram:Description>"),
+            ubl_attribute(b"<cbc:Name>Farbe</cbc:Name>"),
+            (ItemAttribute(name="Farbe"),),
+        ),
+        (
+            cii_attribute(b"<ram:Value>Rot</ram:Value>"),
+            ubl_attribute(b"<cbc:Value>Rot</cbc:Value>"),
+            (ItemAttribute(value="Rot"),),
+        ),
+        (
+            cii_attribute(b"<ram:Description> </ram:Description><ram:Value/>"),
+            ubl_attribute(b"<cbc:Name> </cbc:Name><cbc:Value/>"),
+            (),
+        ),
+    ],
+    ids=["only-a-name", "only-a-value", "neither"],
+)
+def test_an_item_attribute_with_a_part_missing(
+    cii: bytes, ubl: bytes, expected: tuple[ItemAttribute, ...]
+) -> None:
+    """One with only a name or only a value is read, which BR-54 reports, or for a UBL one
+    without its name UBL's XML Schema, which requires it; one with neither is not read."""
+    for data in with_attributes([cii], [ubl]):
+        result = read_invoice(data)
+        assert result.invoice.lines[0].item_attributes == expected
+        assert result.findings == ()
+        rules = {finding.rule for finding in validate(data)}
+        assert bool(rules & {"BR-54", "HAFL-XSD"}) == bool(expected)
+
+
+@pytest.mark.parametrize(
+    ("parts", "expected", "term"),
+    [
+        (
+            b'<ram:Description>Gewicht</ram:Description><ram:ValueMeasure unitCode="KGM">5'
+            b"</ram:ValueMeasure>",
+            ItemAttribute(name="Gewicht"),
+            "BT-161",
+        ),
+        (
+            b"<ram:TypeCode>WT</ram:TypeCode><ram:Value>5 kg</ram:Value>",
+            ItemAttribute(value="5 kg"),
+            "BT-160",
+        ),
+    ],
+    ids=["value-measure", "type-code"],
+)
+def test_an_extended_item_attributes_other_forms_are_dropped(
+    parts: bytes, expected: ItemAttribute, term: str
+) -> None:
+    """Factur-X EXTENDED allows a name as ram:TypeCode and a value as ram:ValueMeasure, which
+    aren't EN 16931's terms: left out with a finding."""
+    cii, _ = with_attributes([cii_attribute(parts)], [])
+    result = read_invoice(cii)
+    assert result.invoice.lines[0].item_attributes == (expected,)
+    assert dropped(result) == [term]
+
+
+def test_an_item_attributes_second_value_is_dropped() -> None:
+    cii, ubl = with_attributes(
+        [
+            cii_attribute(
+                b"<ram:Description>Farbe</ram:Description><ram:Value>Rot</ram:Value>"
+                b"<ram:Value>Blau</ram:Value>"
+            )
+        ],
+        [
+            ubl_attribute(
+                b"<cbc:Name>Farbe</cbc:Name><cbc:Value>Rot</cbc:Value><cbc:Value>Blau</cbc:Value>"
+            )
+        ],
+    )
+    for data in (cii, ubl):
+        result = read_invoice(data)
+        assert result.invoice.lines[0].item_attributes == (COLOUR,)
+        assert dropped(result) == ["BT-161"]
 
 
 # REQ-003-PRS-F002: a line's period, read as the invoicing period is

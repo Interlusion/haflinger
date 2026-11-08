@@ -49,14 +49,18 @@ def term_rows(output: str) -> dict[str, list[str]]:
     return {cells[0].strip(): [cell.strip() for cell in cells[1:]] for cells in rows}
 
 
-def held_by_the_model() -> set[str]:
-    """The business terms the term report takes as the model's, by its own reading of REQ-001."""
-    code = "import term_report; print(*sorted(term_report.held()))"
-    command = [sys.executable, "-c", code]
+def in_scripts(code: str, *arguments: str) -> str:
+    """What Python `code` prints, run in `scripts/`, so that it can import the scripts."""
+    command = [sys.executable, "-c", code, *arguments]
     result = subprocess.run(  # noqa: S603
         command, cwd=ROOT / "scripts", capture_output=True, text=True, check=True
     )
-    return set(result.stdout.split())
+    return result.stdout
+
+
+def held_by_the_model() -> set[str]:
+    """The business terms the term report takes as the model's, by its own reading of REQ-001."""
+    return set(in_scripts("import term_report; print(*sorted(term_report.held()))").split())
 
 
 def test_term_report_lists_only_terms_the_model_doesnt_hold() -> None:
@@ -64,12 +68,11 @@ def test_term_report_lists_only_terms_the_model_doesnt_hold() -> None:
     assert "kosit-testsuite: 86 files, 86 read" in output
     rows = term_rows(output)
     held = held_by_the_model()
-    assert {"BT-1", "BT-153", "BG-23"} <= held
-    assert "BT-160" not in held
+    assert {"BT-1", "BT-153", "BG-23", "BT-160"} <= held
+    assert "BT-125" not in held
     assert rows
     assert not held & set(rows)
     assert rows["BT-125"] == ["Attached document", "BG-24", "32"]
-    assert rows["BT-160"] == ["Item attribute name", "BG-32", "12"]
 
 
 def test_term_report_counts_a_column_per_directory() -> None:
@@ -79,9 +82,18 @@ def test_term_report_counts_a_column_per_directory() -> None:
     assert header.split("|")[-3:-1] == [" kosit-testsuite ", " zugferd-corpus "]
 
 
+def carried(directory: Path) -> set[str]:
+    """The business terms the term report counts in the files below `directory`, held or not."""
+    code = (
+        "import sys, term_report; from pathlib import Path;"
+        " print(*sorted(term_report.count(Path(sys.argv[1]), {}).carried))"
+    )
+    return set(in_scripts(code, str(directory)).split())
+
+
 def test_term_report_leaves_out_xrechnungs_extension(tmp_path: Path) -> None:
     """KoSIT case 04.03a with an item attribute (BT-160) only in a sub-invoice line, a group of
-    XRechnung's extension."""
+    XRechnung's extension: not counted."""
     name = "04.03a-INVOICE_ubl.xml"
     source = ROOT / "tests/data/kosit-testsuite/instances/extension" / name
     item = b"<cbc:Name>Baustelle einrichten</cbc:Name>"
@@ -92,8 +104,9 @@ def test_term_report_leaves_out_xrechnungs_extension(tmp_path: Path) -> None:
     data = source.read_bytes()
     assert data.count(item) == 1
     (tmp_path / name).write_bytes(data.replace(item, item + attribute))
-    rows = term_rows(script("term_report.py", tmp_path))
-    assert rows["BT-160"][-1] == "0"
+    found = carried(tmp_path)
+    assert "BT-153" in found
+    assert "BT-160" not in found
 
 
 def test_term_report_counts_files_it_cant_read(tmp_path: Path) -> None:

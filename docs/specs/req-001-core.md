@@ -3,7 +3,7 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Draft |
-| **Version** | 0.18 |
+| **Version** | 0.19 |
 | **Date** | 2026-11-08 |
 | **Author** | loxy (drafted with Claude) |
 
@@ -232,6 +232,7 @@ General vocabulary (CIUS, Leitweg-ID, Peppol …): the [E-Invoicing 101 glossary
 | `InvoiceLine.standard_item_id` | BT-157 | Item standard identifier, an Identifier: `value` BT-157 (required in the group), `scheme` BT-157-1 (required in the group) |  |
 | `InvoiceLine.item_classifications` | BT-158 | Item classification identifiers, any number; each an ItemClassification: `value` BT-158 (required in the group), `scheme` BT-158-1 (required in the group), `scheme_version` BT-158-2 |  |
 | `InvoiceLine.item_country_of_origin` | BT-159 | Item country of origin |  |
+| `InvoiceLine.item_attributes` | BG-32 | Item attributes, any number; each an ItemAttribute: `name` BT-160 (required in the group), `value` BT-161 (required in the group) |  |
 
 **Related URS**: REQ-001-URS-F001, REQ-001-URS-F002
 

@@ -20,6 +20,7 @@ from haflinger import (
     Invoice,
     InvoiceReadError,
     InvoiceWriteError,
+    ItemAttribute,
     ItemClassification,
     Note,
     Payee,
@@ -149,6 +150,22 @@ def test_refuses_an_invalid_invoice_after_writing() -> None:
         (
             replace(
                 INVOICE,
+                lines=(
+                    replace(LINE, item_attributes=[ItemAttribute(name="Farbe", value="Rot")]),
+                    *INVOICE.lines[1:],
+                ),
+            ),
+            "BG-32 is not a tuple of ItemAttribute",
+        ),
+        (
+            replace(
+                INVOICE, lines=(replace(LINE, item_attributes=("Farbe: Rot",)), *INVOICE.lines[1:])
+            ),
+            "BG-32 holds something other than ItemAttribute",
+        ),
+        (
+            replace(
+                INVOICE,
                 lines=(replace(LINE, item_classifications=("49021000",)), *INVOICE.lines[1:]),
             ),
             "BT-158 holds something other than ItemClassification",
@@ -236,6 +253,8 @@ def test_refuses_an_invalid_invoice_after_writing() -> None:
         "str-standard-item-id",
         "str-line-object",
         "list-item-classifications",
+        "list-item-attributes",
+        "str-item-attribute",
         "str-item-classification",
         "int-classification-scheme",
         "whitespace-classification-version",
@@ -360,6 +379,7 @@ def test_missing_terms_are_left_out() -> None:
         b"ram:ReceivableSpecifiedTradeAccountingAccount",
         b"ram:DesignatedProductClassification",
         b"ram:OriginTradeCountry",
+        b"ram:ApplicableProductCharacteristic",
     ):
         assert tag not in document
     assert b"<ram:ApplicableHeaderTradeDelivery />" in document
@@ -696,6 +716,13 @@ def test_refuses_what_cant_be_written_sensibly(invoice: Any, reason: str) -> Non
             "BG-31 holds an item classification without its value (BT-158)",
         ),
         (
+            replace(
+                INVOICE,
+                lines=(replace(LINE, item_attributes=(ItemAttribute(),)), *INVOICE.lines[1:]),
+            ),
+            "BG-32 holds an item attribute without any term",
+        ),
+        (
             replace(INVOICE, invoiced_object_id=Identifier(scheme="ABZ")),
             "the invoice holds an invoiced object identifier without its value (BT-18)",
         ),
@@ -763,6 +790,7 @@ def test_refuses_what_cant_be_written_sensibly(invoice: Any, reason: str) -> Non
         "standard-item-id-without-value",
         "line-object-without-value",
         "item-classification-without-value",
+        "empty-item-attribute",
         "invoiced-object-without-value",
         "empty-payee",
         "empty-supporting-document",
@@ -1337,6 +1365,10 @@ LINE_DETAILS = replace(
         ItemClassification(value="49021000", scheme="HS", scheme_version="2022"),
     ),
     item_country_of_origin="DE",
+    item_attributes=(
+        ItemAttribute(name="Farbe", value="Rot"),
+        ItemAttribute(name="Größe", value="XL"),
+    ),
 )
 
 
@@ -1358,6 +1390,11 @@ def test_writes_a_lines_price_and_item_details_and_reads_them_back(specification
         b"<ram:SellerAssignedID>246</ram:SellerAssignedID>"
         b"<ram:BuyerAssignedID>B-246</ram:BuyerAssignedID><ram:Name>Zeitschrift [...]</ram:Name>"
         b"<ram:Description>Zeitschrift Inland</ram:Description>"
+        b"<ram:ApplicableProductCharacteristic><ram:Description>Farbe</ram:Description>"
+        b"<ram:Value>Rot</ram:Value></ram:ApplicableProductCharacteristic>"
+        b"<ram:ApplicableProductCharacteristic><ram:Description>"
+        + "Größe".encode()
+        + b"</ram:Description><ram:Value>XL</ram:Value></ram:ApplicableProductCharacteristic>"
         b"<ram:DesignatedProductClassification>"
         b'<ram:ClassCode listID="IB">0721-880X</ram:ClassCode>'
         b"</ram:DesignatedProductClassification><ram:DesignatedProductClassification>"
@@ -1446,6 +1483,39 @@ def test_an_item_classification_without_a_scheme_fails_br_65(
         write_cii(invoice)
     assert refusal.value.document is not None
     assert written in refusal.value.document
+    assert read_invoice(refusal.value.document).invoice == invoice
+
+
+@pytest.mark.parametrize(
+    ("specification_id", "rules"),
+    [(EN16931, {"HAFL-XSD"}), (XRECHNUNG, {"BR-54"})],
+    ids=["en16931", "xrechnung"],
+)
+@pytest.mark.parametrize(
+    ("attribute", "written"),
+    [
+        (ItemAttribute(name="Farbe"), b"<ram:Description>Farbe</ram:Description>"),
+        (ItemAttribute(value="Rot"), b"<ram:Value>Rot</ram:Value>"),
+    ],
+    ids=["without-a-value", "without-a-name"],
+)
+def test_an_item_attribute_without_its_name_or_value_fails_br_54(
+    specification_id: str, rules: set[str], attribute: ItemAttribute, written: bytes
+) -> None:
+    """Written without the missing one, and refused after writing (REQ-004-PRS-F001); for
+    EN 16931, Factur-X's XML Schema, which requires both, refuses it before the rules run."""
+    line = replace(LINE, item_attributes=(attribute,))
+    invoice = replace(INVOICE, specification_id=specification_id, lines=(line, *INVOICE.lines[1:]))
+    with pytest.raises(InvoiceWriteError) as refusal:
+        write_cii(invoice)
+    assert rules <= {finding.rule for finding in refusal.value.findings}
+    assert refusal.value.document is not None
+    assert (
+        b"<ram:ApplicableProductCharacteristic>"
+        + written
+        + b"</ram:ApplicableProductCharacteristic>"
+        in refusal.value.document
+    )
     assert read_invoice(refusal.value.document).invoice == invoice
 
 
