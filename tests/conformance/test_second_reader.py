@@ -99,6 +99,62 @@ def test_comparable_still_compares_the_schemes_kosit_gives() -> None:
     assert read.invoiced_object_id == Identifier(value="O-18")
 
 
+def test_kosit_still_gives_a_cii_vat_point_date_code_as_written() -> None:
+    """Once a new release gives EN 16931's code for CII's, `kosit.comparable` stops evening it
+    out."""
+    data = (SUITE / "technical-cases/cius/01.02_comprehensive_test_uncefact.xml").read_bytes()
+    ours, theirs = read_invoice(data).invoice, kosit.read_invoice(data).invoice
+    assert (ours.vat_point_date_code, theirs.vat_point_date_code) == ("3", "5")
+    expected, read = kosit.comparable(ours, theirs)
+    assert read == expected
+
+
+def test_kosit_reads_a_cii_vat_point_date_code_repeated_in_each_vat_entry_once() -> None:
+    """KoSIT's CII stylesheet gives one BT-8 for each ram:ApplicableTradeTax holding one, which
+    CEN's CII-SR-462 allows with the same code; another code is left out with a finding."""
+    data = (SUITE / "standard/01.01a-INVOICE_uncefact.xml").read_bytes()
+    head, header, settlement = data.partition(b"<ram:ApplicableHeaderTradeSettlement>")
+    end = b"</ram:ApplicableTradeTax>"
+    assert settlement.count(end) == 1
+
+    def second_tax(code: bytes) -> bytes:
+        return (
+            head
+            + header
+            + settlement.replace(
+                end,
+                end + b"<ram:ApplicableTradeTax><ram:CalculatedAmount>0.00</ram:CalculatedAmount>"
+                b"<ram:TypeCode>VAT</ram:TypeCode><ram:BasisAmount>0.00</ram:BasisAmount>"
+                b"<ram:CategoryCode>Z</ram:CategoryCode><ram:DueDateTypeCode>"
+                + code
+                + b"</ram:DueDateTypeCode><ram:RateApplicablePercent>0</ram:RateApplicablePercent>"
+                b"</ram:ApplicableTradeTax>",
+            ).replace(
+                b"<ram:RateApplicablePercent>7",
+                b"<ram:DueDateTypeCode>5</ram:DueDateTypeCode><ram:RateApplicablePercent>7",
+                1,
+            )
+        )
+
+    same = kosit.read_invoice(second_tax(b"5"))
+    assert (same.invoice.vat_point_date_code, same.findings) == ("5", ())
+    other = kosit.read_invoice(second_tax(b"29"))
+    assert other.invoice.vat_point_date_code == "5"
+    assert [finding.text.split()[0] for finding in other.findings] == ["BT-8"]
+
+
+def test_kosit_reads_a_repeated_ubl_vat_point_date_code_as_haflinger_does() -> None:
+    """UBL-SR-49 allows one: a second one, with the same code, is left out with a finding."""
+    data = (SUITE / "standard/01.01a-INVOICE_ubl.xml").read_bytes()
+    supplier = b"<cac:AccountingSupplierParty>"
+    period = b"<cac:InvoicePeriod><cbc:DescriptionCode>35</cbc:DescriptionCode></cac:InvoicePeriod>"
+    assert data.count(supplier) == 1
+    data = data.replace(supplier, period + period + supplier)
+    for result in (read_invoice(data), kosit.read_invoice(data)):
+        assert result.invoice.vat_point_date_code == "35"
+        assert [finding.text.split()[0] for finding in result.findings] == ["BT-8"]
+
+
 def test_kosit_still_leaves_the_subject_code_in_ubl_notes() -> None:
     """Once a new release reads `#XXX#` as BT-21, `kosit.comparable` stops evening it out."""
     data = (SUITE / "standard/01.01a-INVOICE_ubl.xml").read_bytes()

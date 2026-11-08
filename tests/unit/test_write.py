@@ -111,6 +111,21 @@ def test_refuses_an_invalid_invoice_after_writing() -> None:
             ),
             "BT-150 needs the item price base quantity (BT-149)",
         ),
+        (replace(INVOICE, vat_point_date="2016-04-01"), "BT-7 is not a date"),
+        (replace(INVOICE, vat_breakdown=(), vat_point_date="2016-04-01"), "BT-7 is not a date"),
+        (
+            replace(INVOICE, vat_point_date_code="29"),
+            "BT-8 holds CII's code '29'; the model holds EN 16931's, '35'",
+        ),
+        (replace(INVOICE, vat_point_date_code=3), "BT-8 is not a str"),
+        (
+            replace(INVOICE, vat_breakdown=(), vat_point_date=date(2016, 4, 1)),
+            "BT-7 needs a VAT breakdown (BG-23), which is missing",
+        ),
+        (
+            replace(INVOICE, vat_breakdown=(), vat_point_date_code="3"),
+            "BT-8 needs a VAT breakdown (BG-23), which is missing",
+        ),
         (
             replace(
                 INVOICE, lines=(replace(LINE, standard_item_id="4000001000005"), *INVOICE.lines[1:])
@@ -212,6 +227,12 @@ def test_refuses_an_invalid_invoice_after_writing() -> None:
         "bt-130-without-bt-129",
         "bt-147-without-bt-148",
         "bt-150-without-bt-149",
+        "str-vat-point-date",
+        "str-vat-point-date-without-bg-23",
+        "ciis-vat-point-date-code",
+        "int-vat-point-date-code",
+        "bt-7-without-bg-23",
+        "bt-8-without-bg-23",
         "str-standard-item-id",
         "str-line-object",
         "list-item-classifications",
@@ -1138,6 +1159,79 @@ def test_the_advice_references_follow_the_delivery_information() -> None:
         b"<ram:DespatchAdviceReferencedDocument>"
     )
     assert read_invoice(document).invoice == invoice
+
+
+# REQ-004-PRS-F003: the VAT point date and its code
+
+TAX_POINT_AFTER = b"<ram:CategoryCode>S</ram:CategoryCode>"
+TAX_POINT_BEFORE = (
+    b"<ram:RateApplicablePercent>7</ram:RateApplicablePercent></ram:ApplicableTradeTax>"
+)
+
+
+@pytest.mark.parametrize("specification_id", [EN16931, XRECHNUNG])
+def test_writes_the_vat_point_date_and_reads_it_back(specification_id: str) -> None:
+    """In the VAT breakdown's ram:ApplicableTradeTax, after its category code."""
+    invoice = replace(INVOICE, specification_id=specification_id, vat_point_date=date(2016, 4, 1))
+    document = write_cii(invoice)
+    assert (
+        TAX_POINT_AFTER
+        + b'<ram:TaxPointDate><udt:DateString format="102">20160401</udt:DateString>'
+        b"</ram:TaxPointDate>" + TAX_POINT_BEFORE in document
+    )
+    assert document.count(b"<ram:TaxPointDate>") == 1
+    assert read_invoice(document).invoice == invoice
+
+
+@pytest.mark.parametrize(
+    ("code", "written"),
+    [("3", b"5"), ("35", b"29"), ("432", b"72")],
+    ids=["date-of-invoice", "date-of-delivery", "paid-to-date"],
+)
+def test_writes_a_vat_point_date_code_as_ciis(code: str, written: bytes) -> None:
+    """EN 16931's codes of UNTDID 2005 as CII's of UNTDID 2475 (REQ-001-URS-NF001)."""
+    invoice = replace(INVOICE, vat_point_date_code=code)
+    document = write_cii(invoice)
+    assert (
+        TAX_POINT_AFTER
+        + b"<ram:DueDateTypeCode>"
+        + written
+        + b"</ram:DueDateTypeCode>"
+        + TAX_POINT_BEFORE
+        in document
+    )
+    assert read_invoice(document).invoice == invoice
+
+
+def test_a_cii_file_with_en_16931s_code_is_written_with_ciis() -> None:
+    """A CII 35, which CEN's rules reject there, reads as EN 16931's code and is written as CII's
+    29 (REQ-001-URS-NF001)."""
+    header = b"<ram:BasisAmount>314.86</ram:BasisAmount><ram:CategoryCode>S</ram:CategoryCode>"
+    document = written(INVOICE)
+    assert document.count(header) == 1
+    data = document.replace(header, header + b"<ram:DueDateTypeCode>35</ram:DueDateTypeCode>")
+    invoice = read_invoice(data).invoice
+    assert invoice.vat_point_date_code == "35"
+    assert b"<ram:DueDateTypeCode>29</ram:DueDateTypeCode>" in write_cii(invoice)
+
+
+def test_writes_another_vat_point_date_code_as_it_is() -> None:
+    """And refused after writing by CEN's code list (BR-CL-06)."""
+    invoice = replace(INVOICE, vat_point_date_code="ZZ")
+    with pytest.raises(InvoiceWriteError, match="BR-CL-06") as refusal:
+        write_cii(invoice)
+    assert refusal.value.document is not None
+    assert b"<ram:DueDateTypeCode>ZZ</ram:DueDateTypeCode>" in refusal.value.document
+    assert read_invoice(refusal.value.document).invoice == invoice
+
+
+def test_a_vat_point_date_with_its_code_fails_br_co_03() -> None:
+    """Written as the model holds it, and refused after writing (REQ-004-PRS-F001)."""
+    invoice = replace(INVOICE, vat_point_date=date(2016, 4, 1), vat_point_date_code="3")
+    with pytest.raises(InvoiceWriteError, match="BR-CO-03") as refusal:
+        write_cii(invoice)
+    assert refusal.value.document is not None
+    assert read_invoice(refusal.value.document).invoice == invoice
 
 
 # REQ-004-PRS-F003: a line's price and item details

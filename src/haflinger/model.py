@@ -274,6 +274,8 @@ class Invoice:
     type_code: str | None = None  # BT-3
     currency_code: str | None = None  # BT-5
     tax_currency_code: str | None = None  # BT-6
+    vat_point_date: date | None = None  # BT-7
+    vat_point_date_code: str | None = None  # BT-8, EN 16931's code (REQ-001-URS-NF001)
     due_date: date | None = None  # BT-9
     buyer_reference: str | None = None  # BT-10
     project_reference: str | None = None  # BT-11

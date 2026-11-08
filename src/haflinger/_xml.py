@@ -379,6 +379,17 @@ def first_of(nodes: list[Node], term: str) -> Node | None:
     return nodes[0] if nodes else None
 
 
+def one_value(values: list[tuple[Node, str]], term: str) -> str | None:
+    """The first of `values`, each with the element it comes from, of a term the syntax repeats
+    with the same value, such as the payment means' text (BT-82) or CII's VAT point date code
+    (BT-8) in each VAT entry; another value is left out with a finding."""
+    first = values[0][1] if values else None
+    for node, value in values[1:]:
+        if value != first:
+            node.drop(f"{term} appears again with another value; this one is left out: {value!r}")
+    return first
+
+
 def _stripped(text: str | None) -> str | None:
     text = (text or "").strip(XML_WHITESPACE)
     return text or None
