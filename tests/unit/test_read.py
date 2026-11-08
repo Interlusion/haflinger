@@ -1040,6 +1040,144 @@ def test_reads_a_byte_order_mark_that_agrees_with_the_declaration(declaration: b
     assert read_invoice(data).invoice.number == "123456XX"
 
 
+# REQ-003-PRS-F002: the VAT point date and its code
+
+CII_HEADER = b"<ram:ApplicableHeaderTradeSettlement>"
+CII_HEADER_RATE = b"<ram:RateApplicablePercent>"
+CII_HEADER_TAX_END = b"</ram:ApplicableTradeTax>"
+UBL_CURRENCY = b"<cbc:DocumentCurrencyCode>"
+TECHNICAL = ROOT / "tests/data/kosit-testsuite/instances/technical-cases/cius"
+
+
+def cii_tax_point(first: bytes, second: bytes | None = None) -> bytes:
+    """01.01a with `first` in its VAT breakdown's ram:ApplicableTradeTax before the rate and,
+    where `second` isn't None, a second VAT breakdown with `second` there."""
+    head, header, settlement = CII.partition(CII_HEADER)
+    assert settlement.count(CII_HEADER_RATE) == settlement.count(CII_HEADER_TAX_END) == 1
+    settlement = settlement.replace(CII_HEADER_RATE, first + CII_HEADER_RATE)
+    if second is not None:
+        settlement = settlement.replace(
+            CII_HEADER_TAX_END,
+            CII_HEADER_TAX_END
+            + b'<ram:ApplicableTradeTax><ram:CalculatedAmount currencyID="EUR">0.00'
+            b"</ram:CalculatedAmount><ram:TypeCode>VAT</ram:TypeCode>"
+            b"<ram:BasisAmount>0.00</ram:BasisAmount><ram:CategoryCode>Z</ram:CategoryCode>"
+            + second
+            + b"<ram:RateApplicablePercent>0</ram:RateApplicablePercent></ram:ApplicableTradeTax>",
+        )
+    return head + header + settlement
+
+
+def cii_tax_point_date(value: bytes) -> bytes:
+    return (
+        b'<ram:TaxPointDate><udt:DateString format="102">'
+        + value
+        + b"</udt:DateString></ram:TaxPointDate>"
+    )
+
+
+def cii_due_date_code(code: bytes) -> bytes:
+    return b"<ram:DueDateTypeCode>" + code + b"</ram:DueDateTypeCode>"
+
+
+def ubl_tax_point_code(*codes: bytes) -> bytes:
+    """01.01a with a cac:InvoicePeriod holding only each of these BT-8."""
+    periods = b"".join(
+        b"<cac:InvoicePeriod><cbc:DescriptionCode>"
+        + code
+        + b"</cbc:DescriptionCode></cac:InvoicePeriod>"
+        for code in codes
+    )
+    return edit(UBL, UBL_SUPPLIER, periods + UBL_SUPPLIER)
+
+
+def test_a_vat_point_date() -> None:
+    cii = cii_tax_point(cii_tax_point_date(b"20160401"))
+    ubl = edit(UBL, UBL_CURRENCY, b"<cbc:TaxPointDate>2016-04-01</cbc:TaxPointDate>" + UBL_CURRENCY)
+    note = (ROOT / "tests/data/cen-en16931/ubl/examples/ubl-tc434-creditnote1.xml").read_bytes()
+    note = edit(
+        note, UBL_CURRENCY, b"<cbc:TaxPointDate>2016-04-01</cbc:TaxPointDate>" + UBL_CURRENCY
+    )
+    for data in (cii, ubl, note):
+        result = read_invoice(data)
+        assert result.invoice.vat_point_date == date(2016, 4, 1)
+        assert result.invoice.vat_point_date_code is None
+        assert result.findings == ()
+
+
+def test_a_cii_vat_point_date_in_the_second_vat_breakdown_and_a_second_one() -> None:
+    """CII-SR-461 allows one, in any of the VAT breakdown's ram:ApplicableTradeTax."""
+    result = read_invoice(cii_tax_point(b"", cii_tax_point_date(b"20160401")))
+    assert result.invoice.vat_point_date == date(2016, 4, 1)
+    assert result.findings == ()
+    result = read_invoice(
+        cii_tax_point(cii_tax_point_date(b"20160401"), cii_tax_point_date(b"20160402"))
+    )
+    assert result.invoice.vat_point_date == date(2016, 4, 1)
+    assert dropped(result) == ["BT-7"]
+
+
+def test_a_cii_vat_point_date_not_written_as_yyyymmdd_is_missing() -> None:
+    result = read_invoice(cii_tax_point(cii_tax_point_date(b"2016-04-01")))
+    assert result.invoice.vat_point_date is None
+    assert [(f.rule, f.text.split()[0]) for f in result.findings] == [("HAFL-VALUE", "BT-7")]
+
+
+@pytest.mark.parametrize(
+    ("cii", "expected"),
+    [(b"5", "3"), (b"29", "35"), (b"72", "432"), (b"35", "35"), (b"ZZ", "ZZ")],
+    ids=["date-of-invoice", "date-of-delivery", "paid-to-date", "en-16931s-code", "another-code"],
+)
+def test_a_cii_vat_point_date_code_is_en_16931s(cii: bytes, expected: str) -> None:
+    """CII's codes of UNTDID 2475 read as EN 16931's of UNTDID 2005, and EN 16931's, which CEN's
+    rules reject in CII, as they are; another code as it is (REQ-001-URS-NF001)."""
+    result = read_invoice(cii_tax_point(cii_due_date_code(cii)))
+    assert result.invoice.vat_point_date_code == expected
+    assert result.invoice.vat_point_date is None
+    assert result.findings == ()
+
+
+@pytest.mark.parametrize("code", ["3", "35", "432"])
+def test_a_ubl_vat_point_date_code(code: str) -> None:
+    """In a cac:InvoicePeriod holding no date, which isn't the invoicing period."""
+    result = read_invoice(ubl_tax_point_code(code.encode()))
+    assert result.invoice.vat_point_date_code == code
+    assert result.invoice.invoicing_period is None
+    assert result.findings == ()
+
+
+def test_a_vat_point_date_code_in_both_files_of_kosits_technical_case_01_02() -> None:
+    cii = read_invoice((TECHNICAL / "01.02_comprehensive_test_uncefact.xml").read_bytes())
+    ubl = read_invoice((TECHNICAL / "01.02_comprehensive_test_ubl.xml").read_bytes())
+    assert cii.invoice.vat_point_date_code == ubl.invoice.vat_point_date_code == "3"
+
+
+def test_a_cii_vat_point_date_code_repeated_with_the_same_code_and_with_another() -> None:
+    """CII-SR-462 allows the same code in each ram:ApplicableTradeTax; another is left out."""
+    result = read_invoice(cii_tax_point(cii_due_date_code(b"29"), cii_due_date_code(b"29")))
+    assert result.invoice.vat_point_date_code == "35"
+    assert result.findings == ()
+    result = read_invoice(cii_tax_point(cii_due_date_code(b"29"), cii_due_date_code(b"5")))
+    assert result.invoice.vat_point_date_code == "35"
+    assert dropped(result) == ["BT-8"]
+
+
+def test_a_second_ubl_vat_point_date_code_is_dropped() -> None:
+    result = read_invoice(ubl_tax_point_code(b"35", b"3"))
+    assert result.invoice.vat_point_date_code == "35"
+    assert dropped(result) == ["BT-8"]
+
+
+def test_both_are_read_beside_each_other() -> None:
+    """BR-CO-03 reports an invoice with both; reading reads what it says."""
+    result = read_invoice(cii_tax_point(cii_tax_point_date(b"20160401") + cii_due_date_code(b"5")))
+    assert (result.invoice.vat_point_date, result.invoice.vat_point_date_code) == (
+        date(2016, 4, 1),
+        "3",
+    )
+    assert result.findings == ()
+
+
 # REQ-003-PRS-F002: the parties' addresses, contacts and identifiers
 
 UBL_SELLER_ENDPOINT = b'<cbc:EndpointID schemeID="EM">seller@email.de</cbc:EndpointID>'
@@ -1699,8 +1837,8 @@ def test_a_second_ubl_delivery_is_dropped() -> None:
 
 
 def test_a_ubl_delivery_and_period_without_the_models_terms_dont_count() -> None:
-    """A first cac:Delivery or cac:InvoicePeriod holding only terms the model doesn't read
-    leaves the group to the next one."""
+    """A first cac:Delivery or cac:InvoicePeriod holding none of its group's terms, such as a
+    cac:InvoicePeriod holding only BT-8, leaves the group to the next one."""
     _, ubl = delivered(b"", b"")
     ubl = edit(
         ubl,
@@ -1714,6 +1852,7 @@ def test_a_ubl_delivery_and_period_without_the_models_terms_dont_count() -> None
     result = read_invoice(ubl)
     assert result.invoice.delivery == DELIVERY
     assert result.invoice.invoicing_period == Period(start=date(2016, 3, 1), end=date(2016, 3, 31))
+    assert result.invoice.vat_point_date_code == "35"
     assert dropped(result) == []
 
 

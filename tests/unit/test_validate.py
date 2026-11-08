@@ -203,6 +203,8 @@ assert MODEL.buyer is not None
 # passes their XML Schemas (REQ-002-PRS-F011); EN 16931 and EXTENDED take the whole model.
 WITHOUT_LINES = replace(
     MODEL,
+    # Neither MINIMUM nor BASIC WL has a VAT point date.
+    vat_point_date=None,
     notes=(),
     lines=(),
     buyer_reference=None,
@@ -224,6 +226,7 @@ WITHOUT_LINES = replace(
 )
 MINIMUM = replace(
     WITHOUT_LINES,
+    vat_point_date_code=None,
     vat_breakdown=(),
     buyer=Party(name=MODEL.buyer.name),
     payee=None,
@@ -231,10 +234,11 @@ MINIMUM = replace(
     payment_terms=None,
     payment_instructions=None,
 )
-# BASIC has no seller contact, additional legal information or supporting documents, no line
-# references, and of an item only its standard identifier and its name.
+# BASIC has no VAT point date, seller contact, additional legal information or supporting
+# documents, no line references, and of an item only its standard identifier and its name.
 BASIC = replace(
     MODEL,
+    vat_point_date=None,
     supporting_documents=(),
     seller=replace(MODEL.seller, contact=None, additional_legal_information=None),
     lines=tuple(
