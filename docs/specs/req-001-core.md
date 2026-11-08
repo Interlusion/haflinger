@@ -3,8 +3,8 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Draft |
-| **Version** | 0.16 |
-| **Date** | 2026-11-07 |
+| **Version** | 0.17 |
+| **Date** | 2026-11-08 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Intended Use
@@ -108,6 +108,7 @@ General vocabulary (CIUS, Leitweg-ID, Peppol …): the [E-Invoicing 101 glossary
 - **Surrounding whitespace on reading** (REQ-003): whitespace around a value is removed, and an element empty after that counts as missing.
 - **Exponent notation on writing** (REQ-004): a `Decimal` in exponent notation, which only a model built in code can hold, is written in plain notation with the same value.
 - **Notation of numbers on reading** (REQ-003): a number keeps its value and its decimal places, not the characters that carry neither: a `+` sign, leading zeros, a decimal point without digits after it, a missing zero before it. `+0336.90` reads as `336.90`, `336.` as `336` and `.5` as `0.5`.
+- **The VAT point date code in CII** (REQ-003, REQ-004): CII writes BT-8 with the codes of UNTDID 2475, `5` (date of invoice), `29` (date of delivery) and `72` (paid to date), where EN 16931 and UBL use those of UNTDID 2005 for the same dates, `3`, `35` and `432`; CEN's rules accept only the first in CII and only the second in UBL (`BR-CL-06`). The model holds EN 16931's code: a CII `5`, `29` or `72` reads as `3`, `35` or `432` and is written back as it was, so that the CII and the UBL file of an invoice read alike and a model read from either is written as valid CII. A CII `3`, `35` or `432`, which CEN's rules reject there, is EN 16931's code for its date and is written as CII's; a model holding `5`, `29` or `72` is refused before writing, naming EN 16931's code, so that every model written reads back alike. Any other code is read and written as it is.
 
 #### REQ-001-URS-NF002: Refuse or report, never guess
 
@@ -140,6 +141,8 @@ General vocabulary (CIUS, Leitweg-ID, Peppol …): the [E-Invoicing 101 glossary
 | `Invoice.type_code` | BT-3 | Invoice type code | required |
 | `Invoice.currency_code` | BT-5 | Invoice currency code | required |
 | `Invoice.tax_currency_code` | BT-6 | VAT accounting currency code |  |
+| `Invoice.vat_point_date` | BT-7 | Value added tax point date |  |
+| `Invoice.vat_point_date_code` | BT-8 | Value added tax point date code, EN 16931's code of UNTDID 2005 (3, 35 or 432) in either syntax (REQ-001-URS-NF001) |  |
 | `Invoice.due_date` | BT-9 | Payment due date |  |
 | `Invoice.buyer_reference` | BT-10 | Buyer reference (Leitweg-ID) |  |
 | `Invoice.project_reference` | BT-11 | Project reference |  |
