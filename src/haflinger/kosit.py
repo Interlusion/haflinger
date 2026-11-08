@@ -25,7 +25,7 @@ from haflinger._allowances import (
     LINE_CHARGE,
     AllowanceChargeTerms,
 )
-from haflinger._items import classifications
+from haflinger._items import attributes, classifications
 from haflinger._parties import (
     BUYER,
     DELIVER_TO,
@@ -506,4 +506,7 @@ def _line(line: Node) -> InvoiceLine:
             "scheme_version_identifier",
         ),
         item_country_of_origin=_text(line, "BG-31", "BT-159"),
+        item_attributes=attributes(
+            line.findall(_term("BG-31", "BG-32")), _term("BT-160"), _term("BT-161")
+        ),
     )

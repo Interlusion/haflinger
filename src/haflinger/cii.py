@@ -17,7 +17,7 @@ from haflinger._allowances import (
     allowances_and_charges,
     price_allowance,
 )
-from haflinger._items import classifications
+from haflinger._items import attributes, classifications
 from haflinger._parties import (
     BUYER,
     DELIVER_TO,
@@ -59,6 +59,7 @@ from haflinger.model import (
     Identifier,
     Invoice,
     InvoiceLine,
+    ItemAttribute,
     ItemClassification,
     Note,
     Party,
@@ -681,6 +682,14 @@ def _line(line: Node) -> InvoiceLine:
             product.holding("BT-158", "ram:DesignatedProductClassification/ram:ClassCode")
         ),
         item_country_of_origin=_text(product, "ram:OriginTradeCountry/ram:ID", "BT-159"),
+        item_attributes=()
+        if product is None
+        else attributes(
+            product.findall("ram:ApplicableProductCharacteristic"),
+            "ram:Description",
+            "ram:Value",
+            (("ram:TypeCode", "BT-160"), ("ram:ValueMeasure", "BT-161")),
+        ),
     )
 
 
@@ -1357,6 +1366,10 @@ def _write_product(product: Element, line: InvoiceLine) -> None:
     _put_text(product, "ram:BuyerAssignedID", line.buyer_item_id, "BT-156")
     _put_text(product, "ram:Name", line.item_name, "BT-153")
     _put_text(product, "ram:Description", line.item_description, "BT-154")
+    for attribute in _group(line.item_attributes, ItemAttribute, "BG-32", "an item attribute"):
+        characteristic = SubElement(product, "ram:ApplicableProductCharacteristic")
+        _put_text(characteristic, "ram:Description", attribute.name, "BT-160")
+        _put_text(characteristic, "ram:Value", attribute.value, "BT-161")
     for classification in _group(line.item_classifications, ItemClassification, "BT-158"):
         value, scheme = _identifier_parts(
             classification, "BG-31", "an item classification", "BT-158"

@@ -11,7 +11,7 @@ from haflinger._allowances import (
     allowances_and_charges,
     price_allowance,
 )
-from haflinger._items import classifications
+from haflinger._items import attributes, classifications
 from haflinger._parties import (
     BUYER,
     DELIVER_TO,
@@ -639,6 +639,9 @@ def _line(line: Node, quantity_path: str) -> InvoiceLine:
             item.holding("BT-158", "cac:CommodityClassification/cbc:ItemClassificationCode")
         ),
         item_country_of_origin=_text(item, "cac:OriginCountry/cbc:IdentificationCode", "BT-159"),
+        item_attributes=()
+        if item is None
+        else attributes(item.findall("cac:AdditionalItemProperty"), "cbc:Name", "cbc:Value"),
     )
 
 
