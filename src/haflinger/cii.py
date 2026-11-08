@@ -11,6 +11,8 @@ from xml.etree.ElementTree import Element, SubElement, tostring
 from haflinger._allowances import (
     ALLOWANCE,
     CHARGE,
+    LINE_ALLOWANCE,
+    LINE_CHARGE,
     AllowanceChargeTerms,
     allowances_and_charges,
     price_allowance,
@@ -565,14 +567,21 @@ def _totals(
 
 
 def _allowance_charge(node: Node, terms: AllowanceChargeTerms) -> AllowanceCharge:
-    label = f"{terms.vat} (ram:CategoryTradeTax)"
-    tax = first_group(_vat_taxes(node, "ram:CategoryTradeTax", label), label)
+    """BG-20, BG-21, or of a line BG-27, BG-28, whose ram:CategoryTradeTax EN 16931 doesn't
+    give it and isn't read (REQ-003-PRS-F002)."""
+    vat_category_code = vat_rate = None
+    if terms.vat is not None:
+        label = f"{terms.vat} (ram:CategoryTradeTax)"
+        tax = first_group(_vat_taxes(node, "ram:CategoryTradeTax", label), label)
+        if tax is not None:
+            vat_category_code = tax.text("ram:CategoryCode", terms.vat.category_code)
+            vat_rate = tax.decimal("ram:RateApplicablePercent", terms.vat.rate)
     return AllowanceCharge(
         amount=node.decimal("ram:ActualAmount", terms.amount),
         base_amount=node.decimal("ram:BasisAmount", terms.base_amount),
         percentage=node.decimal("ram:CalculationPercent", terms.percentage),
-        vat_category_code=_text(tax, "ram:CategoryCode", terms.vat_category_code),
-        vat_rate=None if tax is None else tax.decimal("ram:RateApplicablePercent", terms.vat_rate),
+        vat_category_code=vat_category_code,
+        vat_rate=vat_rate,
         reason=node.text("ram:Reason", terms.reason),
         reason_code=node.text("ram:ReasonCode", terms.reason_code),
     )
@@ -619,6 +628,12 @@ def _line(line: Node) -> InvoiceLine:
         "BT-128",
         "ram:ReferenceTypeCode",
     )
+    allowances, charges = allowances_and_charges(
+        line.findall(f"{settlement}/ram:SpecifiedTradeAllowanceCharge"),
+        "ram:ChargeIndicator/udt:Indicator",
+        _allowance_charge,
+        (LINE_ALLOWANCE, LINE_CHARGE),
+    )
     taxes = _vat_taxes(line, f"{settlement}/ram:ApplicableTradeTax", "BG-30")
     for node in taxes[1:]:
         node.drop("BG-30 appears more than once; this one is left out")
@@ -640,6 +655,8 @@ def _line(line: Node) -> InvoiceLine:
             f"{settlement}/ram:ReceivableSpecifiedTradeAccountingAccount/ram:ID", "BT-133"
         ),
         period=_period(line, f"{settlement}/ram:BillingSpecifiedPeriod", LINE_PERIOD),
+        allowances=allowances,
+        charges=charges,
         net_price=None
         if price is None
         else price.decimal(f"{_NET_PRICE}/ram:ChargeAmount", "BT-146"),
@@ -1125,8 +1142,14 @@ def _write_period(settlement: Element, period: object, terms: PeriodTerms) -> No
 def _write_allowance_charges(
     settlement: Element, values: object, terms: AllowanceChargeTerms
 ) -> None:
-    """BG-20 or BG-21, each as a ram:SpecifiedTradeAllowanceCharge (REQ-004-PRS-F003)."""
+    """BG-20 or BG-21, or a line's BG-27 or BG-28 without VAT category, each as a
+    ram:SpecifiedTradeAllowanceCharge (REQ-004-PRS-F003)."""
     for each in _group(values, AllowanceCharge, terms.group, terms.kind):
+        vat = each.vat_category_code is not None or each.vat_rate is not None
+        if vat and terms.vat is None:
+            raise InvoiceWriteError(
+                f"{terms.group} holds a VAT category code or rate, which {terms.kind} hasn't"
+            )
         element = SubElement(settlement, "ram:SpecifiedTradeAllowanceCharge")
         _leaf(element, "ram:ChargeIndicator/udt:Indicator", terms.indicator, {})
         _put_amount(element, "ram:CalculationPercent", each.percentage, terms.percentage)
@@ -1134,11 +1157,11 @@ def _write_allowance_charges(
         _put_amount(element, "ram:ActualAmount", each.amount, terms.amount)
         _put_text(element, "ram:ReasonCode", each.reason_code, terms.reason_code)
         _put_text(element, "ram:Reason", each.reason, terms.reason)
-        if each.vat_category_code is not None or each.vat_rate is not None:
+        if vat and terms.vat is not None:
             tax = SubElement(element, "ram:CategoryTradeTax")
             SubElement(tax, "ram:TypeCode").text = "VAT"
-            _put_text(tax, "ram:CategoryCode", each.vat_category_code, terms.vat_category_code)
-            _put_amount(tax, "ram:RateApplicablePercent", each.vat_rate, terms.vat_rate)
+            _put_text(tax, "ram:CategoryCode", each.vat_category_code, terms.vat.category_code)
+            _put_amount(tax, "ram:RateApplicablePercent", each.vat_rate, terms.vat.rate)
 
 
 def _preceding_invoice(invoice: Invoice) -> PrecedingInvoice | None:
@@ -1304,6 +1327,8 @@ def _write_line(item: Element, line: InvoiceLine) -> None:
         _put_text(tax, "ram:CategoryCode", line.vat_category_code, "BT-151")
         _put_amount(tax, "ram:RateApplicablePercent", line.vat_rate, "BT-152")
     _write_period(settlement, line.period, LINE_PERIOD)
+    _write_allowance_charges(settlement, line.allowances, LINE_ALLOWANCE)
+    _write_allowance_charges(settlement, line.charges, LINE_CHARGE)
     _put_amount(
         settlement,
         "ram:SpecifiedTradeSettlementLineMonetarySummation/ram:LineTotalAmount",

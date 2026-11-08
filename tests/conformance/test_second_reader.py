@@ -155,6 +155,22 @@ def test_kosit_reads_a_repeated_ubl_vat_point_date_code_as_haflinger_does() -> N
         assert [finding.text.split()[0] for finding in result.findings] == ["BT-8"]
 
 
+def test_kosit_reads_no_allowance_where_its_elements_are_empty() -> None:
+    """KoSIT's stylesheet gives BG-20 and BG-27 for an allowance whose only term element is
+    empty; it holds no term, as Haflinger's reading finds."""
+    data = (SUITE / "standard/01.01a-INVOICE_uncefact.xml").read_bytes()
+    empty = (
+        b"<ram:SpecifiedTradeAllowanceCharge><ram:ChargeIndicator><udt:Indicator>false"
+        b"</udt:Indicator></ram:ChargeIndicator><ram:Reason/></ram:SpecifiedTradeAllowanceCharge>"
+    )
+    period, terms = b"</ram:BillingSpecifiedPeriod>", b"<ram:SpecifiedTradePaymentTerms>"
+    assert data.count(period) == data.count(terms) == 1
+    data = data.replace(period, period + empty).replace(terms, empty + terms)
+    for result in (read_invoice(data), kosit.read_invoice(data)):
+        assert (result.invoice.allowances, result.invoice.lines[0].allowances) == ((), ())
+        assert result.findings == ()
+
+
 def test_kosit_still_leaves_the_subject_code_in_ubl_notes() -> None:
     """Once a new release reads `#XXX#` as BT-21, `kosit.comparable` stops evening it out."""
     data = (SUITE / "standard/01.01a-INVOICE_ubl.xml").read_bytes()
