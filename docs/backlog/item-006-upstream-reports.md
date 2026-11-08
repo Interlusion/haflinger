@@ -29,6 +29,7 @@ The spikes compared what KoSIT's reading stylesheet makes of the CII and UBL fil
 | BT-44, BT-45 | technical 01.01 to 01.04 | The UBL files swap the buyer's name and trading name placeholders | Yes |
 | BT-149, BT-150 | technical 01.01 to 01.04 | Only the UBL files give the second line a base quantity (`1`, `XPP`) | Yes |
 | BT-154 | CVD 02.01a | The first line's description: `Gruppe von Fahrzeugde XY der Klasse Z` in CII, `Gruppe von Fahrzeug XY der Klasse Z` in UBL | Yes |
+| BG-32 | CVD 02.01a | The first line's six item attributes in another order: `cva` first in UBL, last in CII | Yes |
 | BT-110 | technical 01.05 | Absent in CII, 0 in UBL | No: the term is optional, and UBL's `cac:TaxTotal` needs an amount |
 | BT-84 | ZUGFeRD corpus, `MustangGnuaccountingBeispielRE-20190610_507.pdf` | KoSIT's reading stylesheet gives a CII account with both `ram:IBANID` and `ram:ProprietaryID` as two BT-84, the proprietary one first, where EN 16931 allows one; Haflinger reads the IBAN (REQ-003-PRS-F002), and its tests' KoSIT reader prefers the one from `ram:IBANID` | Ask: the two elements give one account in two forms |
 | BT-41, BT-56 | none in the suite; ZUGFeRD corpus, the four XRechnung samples in `XML-Rechnung/`, as XML and as PDF, and four of symtrax's EN 16931 samples | KoSIT's reading stylesheet gives two contact points for a CII contact with both a person and a department name, where EN 16931 allows one; Haflinger reads the person name (REQ-003-PRS-F002) | No: CEN's `CII-SR-465` and `CII-SR-466` already warn against such an input |
