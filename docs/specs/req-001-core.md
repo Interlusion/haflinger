@@ -3,7 +3,7 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Draft |
-| **Version** | 0.17 |
+| **Version** | 0.18 |
 | **Date** | 2026-11-08 |
 | **Author** | loxy (drafted with Claude) |
 
@@ -216,6 +216,8 @@ General vocabulary (CIUS, Leitweg-ID, Peppol …): the [E-Invoicing 101 glossary
 | `InvoiceLine.purchase_order_line_reference` | BT-132 | Referenced purchase order line reference |  |
 | `InvoiceLine.buyer_accounting_reference` | BT-133 | Invoice line Buyer accounting reference |  |
 | `InvoiceLine.period` | BG-26 | Invoice line period: `start` BT-134, `end` BT-135 |  |
+| `InvoiceLine.allowances` | BG-27 | Invoice line allowances, any number, each an AllowanceCharge without VAT category: `amount` BT-136 (required in the group), `base_amount` BT-137, `percentage` BT-138, `reason` BT-139, `reason_code` BT-140 |  |
+| `InvoiceLine.charges` | BG-28 | Invoice line charges, any number, with the fields of a line allowance: `amount` BT-141 (required in the group), `base_amount` BT-142, `percentage` BT-143, `reason` BT-144, `reason_code` BT-145 |  |
 | `InvoiceLine.net_price` | BT-146 | Item net price | required |
 | `InvoiceLine.price_discount` | BT-147 | Item price discount |  |
 | `InvoiceLine.gross_price` | BT-148 | Item gross price |  |
