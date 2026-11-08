@@ -4,7 +4,13 @@
 import re
 from datetime import date
 
-from haflinger._allowances import AllowanceChargeTerms, allowances_and_charges, price_allowance
+from haflinger._allowances import (
+    LINE_ALLOWANCE,
+    LINE_CHARGE,
+    AllowanceChargeTerms,
+    allowances_and_charges,
+    price_allowance,
+)
 from haflinger._items import classifications
 from haflinger._parties import (
     BUYER,
@@ -534,14 +540,21 @@ def _totals(
 
 
 def _allowance_charge(node: Node, terms: AllowanceChargeTerms) -> AllowanceCharge:
-    label = f"{terms.vat} (cac:TaxCategory)"
-    category = first_group(vat_only(node.findall("cac:TaxCategory"), _TAX_SCHEME, label), label)
+    """BG-20, BG-21, or of a line BG-27, BG-28, whose cac:TaxCategory EN 16931 doesn't give it
+    and isn't read (REQ-003-PRS-F002)."""
+    vat_category_code = vat_rate = None
+    if terms.vat is not None:
+        label = f"{terms.vat} (cac:TaxCategory)"
+        category = first_group(vat_only(node.findall("cac:TaxCategory"), _TAX_SCHEME, label), label)
+        if category is not None:
+            vat_category_code = category.text("cbc:ID", terms.vat.category_code)
+            vat_rate = category.decimal("cbc:Percent", terms.vat.rate)
     return AllowanceCharge(
         amount=node.decimal("cbc:Amount", terms.amount),
         base_amount=node.decimal("cbc:BaseAmount", terms.base_amount),
         percentage=node.decimal("cbc:MultiplierFactorNumeric", terms.percentage),
-        vat_category_code=_text(category, "cbc:ID", terms.vat_category_code),
-        vat_rate=None if category is None else category.decimal("cbc:Percent", terms.vat_rate),
+        vat_category_code=vat_category_code,
+        vat_rate=vat_rate,
         reason=node.text("cbc:AllowanceChargeReason", terms.reason),
         reason_code=node.text("cbc:AllowanceChargeReasonCode", terms.reason_code),
     )
@@ -576,6 +589,12 @@ def _line(line: Node, quantity_path: str) -> InvoiceLine:
             "BT-147, BT-148 (cac:AllowanceCharge)",
         )
     )
+    allowances, charges = allowances_and_charges(
+        line.findall("cac:AllowanceCharge"),
+        "cbc:ChargeIndicator",
+        _allowance_charge,
+        (LINE_ALLOWANCE, LINE_CHARGE),
+    )
     item = line.group("cac:Item", "BG-31")
     tax = None if item is None else item.group("cac:ClassifiedTaxCategory", "BG-30")
     documents = by_code(
@@ -598,6 +617,8 @@ def _line(line: Node, quantity_path: str) -> InvoiceLine:
         purchase_order_line_reference=line.text("cac:OrderLineReference/cbc:LineID", "BT-132"),
         buyer_accounting_reference=line.text("cbc:AccountingCost", "BT-133"),
         period=_period(line, LINE_PERIOD),
+        allowances=allowances,
+        charges=charges,
         net_price=None if price is None else price.decimal("cbc:PriceAmount", "BT-146"),
         price_discount=None if discount is None else discount.decimal("cbc:Amount", "BT-147"),
         gross_price=None if discount is None else discount.decimal("cbc:BaseAmount", "BT-148"),

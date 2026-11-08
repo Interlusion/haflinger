@@ -18,7 +18,13 @@ from datetime import date
 from decimal import Decimal
 
 from haflinger import _saxon, cii, ubl
-from haflinger._allowances import ALLOWANCE, CHARGE, AllowanceChargeTerms
+from haflinger._allowances import (
+    ALLOWANCE,
+    CHARGE,
+    LINE_ALLOWANCE,
+    LINE_CHARGE,
+    AllowanceChargeTerms,
+)
 from haflinger._items import classifications
 from haflinger._parties import (
     BUYER,
@@ -232,10 +238,8 @@ def _invoice(invoice: Node, syntax: Syntax) -> Invoice:
         delivery=_delivery(invoice.group(_term("BG-13"), "BG-13")),
         invoicing_period=_period(invoice, INVOICING_PERIOD),
         payment_instructions=_payment_instructions(invoice.group(_term("BG-16"), "BG-16")),
-        allowances=tuple(
-            _allowance_charge(node, ALLOWANCE) for node in invoice.findall(_term("BG-20"))
-        ),
-        charges=tuple(_allowance_charge(node, CHARGE) for node in invoice.findall(_term("BG-21"))),
+        allowances=_allowances_charges(invoice, ALLOWANCE),
+        charges=_allowances_charges(invoice, CHARGE),
         totals=_totals(invoice.find(_term("BG-22"))),
         vat_breakdown=tuple(_vat_breakdown(vat) for vat in invoice.findall(_term("BG-23"))),
         supporting_documents=_supporting_documents(invoice),
@@ -435,13 +439,24 @@ def _totals(totals: Node | None) -> Totals | None:
     )
 
 
+def _allowances_charges(parent: Node, terms: AllowanceChargeTerms) -> tuple[AllowanceCharge, ...]:
+    """The groups of `terms` below `parent` that hold a term: KoSIT's stylesheet gives one also
+    for an allowance or charge whose only term element is empty, which holds none."""
+    return tuple(
+        group
+        for node in parent.findall(_term(terms.group))
+        if (group := none_if_empty(_allowance_charge(node, terms))) is not None
+    )
+
+
 def _allowance_charge(node: Node, terms: AllowanceChargeTerms) -> AllowanceCharge:
+    """BG-20 or BG-21 with its VAT category, or a line's BG-27 or BG-28, which has none."""
     return AllowanceCharge(
         amount=_decimal(node, terms.amount),
         base_amount=_decimal(node, terms.base_amount),
         percentage=_decimal(node, terms.percentage),
-        vat_category_code=_text(node, terms.vat_category_code),
-        vat_rate=_decimal(node, terms.vat_rate),
+        vat_category_code=None if terms.vat is None else _text(node, terms.vat.category_code),
+        vat_rate=None if terms.vat is None else _decimal(node, terms.vat.rate),
         reason=_text(node, terms.reason),
         reason_code=_text(node, terms.reason_code),
     )
@@ -469,6 +484,8 @@ def _line(line: Node) -> InvoiceLine:
         purchase_order_line_reference=_text(line, "BT-132"),
         buyer_accounting_reference=_text(line, "BT-133"),
         period=_period(line, LINE_PERIOD),
+        allowances=_allowances_charges(line, LINE_ALLOWANCE),
+        charges=_allowances_charges(line, LINE_CHARGE),
         net_price=_decimal(line, "BG-29", "BT-146"),
         price_discount=_decimal(line, "BG-29", "BT-147"),
         gross_price=_decimal(line, "BG-29", "BT-148"),

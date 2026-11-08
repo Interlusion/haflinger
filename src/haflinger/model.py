@@ -183,15 +183,16 @@ class PaymentInstructions:
 
 @dataclass(frozen=True, kw_only=True)
 class AllowanceCharge:
-    """BG-20 document level allowance or BG-21 document level charge."""
+    """BG-20 document level allowance or BG-21 document level charge; or, of a line, BG-27
+    invoice line allowance or BG-28 invoice line charge, which have no VAT category."""
 
-    amount: Decimal | None = None  # BT-92, BT-99
-    base_amount: Decimal | None = None  # BT-93, BT-100
-    percentage: Decimal | None = None  # BT-94, BT-101
+    amount: Decimal | None = None  # BT-92, BT-99, BT-136, BT-141
+    base_amount: Decimal | None = None  # BT-93, BT-100, BT-137, BT-142
+    percentage: Decimal | None = None  # BT-94, BT-101, BT-138, BT-143
     vat_category_code: str | None = None  # BT-95, BT-102
     vat_rate: Decimal | None = None  # BT-96, BT-103
-    reason: str | None = None  # BT-97, BT-104
-    reason_code: str | None = None  # BT-98, BT-105
+    reason: str | None = None  # BT-97, BT-104, BT-139, BT-144
+    reason_code: str | None = None  # BT-98, BT-105, BT-140, BT-145
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -233,8 +234,8 @@ class SupportingDocument:
 
 @dataclass(frozen=True, kw_only=True)
 class InvoiceLine:
-    """BG-25, with its period (BG-26), the price details (BG-29), the VAT information (BG-30) and
-    the item (BG-31)."""
+    """BG-25, with its period (BG-26), its allowances and charges (BG-27, BG-28), the price
+    details (BG-29), the VAT information (BG-30) and the item (BG-31)."""
 
     id: str | None = None  # BT-126
     note: str | None = None  # BT-127
@@ -245,6 +246,8 @@ class InvoiceLine:
     purchase_order_line_reference: str | None = None  # BT-132
     buyer_accounting_reference: str | None = None  # BT-133
     period: Period | None = None  # BG-26
+    allowances: tuple[AllowanceCharge, ...] = ()  # BG-27
+    charges: tuple[AllowanceCharge, ...] = ()  # BG-28
     net_price: Decimal | None = None  # BT-146
     price_discount: Decimal | None = None  # BT-147
     gross_price: Decimal | None = None  # BT-148
