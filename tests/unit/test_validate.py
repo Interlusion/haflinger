@@ -252,6 +252,7 @@ BASIC = replace(
             buyer_item_id=None,
             item_classifications=(),
             item_country_of_origin=None,
+            item_attributes=(),
         )
         for line in MODEL.lines
     ),
