@@ -578,6 +578,68 @@ def test_refuses_what_cant_be_written_sensibly(invoice: Any, reason: str) -> Non
         ),
         (replace(INVOICE, charges=(AllowanceCharge(),)), "BG-21 holds a charge without any term"),
         (
+            replace(
+                INVOICE, lines=(replace(LINE, allowances=(AllowanceCharge(),)), *INVOICE.lines[1:])
+            ),
+            "BG-27 holds a line allowance without any term",
+        ),
+        (
+            replace(
+                INVOICE, lines=(replace(LINE, charges=(AllowanceCharge(),)), *INVOICE.lines[1:])
+            ),
+            "BG-28 holds a line charge without any term",
+        ),
+        (
+            replace(
+                INVOICE,
+                lines=(
+                    replace(LINE, allowances=[AllowanceCharge(amount=Decimal(1))]),
+                    *INVOICE.lines[1:],
+                ),
+            ),
+            "BG-27 is not a tuple of AllowanceCharge",
+        ),
+        (
+            replace(
+                INVOICE,
+                lines=(
+                    replace(
+                        LINE,
+                        charges=(AllowanceCharge(amount=Decimal(1), vat_category_code="S"),),
+                    ),
+                    *INVOICE.lines[1:],
+                ),
+            ),
+            "BG-28 holds a VAT category code or rate, which a line charge hasn't",
+        ),
+        (
+            replace(
+                INVOICE,
+                lines=(
+                    replace(
+                        LINE, allowances=(AllowanceCharge(amount=Decimal(1), vat_rate=Decimal(7)),)
+                    ),
+                    *INVOICE.lines[1:],
+                ),
+            ),
+            "BG-27 holds a VAT category code or rate, which a line allowance hasn't",
+        ),
+        (
+            replace(
+                INVOICE,
+                lines=(
+                    replace(
+                        LINE,
+                        allowances=(
+                            AllowanceCharge(amount=Decimal(1), reason=" x", vat_category_code="S"),
+                        ),
+                    ),
+                    *INVOICE.lines[1:],
+                ),
+            ),
+            "BG-27 holds a VAT category code or rate, which a line allowance hasn't",
+        ),
+        (
             replace(INVOICE, allowances=[AllowanceCharge(amount=Decimal(1))]),
             "BG-20 is not a tuple of AllowanceCharge",
         ),
@@ -684,6 +746,12 @@ def test_refuses_what_cant_be_written_sensibly(invoice: Any, reason: str) -> Non
         "empty-line-period",
         "empty-allowance",
         "empty-charge",
+        "empty-line-allowance",
+        "empty-line-charge",
+        "list-line-allowances",
+        "line-charge-with-vat-category",
+        "line-allowance-with-vat-rate",
+        "line-allowance-with-vat-category-before-its-other-terms",
         "list-allowances",
         "empty-city",
         "str-delivery",
@@ -1243,6 +1311,19 @@ LINE_DETAILS = replace(
     purchase_order_line_reference="6171175.2",
     buyer_accounting_reference="4711-K",
     period=Period(start=date(2016, 7, 1), end=date(2016, 12, 31)),
+    allowances=(
+        AllowanceCharge(
+            amount=Decimal("14.44"),
+            base_amount=Decimal("288.79"),
+            percentage=Decimal(5),
+            reason="Rabatt",
+            reason_code="95",
+        ),
+        AllowanceCharge(amount=Decimal("1.00"), reason="Treue"),
+    ),
+    # The charge makes up for the allowances, so that the line net amount (BT-131) stays as
+    # EN 16931's line calculation gives it (PEPPOL-EN16931-R120).
+    charges=(AllowanceCharge(amount=Decimal("15.44"), reason="Verpackung", reason_code="ABL"),),
     price_discount=Decimal("11.21"),
     gross_price=Decimal("300.00"),
     base_quantity=Decimal(1),
@@ -1300,8 +1381,22 @@ def test_writes_a_lines_price_and_item_details_and_reads_them_back(specification
         b'<ram:BillingSpecifiedPeriod><ram:StartDateTime><udt:DateTimeString format="102">'
         b"20160701</udt:DateTimeString></ram:StartDateTime><ram:EndDateTime>"
         b'<udt:DateTimeString format="102">20161231</udt:DateTimeString></ram:EndDateTime>'
-        b"</ram:BillingSpecifiedPeriod><ram:SpecifiedTradeSettlementLineMonetarySummation>"
-        in document
+        b"</ram:BillingSpecifiedPeriod>" in document
+    )
+    assert (
+        b"</ram:BillingSpecifiedPeriod><ram:SpecifiedTradeAllowanceCharge><ram:ChargeIndicator>"
+        b"<udt:Indicator>false</udt:Indicator></ram:ChargeIndicator>"
+        b"<ram:CalculationPercent>5</ram:CalculationPercent>"
+        b"<ram:BasisAmount>288.79</ram:BasisAmount><ram:ActualAmount>14.44</ram:ActualAmount>"
+        b"<ram:ReasonCode>95</ram:ReasonCode><ram:Reason>Rabatt</ram:Reason>"
+        b"</ram:SpecifiedTradeAllowanceCharge><ram:SpecifiedTradeAllowanceCharge>"
+        b"<ram:ChargeIndicator><udt:Indicator>false</udt:Indicator></ram:ChargeIndicator>"
+        b"<ram:ActualAmount>1.00</ram:ActualAmount><ram:Reason>Treue</ram:Reason>"
+        b"</ram:SpecifiedTradeAllowanceCharge><ram:SpecifiedTradeAllowanceCharge>"
+        b"<ram:ChargeIndicator><udt:Indicator>true</udt:Indicator></ram:ChargeIndicator>"
+        b"<ram:ActualAmount>15.44</ram:ActualAmount><ram:ReasonCode>ABL</ram:ReasonCode>"
+        b"<ram:Reason>Verpackung</ram:Reason></ram:SpecifiedTradeAllowanceCharge>"
+        b"<ram:SpecifiedTradeSettlementLineMonetarySummation>" in document
     )
     assert (
         b"<ram:SpecifiedLineTradeAgreement><ram:BuyerOrderReferencedDocument>"

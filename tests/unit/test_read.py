@@ -1860,10 +1860,25 @@ def test_a_ubl_delivery_and_period_without_the_models_terms_dont_count() -> None
 STANDARD_RATE = AllowanceCharge(vat_category_code="S", vat_rate=Decimal(7))
 
 
+CII_STANDARD_RATE = (
+    b"<ram:CategoryTradeTax><ram:TypeCode>VAT</ram:TypeCode><ram:CategoryCode>S</ram:CategoryCode>"
+    b"<ram:RateApplicablePercent>7</ram:RateApplicablePercent></ram:CategoryTradeTax>"
+)
+UBL_STANDARD_RATE = (
+    b"<cac:TaxCategory><cbc:ID>S</cbc:ID><cbc:Percent>7</cbc:Percent>"
+    b"<cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:TaxCategory>"
+)
+
+
 def cii_allowance_charge(
-    indicator: bytes, amount: bytes, terms: bytes = b"", after: bytes = b""
+    indicator: bytes,
+    amount: bytes,
+    terms: bytes = b"",
+    after: bytes = b"",
+    tax: bytes = CII_STANDARD_RATE,
 ) -> bytes:
-    """An allowance or a charge with `terms` before its amount and `after` after it."""
+    """An allowance or a charge with `terms` before its amount and `after` after it, and the VAT
+    category `tax`, which a line's has none of."""
     return (
         b"<ram:SpecifiedTradeAllowanceCharge><ram:ChargeIndicator><udt:Indicator>"
         + indicator
@@ -1873,16 +1888,20 @@ def cii_allowance_charge(
         + amount
         + b"</ram:ActualAmount>"
         + after
-        + b"<ram:CategoryTradeTax><ram:TypeCode>VAT</ram:TypeCode>"
-        b"<ram:CategoryCode>S</ram:CategoryCode><ram:RateApplicablePercent>7"
-        b"</ram:RateApplicablePercent></ram:CategoryTradeTax></ram:SpecifiedTradeAllowanceCharge>"
+        + tax
+        + b"</ram:SpecifiedTradeAllowanceCharge>"
     )
 
 
 def ubl_allowance_charge(
-    indicator: bytes, amount: bytes, terms: bytes = b"", after: bytes = b""
+    indicator: bytes,
+    amount: bytes,
+    terms: bytes = b"",
+    after: bytes = b"",
+    tax: bytes = UBL_STANDARD_RATE,
 ) -> bytes:
-    """An allowance or a charge with `terms` before its amount and `after` after it."""
+    """An allowance or a charge with `terms` before its amount and `after` after it, and the VAT
+    category `tax`, which a line's has none of."""
     return (
         b"<cac:AllowanceCharge><cbc:ChargeIndicator>"
         + indicator
@@ -1892,9 +1911,8 @@ def ubl_allowance_charge(
         + amount
         + b"</cbc:Amount>"
         + after
-        + b"<cac:TaxCategory><cbc:ID>S</cbc:ID><cbc:Percent>7</cbc:Percent>"
-        b"<cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:TaxCategory>"
-        b"</cac:AllowanceCharge>"
+        + tax
+        + b"</cac:AllowanceCharge>"
     )
 
 
@@ -2114,6 +2132,7 @@ def test_a_tax_vat_counts_in_any_case() -> None:
 
 
 def test_a_ubl_lines_allowance_isnt_the_invoices() -> None:
+    """It is the line's (BG-27), whose VAT category EN 16931 doesn't give it: not read."""
     ubl = edit(
         UBL,
         b"</cac:OrderLineReference>",
@@ -2121,6 +2140,7 @@ def test_a_ubl_lines_allowance_isnt_the_invoices() -> None:
     )
     result = read_invoice(ubl)
     assert result.invoice.allowances == ()
+    assert result.invoice.lines[0].allowances == (AllowanceCharge(amount=Decimal("1.00")),)
     assert result.findings == ()
 
 
@@ -2452,6 +2472,146 @@ def test_a_ubl_lines_period_without_the_models_terms_doesnt_count() -> None:
     result = read_invoice(ubl)
     assert result.invoice.lines[0].period == FIRST_LINE_PERIOD
     assert dropped(result) == ["BG-26"]
+
+
+# REQ-003-PRS-F002: a line's allowances and charges, read as the document's are
+
+CII_LINE_PERIOD_END = b"</ram:BillingSpecifiedPeriod>"
+
+
+def cii_line(indicator: bytes, amount: bytes, terms: bytes = b"", after: bytes = b"") -> bytes:
+    """A line's allowance or charge, which has no VAT category."""
+    return cii_allowance_charge(indicator, amount, terms, after, tax=b"")
+
+
+def ubl_line(indicator: bytes, amount: bytes, terms: bytes = b"", after: bytes = b"") -> bytes:
+    """A line's allowance or charge, which has no VAT category."""
+    return ubl_allowance_charge(indicator, amount, terms, after, tax=b"")
+
+
+def with_line_allowances_and_charges(cii: list[bytes], ubl: list[bytes]) -> tuple[bytes, bytes]:
+    """01.01a with these allowances and charges on its first line, in both syntaxes."""
+    return (
+        edit(CII, CII_LINE_PERIOD_END, CII_LINE_PERIOD_END + b"".join(cii)),
+        edit(UBL, UBL_ORDER_LINE_END, UBL_ORDER_LINE_END + b"".join(ubl)),
+    )
+
+
+def test_a_lines_allowances_and_charges() -> None:
+    """Every term, in document order, none of them the invoice's."""
+    cii, ubl = with_line_allowances_and_charges(
+        [
+            cii_line(
+                b"false",
+                b"14.44",
+                b"<ram:CalculationPercent>5</ram:CalculationPercent>"
+                b"<ram:BasisAmount>288.79</ram:BasisAmount>",
+                b"<ram:ReasonCode>95</ram:ReasonCode><ram:Reason>Rabatt</ram:Reason>",
+            ),
+            cii_line(
+                b"true",
+                b"2.50",
+                after=b"<ram:ReasonCode>ABL</ram:ReasonCode><ram:Reason>Verpackung</ram:Reason>",
+            ),
+            cii_line(b"false", b"1.00", after=b"<ram:Reason>Treue</ram:Reason>"),
+        ],
+        [
+            ubl_line(
+                b"false",
+                b"14.44",
+                b"<cbc:AllowanceChargeReasonCode>95</cbc:AllowanceChargeReasonCode>"
+                b"<cbc:AllowanceChargeReason>Rabatt</cbc:AllowanceChargeReason>"
+                b"<cbc:MultiplierFactorNumeric>5</cbc:MultiplierFactorNumeric>",
+                b'<cbc:BaseAmount currencyID="EUR">288.79</cbc:BaseAmount>',
+            ),
+            ubl_line(
+                b"true",
+                b"2.50",
+                b"<cbc:AllowanceChargeReasonCode>ABL</cbc:AllowanceChargeReasonCode>"
+                b"<cbc:AllowanceChargeReason>Verpackung</cbc:AllowanceChargeReason>",
+            ),
+            ubl_line(
+                b"false", b"1.00", b"<cbc:AllowanceChargeReason>Treue</cbc:AllowanceChargeReason>"
+            ),
+        ],
+    )
+    for data in (cii, ubl):
+        result = read_invoice(data)
+        assert result.invoice.lines[0] == replace(
+            FIRST_LINE,
+            allowances=(
+                AllowanceCharge(
+                    amount=Decimal("14.44"),
+                    base_amount=Decimal("288.79"),
+                    percentage=Decimal(5),
+                    reason="Rabatt",
+                    reason_code="95",
+                ),
+                AllowanceCharge(amount=Decimal("1.00"), reason="Treue"),
+            ),
+            charges=(
+                AllowanceCharge(amount=Decimal("2.50"), reason="Verpackung", reason_code="ABL"),
+            ),
+        )
+        assert (result.invoice.allowances, result.invoice.charges) == ((), ())
+        assert result.invoice.lines[1].allowances == result.invoice.lines[1].charges == ()
+        assert result.findings == ()
+
+
+def test_a_lines_charge_indicator_takes_the_values_of_xs_boolean() -> None:
+    cii, ubl = with_line_allowances_and_charges(
+        [
+            cii_line(b"1", b"2.50"),
+            cii_line(b"0", b"1.00"),
+            cii_line(b"yes", b"2.00"),
+        ],
+        [
+            ubl_line(b"1", b"2.50"),
+            ubl_line(b"0", b"1.00"),
+            ubl_line(b"yes", b"2.00"),
+        ],
+    )
+    for data in (cii, ubl):
+        result = read_invoice(data)
+        line = result.invoice.lines[0]
+        assert line.allowances == (AllowanceCharge(amount=Decimal("1.00")),)
+        assert line.charges == (AllowanceCharge(amount=Decimal("2.50")),)
+        assert dropped(result) == ["BG-27/BG-28"]
+
+
+def test_a_cii_lines_allowances_vat_category_isnt_read() -> None:
+    """EN 16931 gives it none: the line's VAT category (BG-30) is the line's."""
+    cii, _ = with_line_allowances_and_charges([cii_allowance_charge(b"false", b"1.00")], [])
+    result = read_invoice(cii)
+    assert result.invoice.lines[0].allowances == (AllowanceCharge(amount=Decimal("1.00")),)
+    assert result.findings == ()
+
+
+def test_a_credit_notes_line_allowance() -> None:
+    note = (ROOT / "tests/data/cen-en16931/ubl/examples/ubl-tc434-creditnote1.xml").read_bytes()
+    note = edit(
+        note,
+        b"<cac:Item>",
+        ubl_line(b"false", b"1.00", b"<cbc:AllowanceChargeReason>Treue</cbc:AllowanceChargeReason>")
+        + b"<cac:Item>",
+    )
+    result = read_invoice(note)
+    assert result.invoice.lines[0].allowances == (
+        AllowanceCharge(amount=Decimal("1.00"), reason="Treue"),
+    )
+    assert result.findings == ()
+
+
+def test_a_ubl_lines_price_allowance_and_line_allowance_are_each_what_they_are() -> None:
+    """The price's cac:AllowanceCharge gives the price discount (BT-147), the line's its
+    allowance (BG-27)."""
+    ubl = ubl_price(ubl_price_allowance(b"false", b"11.21", b"300.00"))
+    ubl = edit(ubl, UBL_ORDER_LINE_END, UBL_ORDER_LINE_END + ubl_line(b"false", b"1.00"))
+    result = read_invoice(ubl)
+    line = result.invoice.lines[0]
+    assert (line.price_discount, line.gross_price) == (Decimal("11.21"), Decimal("300.00"))
+    assert line.allowances == (AllowanceCharge(amount=Decimal("1.00")),)
+    assert result.findings == ()
 
 
 # REQ-003-PRS-F002: a line's references
