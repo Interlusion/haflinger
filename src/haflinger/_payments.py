@@ -27,13 +27,3 @@ def payment_means(
         first = first or code
         kept.append(node)
     return kept, first
-
-
-def one_value(values: list[tuple[Node, str]], term: str) -> str | None:
-    """The first of `values`, each with the element it comes from, which the payment means repeat;
-    another value is left out with a finding."""
-    first = values[0][1] if values else None
-    for node, value in values[1:]:
-        if value != first:
-            node.drop(f"{term} appears again with another value; this one is left out: {value!r}")
-    return first

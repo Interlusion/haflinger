@@ -31,7 +31,7 @@ from haflinger._parties import (
     identifiers,
     one_identifier,
 )
-from haflinger._payments import one_value, payment_means
+from haflinger._payments import payment_means
 from haflinger._periods import INVOICING_PERIOD, LINE_PERIOD, PeriodTerms
 from haflinger._xml import (
     XML_WHITESPACE,
@@ -44,6 +44,7 @@ from haflinger._xml import (
     identifier_only,
     none_if_empty,
     of_code,
+    one_value,
     vat_only,
 )
 from haflinger.errors import InvoiceWriteError
@@ -122,6 +123,7 @@ def read(root: Node, specification_id: str | None) -> Invoice:
     invoiced = first_reference(
         invoiced_objects, "ram:IssuerAssignedID", "BT-18", "ram:ReferenceTypeCode"
     )
+    taxes = _vat_taxes(root, f"{_SETTLEMENT}/ram:ApplicableTradeTax", "BG-23")
     return Invoice(
         syntax="cii",
         number=root.text(f"{_DOCUMENT}/ram:ID", "BT-1"),
@@ -129,6 +131,8 @@ def read(root: Node, specification_id: str | None) -> Invoice:
         type_code=root.text(f"{_DOCUMENT}/ram:TypeCode", "BT-3"),
         currency_code=currency_code,
         tax_currency_code=tax_currency_code,
+        vat_point_date=_tax_point_date(taxes),
+        vat_point_date_code=_tax_point_code(taxes),
         due_date=_date(
             root,
             f"{_SETTLEMENT}/ram:SpecifiedTradePaymentTerms/ram:DueDateDateTime/udt:DateTimeString",
@@ -194,10 +198,7 @@ def read(root: Node, specification_id: str | None) -> Invoice:
             tax_currency_code,
         ),
         supporting_documents=_supporting_documents(documents),
-        vat_breakdown=tuple(
-            _vat_breakdown(node)
-            for node in _vat_taxes(root, f"{_SETTLEMENT}/ram:ApplicableTradeTax", "BG-23")
-        ),
+        vat_breakdown=tuple(_vat_breakdown(node) for node in taxes),
         lines=tuple(
             _line(node)
             for node in root.findall(f"{_TRANSACTION}/ram:IncludedSupplyChainTradeLineItem")
@@ -233,9 +234,42 @@ def _supporting_documents(
     )
 
 
+# The VAT point date codes (BT-8) of UNTDID 2475, which CII writes, by those of UNTDID 2005 that
+# EN 16931 and the model use for the same dates, and back (REQ-001-URS-NF001).
+_EN_TAX_POINT_CODES = {"5": "3", "29": "35", "72": "432"}
+_CII_TAX_POINT_CODES = {en: cii for cii, en in _EN_TAX_POINT_CODES.items()}
+
+
+def _tax_point_date(taxes: list[Node]) -> date | None:
+    """BT-7: the VAT breakdown's ram:TaxPointDate, which CEN's CII-SR-461 allows in one
+    ram:ApplicableTradeTax; a further one is left out with a finding (REQ-003-PRS-F002)."""
+    dates = [
+        node for tax in taxes for node in tax.holding("BT-7", "ram:TaxPointDate/udt:DateString")
+    ]
+    return _date_of(first_of(dates, "BT-7"), "BT-7")
+
+
+def _tax_point_code(taxes: list[Node]) -> str | None:
+    """BT-8: the VAT breakdown's ram:DueDateTypeCode, which CEN's CII-SR-462 allows in each
+    ram:ApplicableTradeTax with the same code; one with another code is left out with a finding
+    (REQ-003-PRS-F002)."""
+    codes = [
+        (node, node.value)
+        for tax in taxes
+        for node in tax.holding("BT-8", "ram:DueDateTypeCode")
+        if node.value is not None
+    ]
+    code = one_value(codes, "BT-8")
+    return None if code is None else _EN_TAX_POINT_CODES.get(code, code)
+
+
 def _date(parent: Node, path: str, term: str) -> date | None:
     """A date as `udt:DateTimeString` with `format="102"`."""
-    node = parent.first(path, term)
+    return _date_of(parent.first(path, term), term)
+
+
+def _date_of(node: Node | None, term: str) -> date | None:
+    """The date `node` holds with `format="102"`, a `DateTimeString` or a `DateString`."""
     if node is None or node.value is None:
         return None
     if node.attribute("format") != "102":
@@ -791,7 +825,18 @@ def write(invoice: Invoice) -> bytes:
     _write_payee(settlement, invoice.payee)
     if payment is not None:
         _write_payment_means(settlement, payment)
-    for vat in _group(invoice.vat_breakdown, VatBreakdown, "BG-23"):
+    breakdown = _group(invoice.vat_breakdown, VatBreakdown, "BG-23")
+    tax_point_date = _checked_date(invoice.vat_point_date, "BT-7")
+    tax_point_code = _checked_text(invoice.vat_point_date_code, "BT-8")
+    if tax_point_code in _EN_TAX_POINT_CODES:
+        raise InvoiceWriteError(
+            f"BT-8 holds CII's code {tax_point_code!r}; the model holds EN 16931's,"
+            f" {_EN_TAX_POINT_CODES[tax_point_code]!r}"
+        )
+    for value, term in ((tax_point_date, "BT-7"), (tax_point_code, "BT-8")):
+        if value is not None and not breakdown:
+            raise InvoiceWriteError(f"{term} needs a VAT breakdown (BG-23), which is missing")
+    for index, vat in enumerate(breakdown):
         tax = SubElement(settlement, "ram:ApplicableTradeTax")
         _put_amount(tax, "ram:CalculatedAmount", vat.tax_amount, "BT-117")
         SubElement(tax, "ram:TypeCode").text = "VAT"
@@ -799,6 +844,12 @@ def write(invoice: Invoice) -> bytes:
         _put_amount(tax, "ram:BasisAmount", vat.taxable_amount, "BT-116")
         _put_text(tax, "ram:CategoryCode", vat.category_code, "BT-118")
         _put_text(tax, "ram:ExemptionReasonCode", vat.exemption_reason_code, "BT-121")
+        if index == 0:
+            # BT-7 and BT-8 are the invoice's; CEN's CII-SR-461 allows BT-7 once.
+            _put_date(tax, "ram:TaxPointDate", invoice.vat_point_date, "BT-7", "udt", "DateString")
+            if tax_point_code is not None:
+                code = _CII_TAX_POINT_CODES.get(tax_point_code, tax_point_code)
+                SubElement(tax, "ram:DueDateTypeCode").text = code
         _put_amount(tax, "ram:RateApplicablePercent", vat.rate, "BT-119")
     _write_period(settlement, invoice.invoicing_period, INVOICING_PERIOD)
     _write_allowance_charges(settlement, invoice.allowances, ALLOWANCE)
@@ -1349,6 +1400,12 @@ def _group[T](values: object, kind: type[T], group: str, holds: str | None = Non
     return items
 
 
+def _checked_date(value: object, term: str) -> date | None:
+    if value is not None and (not isinstance(value, date) or isinstance(value, datetime)):
+        raise InvoiceWriteError(f"{term} is not a date: {value!r}")
+    return value
+
+
 def _checked_text(value: object, term: str) -> str | None:
     if value is None:
         return None
@@ -1390,15 +1447,22 @@ def _put_amount(
     _leaf(parent, path, format(value, "f"), attributes)
 
 
-def _put_date(parent: Element, path: str, value: object, term: str, data_type: str = "udt") -> None:
-    """A date as `DateTimeString` with `format="102"`, of the unqualified data type or, where
-    the XML Schema wants it, the qualified one (`qdt`)."""
+def _put_date(
+    parent: Element,
+    path: str,
+    value: object,
+    term: str,
+    data_type: str = "udt",
+    element: str = "DateTimeString",
+) -> None:
+    """A date as `DateTimeString`, or `DateString` where the XML Schema wants a date without a
+    time, with `format="102"`, of the unqualified data type or, where the XML Schema wants it,
+    the qualified one (`qdt`)."""
+    value = _checked_date(value, term)
     if value is None:
         return
-    if not isinstance(value, date) or isinstance(value, datetime):
-        raise InvoiceWriteError(f"{term} is not a date: {value!r}")
     text = f"{value.year:04}{value.month:02}{value.day:02}"
-    _leaf(parent, f"{path}/{data_type}:DateTimeString", text, {"format": "102"})
+    _leaf(parent, f"{path}/{data_type}:{element}", text, {"format": "102"})
 
 
 def _leaf(parent: Element, path: str, text: str | None, attributes: dict[str, str | None]) -> None:

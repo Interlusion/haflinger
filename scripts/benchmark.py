@@ -144,6 +144,8 @@ def factur_x(specification_id: str) -> bytes:
     if "minimum" in specification_id or "basicwl" in specification_id:
         model = replace(
             model,
+            # Neither MINIMUM nor BASIC WL has a VAT point date.
+            vat_point_date=None,
             notes=(),
             lines=(),
             buyer_reference=None,
@@ -165,10 +167,11 @@ def factur_x(specification_id: str) -> bytes:
             ),
         )
     elif "basic" in specification_id:
-        # BASIC has no seller contact, additional legal information or supporting documents, no
-        # line references, and of an item only its standard identifier and its name.
+        # BASIC has no VAT point date, seller contact, additional legal information or supporting
+        # documents, no line references, and of an item only its standard identifier and its name.
         model = replace(
             model,
+            vat_point_date=None,
             supporting_documents=(),
             seller=replace(seller, contact=None, additional_legal_information=None),
             lines=tuple(
@@ -189,6 +192,7 @@ def factur_x(specification_id: str) -> bytes:
     if "minimum" in specification_id:
         model = replace(
             model,
+            vat_point_date_code=None,
             vat_breakdown=(),
             buyer=Party(name=buyer.name),
             payee=None,

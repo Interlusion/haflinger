@@ -21,7 +21,7 @@ from haflinger._parties import (
     identifiers,
     one_identifier,
 )
-from haflinger._payments import one_value, payment_means
+from haflinger._payments import payment_means
 from haflinger._periods import INVOICING_PERIOD, LINE_PERIOD, PeriodTerms
 from haflinger._xml import (
     XML_WHITESPACE,
@@ -34,6 +34,7 @@ from haflinger._xml import (
     identifier_only,
     none_if_empty,
     of_code,
+    one_value,
     vat_only,
 )
 from haflinger.model import (
@@ -132,6 +133,9 @@ def read(root: Node, specification_id: str | None, *, credit_note: bool) -> Invo
         ),
         currency_code=currency_code,
         tax_currency_code=tax_currency_code,
+        vat_point_date=_date(root, "cbc:TaxPointDate", "BT-7"),
+        # A cac:InvoicePeriod holding only BT-8 isn't the invoicing period (BG-14).
+        vat_point_date_code=root.text("cac:InvoicePeriod/cbc:DescriptionCode", "BT-8"),
         due_date=_date(
             root, "cac:PaymentMeans/cbc:PaymentDueDate" if credit_note else "cbc:DueDate", "BT-9"
         ),

@@ -4,11 +4,12 @@
 KoSIT's stylesheets turn a CII invoice, a UBL invoice or a UBL credit note into one semantic XML
 in which every element carries its business term ID (`xr:id="BT-1"`). This module reads the
 model from that XML by business term ID alone, apart from the root elements that pick the
-stylesheet and four limits of KoSIT's stylesheet: the UBL notes' subject codes and a CII
-invoiced or line object identifier's scheme, which `comparable` evens out between the two
-models; and a CII account given in two forms and BT-17's and BT-18's additional documents given
-as supporting documents too, for which `_account` and `_supporting_documents` read the source
-path KoSIT's stylesheet records.
+stylesheet and six limits of KoSIT's stylesheet: the UBL notes' subject codes, a CII
+invoiced or line object identifier's scheme and a CII VAT point date code, which `comparable`
+evens out between the two models; a CII account given in two forms and BT-17's and BT-18's
+additional documents given as supporting documents too, for which `_account` and
+`_supporting_documents` read the source path KoSIT's stylesheet records; and a CII VAT point
+date code given once for each VAT entry, which `_tax_point_code` reads once.
 """
 
 import re
@@ -35,7 +36,7 @@ from haflinger._parties import (
     one_identifier,
 )
 from haflinger._periods import INVOICING_PERIOD, LINE_PERIOD, PeriodTerms
-from haflinger._xml import XML_WHITESPACE, Node, Reading, none_if_empty, parse
+from haflinger._xml import XML_WHITESPACE, Node, Reading, none_if_empty, one_value, parse
 from haflinger.errors import InvoiceReadError
 from haflinger.model import (
     AllowanceCharge,
@@ -106,6 +107,11 @@ def semantic_xml(data: bytes) -> tuple[bytes, Syntax]:
 # reading of notes into the reader that checks it.
 _SUBJECT_CODE = re.compile(r"#([A-Z]{3})#(.*)", re.DOTALL)
 
+# KoSIT's CII stylesheet gives the VAT point date code (BT-8) as written, of UNTDID 2475, where
+# EN 16931, its UBL stylesheet and REQ-001-URS-NF001 give UNTDID 2005's code for the same date
+# (ITEM-006). The table repeats `cii`'s on purpose, as `_SUBJECT_CODE` does `ubl`'s pattern.
+_EN_TAX_POINT_CODES = {"5": "3", "29": "35", "72": "432"}
+
 
 def _with_subject_codes(invoice: Invoice) -> Invoice:
     """The model KoSIT's stylesheet gives, with each UBL note's `#XXX#` read as BT-21."""
@@ -122,8 +128,9 @@ def _with_subject_codes(invoice: Invoice) -> Invoice:
 
 def comparable(ours: Invoice, theirs: Invoice) -> tuple[Invoice, Invoice]:
     """Haflinger's model and KoSIT's of one invoice, with the limits of KoSIT's stylesheet that
-    the models show evened out: the UBL notes' subject codes, read as BT-21 in `theirs`; and the
-    scheme of a CII invoiced object identifier (BT-18-1) and of a line object identifier
+    the models show evened out: the UBL notes' subject codes, read as BT-21 in `theirs`; a CII
+    VAT point date code (BT-8), read as EN 16931's in `theirs`; and the scheme of a CII invoiced
+    object identifier (BT-18-1) and of a line object identifier
     (BT-128-1), left out of `ours` where `theirs` holds the identifier without one. KoSIT's CII
     stylesheet gives `ram:ReferenceTypeCode` as the scheme only where the `ram:IssuerAssignedID`
     has a `schemeID` too (the template `identifier-with-scheme` in `common-xr.xsl` tests
@@ -140,6 +147,9 @@ def comparable(ours: Invoice, theirs: Invoice) -> tuple[Invoice, Invoice]:
             for line, their in zip(lines, theirs.lines, strict=True)
         )
     invoiced_object = _without_lost_scheme(ours.invoiced_object_id, theirs.invoiced_object_id)
+    code = theirs.vat_point_date_code
+    if code is not None:
+        theirs = replace(theirs, vat_point_date_code=_EN_TAX_POINT_CODES.get(code, code))
     return replace(ours, invoiced_object_id=invoiced_object, lines=lines), theirs
 
 
@@ -164,6 +174,16 @@ def _identifier(node: Node, *terms: str) -> Identifier | None:
     return identifier(node.first(_term(*terms), terms[-1]), "scheme_identifier")
 
 
+def _tax_point_code(invoice: Node, syntax: Syntax) -> str | None:
+    """BT-8, which KoSIT's CII stylesheet gives once for each `ram:ApplicableTradeTax` holding
+    one, where CEN's CII-SR-462 allows the same code in each and EN 16931 holds one: read once,
+    and one with another code left out with a finding (ITEM-006). UBL's UBL-SR-49 allows one."""
+    if syntax != "cii":
+        return _text(invoice, "BT-8")
+    codes = invoice.holding("BT-8", _term("BT-8"))
+    return one_value([(node, node.value) for node in codes if node.value is not None], "BT-8")
+
+
 def _decimal(node: Node, *terms: str) -> Decimal | None:
     return node.decimal(_term(*terms), terms[-1])
 
@@ -181,6 +201,8 @@ def _invoice(invoice: Node, syntax: Syntax) -> Invoice:
         type_code=_text(invoice, "BT-3"),
         currency_code=_text(invoice, "BT-5"),
         tax_currency_code=_text(invoice, "BT-6"),
+        vat_point_date=_date(invoice, "BT-7"),
+        vat_point_date_code=_tax_point_code(invoice, syntax),
         due_date=_date(invoice, "BT-9"),
         buyer_reference=_text(invoice, "BT-10"),
         project_reference=_text(invoice, "BT-11"),
