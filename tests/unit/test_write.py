@@ -1,5 +1,6 @@
 """Writing CII (REQ-004), on the model of KoSIT case 01.01a written as plain EN 16931."""
 
+import base64
 import contextlib
 import re
 from dataclasses import replace
@@ -12,6 +13,7 @@ import pytest
 
 from haflinger import (
     AllowanceCharge,
+    Attachment,
     Contact,
     CreditTransfer,
     Delivery,
@@ -46,6 +48,7 @@ assert INVOICE.totals is not None
 assert INVOICE.seller is not None
 assert INVOICE.buyer is not None
 TOTALS, SELLER, BUYER, LINE = INVOICE.totals, INVOICE.seller, INVOICE.buyer, INVOICE.lines[0]
+PDF_ATTACHMENT = Attachment(content=b"%PDF-1.7\n", mime_code="application/pdf", filename="a-1.pdf")
 
 
 def written(invoice: Any) -> bytes:
@@ -995,6 +998,10 @@ def test_writes_preceding_invoice_delivery_and_period_and_reads_them_back() -> N
             ),
             "BR-52",
         ),
+        (
+            replace(INVOICE, supporting_documents=(SupportingDocument(attachment=PDF_ATTACHMENT),)),
+            "BR-52",
+        ),
     ],
     ids=[
         "instructions-without-means-code",
@@ -1006,6 +1013,7 @@ def test_writes_preceding_invoice_delivery_and_period_and_reads_them_back() -> N
         "deliver-to-address-without-country",
         "deliver-to-address-without-country-factur-x",
         "supporting-document-without-reference",
+        "supporting-document-with-an-attachment-alone",
     ],
 )
 def test_the_official_artefacts_refuse_a_group_without_a_term_it_needs(
@@ -1015,9 +1023,9 @@ def test_the_official_artefacts_refuse_a_group_without_a_term_it_needs(
     instructions without their means code (BT-81) by BR-49, a credit transfer without its
     account (BT-84) by BR-50, a preceding invoice without its number (BT-25) by BR-55, an
     allowance without its VAT category code (BT-95) by BR-32, a deliver to address without its
-    country code (BT-80) by BR-57, a supporting document without its reference (BT-122) by
-    BR-52; for EN 16931, Factur-X's XML Schema requires BT-81 and BT-80
-    (REQ-004-PRS-F001)."""
+    country code (BT-80) by BR-57, a supporting document without its reference (BT-122), also
+    one holding only an attachment, by BR-52; for EN 16931, Factur-X's XML Schema requires BT-81
+    and BT-80 (REQ-004-PRS-F001)."""
     with pytest.raises(InvoiceWriteError, match=rule) as refusal:
         write_cii(invoice)
     assert rule in {finding.rule for finding in refusal.value.findings}
@@ -1230,6 +1238,126 @@ def test_writes_the_supporting_documents_and_reads_them_back(specification_id: s
         b"<ram:SpecifiedProcuringProject>" in document
     )
     assert read_invoice(document).invoice == invoice
+
+
+# Not ASCII, and longer than the 76 characters after which Base64 often breaks its lines.
+CONTENT = bytes(range(256)) * 4
+
+
+@pytest.mark.parametrize("specification_id", [EN16931, XRECHNUNG])
+def test_writes_an_attached_document_as_base64_without_line_breaks(specification_id: str) -> None:
+    """After the description, as the XML Schema orders it, with its media type and file name; it
+    reads back to the same bytes (REQ-001-URS-NF001)."""
+    attachment = Attachment(content=CONTENT, mime_code="application/pdf", filename="a-1.pdf")
+    invoice = replace(
+        INVOICE,
+        specification_id=specification_id,
+        supporting_documents=(
+            SupportingDocument(reference="A-1", description="Stundenzettel", attachment=attachment),
+        ),
+    )
+    document = write_cii(invoice)
+    assert (
+        b"<ram:Name>Stundenzettel</ram:Name>"
+        b'<ram:AttachmentBinaryObject mimeCode="application/pdf" filename="a-1.pdf">'
+        + base64.b64encode(CONTENT)
+        + b"</ram:AttachmentBinaryObject></ram:AdditionalReferencedDocument>"
+    ) in document
+    assert read_invoice(document).invoice == invoice
+
+
+@pytest.mark.parametrize(
+    ("attachment", "reason"),
+    [
+        ("a-1.pdf", "BT-125 is not an Attachment"),
+        (
+            Attachment(content="JVBERi0xLjcK", mime_code="application/pdf", filename="a-1.pdf"),  # pyright: ignore[reportArgumentType]
+            "BT-125 is not bytes but str",
+        ),
+        (
+            Attachment(mime_code="application/pdf", filename="a-1.pdf"),
+            "BG-24 holds an attachment without its content (BT-125)",
+        ),
+        (
+            Attachment(content=b"", mime_code="application/pdf", filename="a-1.pdf"),
+            "BG-24 holds an attachment without its content (BT-125)",
+        ),
+        (
+            Attachment(content=CONTENT, filename="a-1.pdf"),
+            "BG-24 holds an attachment without its media type (BT-125-1)",
+        ),
+        (
+            Attachment(content=CONTENT, mime_code="application/pdf"),
+            "BG-24 holds an attachment without its file name (BT-125-2)",
+        ),
+        (
+            Attachment(content=CONTENT, mime_code="application/pdf", filename="a-1.pdf "),
+            "BT-125-2 has whitespace around it",
+        ),
+    ],
+    ids=[
+        "str-attachment",
+        "str-content",
+        "without-content",
+        "empty-content",
+        "without-media-type",
+        "without-file-name",
+        "file-name-with-whitespace",
+    ],
+)
+def test_refuses_an_attachment_that_cant_be_written(attachment: Any, reason: str) -> None:
+    """EN 16931 requires the content, the media type and the file name, and no official rule
+    checks the last two in CII D16B; a reason never holds the content."""
+    invoice = replace(
+        INVOICE, supporting_documents=(SupportingDocument(reference="A-1", attachment=attachment),)
+    )
+    with pytest.raises(InvoiceWriteError, match=re.escape(reason)) as refusal:
+        write_cii(invoice)
+    assert refusal.value.findings == ()
+    assert refusal.value.document is None
+    assert "JVBERi0x" not in str(refusal.value)
+    assert repr(CONTENT[:16])[2:-1] not in str(refusal.value)
+
+
+@pytest.mark.parametrize(
+    "invoice",
+    [
+        replace(
+            INVOICE,
+            supporting_documents=[
+                SupportingDocument(reference="A-1", attachment=CONTENT * 100)  # pyright: ignore[reportArgumentType]
+            ],
+        ),
+        replace(INVOICE, number=" " + "1" * 100_000),
+        "<Invoice>" + "x" * 100_000,
+    ],
+    ids=["bytes-in-a-list", "long-text", "long-str-invoice"],
+)
+def test_a_reason_shortens_a_long_value(invoice: Any) -> None:
+    """A model built in code may hold anything, a file's bytes in the wrong place too."""
+    with pytest.raises(InvoiceWriteError) as refusal:
+        write_cii(invoice)
+    assert len(str(refusal.value)) < 1_000
+
+
+def test_attachments_in_two_supporting_documents_still_warn_with_cii_sr_476() -> None:
+    """CEN's CII-SR-476 counts the attachments of all supporting documents, where EN 16931 gives
+    each its own (ITEM-006); KoSIT's scenarios lower it to information for XRechnung. Handed
+    out; once a release counts them per document, this test goes."""
+    invoice = replace(
+        INVOICE,
+        supporting_documents=(
+            SupportingDocument(reference="A-1", attachment=PDF_ATTACHMENT),
+            SupportingDocument(
+                reference="A-2", attachment=replace(PDF_ATTACHMENT, filename="a-2.pdf")
+            ),
+        ),
+    )
+    findings = validate(write_cii(invoice))
+    assert [(f.rule, f.flag) for f in findings if f.rule == "CII-SR-476"] == [
+        ("CII-SR-476", "warning")
+    ]
+    write_cii(replace(invoice, specification_id=XRECHNUNG))
 
 
 def test_two_supporting_documents_with_descriptions_still_warn_with_cii_sr_475() -> None:
