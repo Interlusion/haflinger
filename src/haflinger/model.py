@@ -10,7 +10,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
-from typing import Literal
+from typing import Literal, cast
 
 type Syntax = Literal["cii", "ubl"]
 
@@ -232,12 +232,35 @@ class VatBreakdown:
 
 
 @dataclass(frozen=True, kw_only=True)
+class Attachment:
+    """An attached document (BT-125): the file's bytes, decoded from the Base64 the XML carries,
+    with its media type (BT-125-1) and file name (BT-125-2). Its `repr` gives the content's size,
+    not the content, so that a model in a log or a failing test stays readable (ADR-011)."""
+
+    content: bytes | None = None  # BT-125
+    mime_code: str | None = None  # BT-125-1
+    filename: str | None = None  # BT-125-2
+
+    def __repr__(self) -> str:
+        # A model built in code may hold anything; its repr still shows no content.
+        content = cast(object, self.content)
+        if isinstance(content, bytes):
+            shown = f"<{len(content):,} bytes>"
+        else:
+            shown = "None" if content is None else f"<{type(content).__name__}>"
+        return (
+            f"Attachment(content={shown}, mime_code={self.mime_code!r}, filename={self.filename!r})"
+        )
+
+
+@dataclass(frozen=True, kw_only=True)
 class SupportingDocument:
-    """BG-24, without the attached document (BT-125), which the model doesn't hold."""
+    """BG-24 additional supporting document."""
 
     reference: str | None = None  # BT-122
     description: str | None = None  # BT-123
     external_location: str | None = None  # BT-124
+    attachment: Attachment | None = None  # BT-125
 
 
 @dataclass(frozen=True, kw_only=True)
