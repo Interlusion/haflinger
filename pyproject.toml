@@ -32,7 +32,12 @@ dev = [
     "ruff>=0.17.3",
     "types-defusedxml>=0.7.0.20260504",
     "types-lxml>=2026.2.16",
+    "zizmor>=1.31.1",
 ]
+
+[tool.uv]
+# The one place uv's version is pinned: uv refuses another locally, and CI's setup-uv reads it.
+required-version = "==0.13.6"
 
 [build-system]
 requires = ["uv_build>=0.13.6,<0.14"]
@@ -61,3 +66,7 @@ addopts = ["--strict-markers"]
 [tool.coverage.run]
 branch = true
 source = ["haflinger"]
+# The rules' worker process too (ADR-010), but not the copy of the package that one test runs
+# it from, which the test changes.
+patch = ["subprocess"]
+omit = ["*/path/haflinger/*"]
