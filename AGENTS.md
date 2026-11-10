@@ -29,7 +29,7 @@ Start at `docs/README.md`. The specs in `docs/specs/` are the contract: a new bu
 ## Conventions
 
 - Conventional Commits: `feat`, `fix`, `docs`, `ci`, `chore`, `refactor`, `test`.
-- Keep scripts and agents off `api.github.com`: use `git ls-remote`, `raw.githubusercontent.com`, `releases.atom`.
+- Keep scripts and agents off `api.github.com`: use `git ls-remote`, `raw.githubusercontent.com`, `releases.atom`. The one exception is CI's coverage comment, with the workflow's token.
 - Markdown: one line per paragraph, no hard wrapping. `mdformat` formats it (config in `.mdformat.toml`).
-- Checks: `uv run ruff check`, `uv run ruff format --check`, `uv run mdformat --check .`, `uv run basedpyright`, `uv run pytest` ([development guide](docs/guides/development.md)).
+- Checks: `uv run ruff check`, `uv run ruff format --check`, `uv run mdformat --check .`, `uv run basedpyright`, `uv run pytest`, and with Docker `scripts/check-links.sh`, `scripts/check-workflows.sh` and `scripts/check-secrets.sh` ([development guide](docs/guides/development.md)).
 - Commit or push only when the maintainer asks.

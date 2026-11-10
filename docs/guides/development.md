@@ -2,7 +2,7 @@
 
 | Meta | Value |
 | :- | :- |
-| **Date** | 2026-11-01 |
+| **Date** | 2026-11-10 |
 | **Author** | loxy (drafted with Claude) |
 | **Status** | Current |
 
@@ -23,18 +23,22 @@ scripts/
   corpus_report.py        runs a corpus of invoices through Haflinger
   term_report.py          the business terms invoices carry that the model lacks
   benchmark.py            time and memory against the specs' limits
+  check-links.sh          the Markdown link check
+  check-workflows.sh      actionlint and zizmor
+  check-secrets.sh        gitleaks over the commits
 docs/                     specs, architecture, ADRs, guides, backlog
 AGENTS.md                 rules for coding agents; CLAUDE.md imports it
 pyproject.toml, uv.lock, .python-version
 .gitattributes            keeps the vendored files byte for byte
-.github/                  CI checks and Dependabot
+lychee.toml               the link check: local links and #anchors only
+.github/                  CI checks, Dependabot, the images of CI's tools
 ```
 
 Why this toolchain: [ADR-002](../arc42/adr/ADR-002-toolchain.md).
 
 ## Setup and checks
 
-Requires [uv](https://docs.astral.sh/uv/). uv installs the Python version named in `.python-version`.
+Requires [uv](https://docs.astral.sh/uv/). uv installs the Python version named in `.python-version`; `pyproject.toml` names the uv version (`required-version`), which CI uses too.
 
 ```sh
 uv sync --locked --all-extras       # creates .venv from uv.lock, with dev tools and the pdf extra
@@ -42,9 +46,23 @@ uv run pytest                       # all tests; no network, no ERPNext
 uv run ruff check && uv run ruff format --check
 uv run basedpyright
 uv run mdformat --check .           # Markdown; without --check it formats
+scripts/check-links.sh              # no wiki-links; local links and #anchors resolve (Docker)
+scripts/check-workflows.sh          # actionlint with shellcheck (Docker), zizmor
+scripts/check-secrets.sh            # gitleaks over all of HEAD's commits, or those after a base (Docker)
+uv run coverage erase && uv run coverage run -m pytest && uv run coverage combine && uv run coverage report
 ```
 
-CI runs the same checks on every pull request and on `main` (`.github/workflows/checks.yml`), and the tests once more with the versions of shared dependencies that Frappe/ERPNext v16 pin (for now `pypdf==6.19.0` and `requests~=2.33.0`, which `factur-x` imports), so that Haflinger stays installable into a bench ([ADR-002](../arc42/adr/ADR-002-toolchain.md)); its Actions are pinned to a commit; Dependabot proposes updates to them and to `uv.lock` weekly, once a new version is 14 days old (Actions) or 7 days old (Python packages); security updates come at once (`.github/dependabot.yml`).
+## CI
+
+`checks.yml` runs on pull requests and pushes to `main`, without secrets ([ADR-002](../arc42/adr/ADR-002-toolchain.md)):
+
+- **`checks`**: the lock, ruff, mdformat, the Markdown link check, basedpyright, pytest with branch coverage, the rules' worker process included (the table in the run's summary and, for pull requests from this repository's branches, as one comment on the pull request that each push updates; not a gate), and the workflows and Dependabot's configuration (actionlint, zizmor);
+- **`coverage-comment`**: posts that comment with `gh pr comment`, authenticated with the workflow's token: the one exception to keeping scripts off `api.github.com`, whose limit binds requests without a token; the only job that may write, and it runs no code of the pull request;
+- **`audit`**: the vulnerability audit of the lock (`uv audit --locked`), a job of its own, so that a new advisory or the advisory database out of reach fails it alone;
+- **`secrets`**: gitleaks over the pushed commits (`scripts/check-secrets.sh`), over all of HEAD's where the base before the push isn't in the clone, as after a force push;
+- **`frappe-v16-pins`**: the tests once more with the versions of shared dependencies that Frappe/ERPNext v16 pin (for now `pypdf==6.19.0` and `requests~=2.33.0`, which `factur-x` imports), so that Haflinger stays installable into a bench.
+
+A newer push to a pull request's branch cancels the run before it; on `main`, each commit keeps its run. Actions are pinned to a commit, the runner image to `ubuntu-24.04` and uv to a version (`required-version` in `pyproject.toml`); the images of actionlint, gitleaks and lychee are pinned by digest in `.github/<tool>/Dockerfile`. Dependabot proposes updates to Actions and images weekly once a new version is 14 days old, to `uv.lock` once it is 7 days old, minor and patch updates as one pull request per ecosystem; security updates come at once (`.github/dependabot.yml`).
 
 ## Tests
 
