@@ -8,30 +8,113 @@ on:
 permissions:
   contents: read
 
+# A newer push to a pull request's branch cancels the run before it; on main each commit keeps
+# its run, so that every merge gets a result and its commits a secret scan.
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   checks:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # The version from pyproject.toml's required-version.
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: false
+      # Fails too when uv.lock doesn't match pyproject.toml.
       - run: uv sync --locked --all-extras
       - run: uv run ruff check
       - run: uv run ruff format --check
       - run: uv run mdformat --check .
+      - name: Markdown links
+        run: scripts/check-links.sh
       - run: uv run basedpyright
-      - run: uv run pytest
+      # The rules' worker process too, each process to a file of its own (ADR-010).
+      - name: Tests with branch coverage
+        run: |
+          uv run coverage run -m pytest -q
+          uv run coverage combine -q
+          {
+            echo "### Test coverage"
+            echo
+            uv run coverage report --format=markdown --skip-covered
+          } | tee "$RUNNER_TEMP/coverage.md" >> "$GITHUB_STEP_SUMMARY"
+      - name: Coverage artefact
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage
+          path: ${{ runner.temp }}/coverage.md
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: true # a re-run of the job uploads it again
+      - name: Workflows
+        run: scripts/check-workflows.sh
 
-  # The tests with the versions of shared dependencies that Frappe/ERPNext v16 pin, so that
-  # haflinger[pdf] stays installable into a bench (ADR-002).
-  frappe-v16-pins:
-    runs-on: ubuntu-latest
+  # A job of its own: a new advisory, or the advisory database out of reach, fails it alone,
+  # not the checks above.
+  audit:
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # The version from pyproject.toml's required-version.
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: false
+      - name: Vulnerability audit of the lock
+        run: uv audit --locked
+
+  # The coverage table as one comment on the pull request, updated on every push. A job of
+  # its own, so the write right stays away from the job that runs the pull request's code.
+  # Pull requests from forks get a read-only token; theirs stays in the run's summary.
+  coverage-comment:
+    needs: checks
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: coverage
+          path: ${{ runner.temp }}/coverage
+      - name: Comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: gh pr comment "$PR" --edit-last --create-if-none --body-file "$RUNNER_TEMP/coverage/coverage.md"
+
+  secrets:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: gitleaks over the pushed commits
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: scripts/check-secrets.sh "$BASE"
+
+  # The tests with the versions of shared dependencies that Frappe/ERPNext v16 pin, so that
+  # haflinger[pdf] stays installable into a bench (ADR-002).
+  frappe-v16-pins:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The version from pyproject.toml's required-version.
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: false
       # A real install, so that a version range clashing with the pins fails here.
       - run: uv venv --python 3.14 "$RUNNER_TEMP/bench"
       - run: uv pip install --python "$RUNNER_TEMP/bench" ".[pdf]" "pypdf==6.19.0" "requests~=2.33.0" pytest

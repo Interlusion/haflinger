@@ -3,7 +3,7 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Proposed |
-| **Date** | 2026-11-01 |
+| **Date** | 2026-11-10 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Context
@@ -14,7 +14,7 @@ Every runtime dependency has to coexist with the versions its host pins; in a Fr
 
 ## Decision
 
-- **Toolchain**: uv with `uv_build` and a locked `uv.lock`; development tools as dependency groups; ruff for linting and formatting; mdformat with `mdformat-gfm` (`.mdformat.toml`); basedpyright strict; pytest; coverage with branch coverage. CI on GitHub with pinned Actions; Dependabot proposes updates after a cooldown (14 days for Actions, 7 for Python packages), security updates at once.
+- **Toolchain**: uv with `uv_build` and a locked `uv.lock`; development tools as dependency groups; ruff for linting and formatting; mdformat with `mdformat-gfm` (`.mdformat.toml`); basedpyright strict; pytest; coverage with branch coverage, the rules' worker process included. CI on GitHub with pinned Actions, on a pinned runner image and the uv version `pyproject.toml` requires; each workflow gets `contents: read`, and a job that needs more gets it alone and runs no code of the pull request. Besides the checks above, CI runs: a Markdown link check (lychee, offline: every relative link and `#anchor` resolves, and no wiki-links, which GitHub shows as text); branch coverage, reported in the run's summary and, for pull requests from this repository's branches, as one comment on the pull request, not a gate; a vulnerability audit of the lock with `uv audit` (OSV), in a job of its own, so that a known vulnerability stops a pull request before Dependabot's alert after the merge; actionlint, with shellcheck for the workflows' `run:` scripts, and zizmor for the workflows and Dependabot's configuration; and gitleaks over the pushed commits. The coverage comment is the one call to `api.github.com`, authenticated with the workflow's token; scripts and agents otherwise stay off it, as its limit binds requests without a token. actionlint, gitleaks and lychee run from their images, pinned by digest in a Dockerfile each, so that Dependabot keeps them current: none ships a locked Python package with its binary for every platform. Dependabot proposes updates after a cooldown (14 days for Actions and images, 7 for Python packages), minor and patch updates as one pull request per ecosystem, security updates at once.
 - **A lower bound on Python, not one exact version**: `requires-python = ">=3.14"`, developed and tested on 3.14 (`.python-version`). A library must install next to whatever its host runs.
 - **Runtime dependencies, each for one job**:
   - `defusedxml` with the standard library's `ElementTree`, for parsing outside XML and for writing CII;
@@ -49,11 +49,13 @@ Every runtime dependency has to coexist with the versions its host pins; in a Fr
 ### Positive
 
 - One set of commands and checks, for people, agents and CI.
+- A broken link, a vulnerable dependency, a workflow that grants more than it needs and a committed secret stop a pull request before review.
 - The plain library has three runtime dependencies.
 
 ### Negative
 
 - Saxon is large and native ([ADR-006](ADR-006-validation-with-official-rules.md)).
+- Three of CI's checks need Docker locally (`scripts/check-links.sh`, `scripts/check-workflows.sh`, `scripts/check-secrets.sh`); measuring the worker process makes the tests with coverage about a third slower.
 - Hand-written XML access instead of generated bindings.
 - Two XML stacks: lxml checks invoices against their XML Schema, beside ElementTree for everything else. Weighed when lxml arrived (2026-10-31), and again when the schema check came to incoming invoices (2026-11-01, trigger 3): kept, because `defusedxml` stays the gate for outside input, and lxml only reads what has passed it, with entities, DTDs and the network off.
 

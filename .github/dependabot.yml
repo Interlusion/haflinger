@@ -1,16 +1,33 @@
 version: 2
 updates:
   # New versions wait before Dependabot proposes them, so that a compromised or broken release has
-  # time to be noticed; security updates come at once.
+  # time to be noticed; security updates come at once. Minor and patch updates come as one pull
+  # request per ecosystem.
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
     cooldown:
       default-days: 14
+    groups:
+      actions:
+        update-types: [minor, patch]
   - package-ecosystem: uv
     directory: /
     schedule:
       interval: weekly
     cooldown:
       default-days: 7
+    groups:
+      python:
+        update-types: [minor, patch]
+  # The images of CI's tools (actionlint, gitleaks, lychee), pinned by digest.
+  - package-ecosystem: docker
+    directories: [/.github/actionlint, /.github/gitleaks, /.github/lychee]
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 14
+    groups:
+      images:
+        update-types: [minor, patch]
