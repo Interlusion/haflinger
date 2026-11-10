@@ -1,6 +1,7 @@
 """CII into the model and the model into CII, by the elements EN 16931-3-3 assigns
 (REQ-003-PRS-F002, REQ-004-PRS-F003)."""
 
+import base64
 import re
 from dataclasses import replace
 from datetime import date, datetime
@@ -17,6 +18,7 @@ from haflinger._allowances import (
     allowances_and_charges,
     price_allowance,
 )
+from haflinger._attachments import attachment
 from haflinger._items import attributes, classifications
 from haflinger._parties import (
     BUYER,
@@ -47,11 +49,13 @@ from haflinger._xml import (
     none_if_empty,
     of_code,
     one_value,
+    quoted,
     vat_only,
 )
 from haflinger.errors import InvoiceWriteError
 from haflinger.model import (
     AllowanceCharge,
+    Attachment,
     Contact,
     CreditTransfer,
     Delivery,
@@ -211,7 +215,11 @@ def read(root: Node, specification_id: str | None) -> Invoice:
 
 
 # The terms of a supporting document an additional document of BT-17 or BT-18 doesn't hold.
-_SUPPORTING_ONLY = (("ram:Name", "BT-123"), ("ram:URIID", "BT-124"))
+_SUPPORTING_ONLY = (
+    ("ram:Name", "BT-123"),
+    ("ram:URIID", "BT-124"),
+    ("ram:AttachmentBinaryObject", "BT-125"),
+)
 
 
 def _supporting_documents(
@@ -230,6 +238,7 @@ def _supporting_documents(
                     reference=node.text("ram:IssuerAssignedID", "BT-122"),
                     description=node.text("ram:Name", "BT-123"),
                     external_location=node.text("ram:URIID", "BT-124"),
+                    attachment=attachment(node.first("ram:AttachmentBinaryObject", "BT-125")),
                 )
             )
         )
@@ -937,6 +946,7 @@ def _write_references(agreement: Element, invoice: Invoice) -> None:
         _put_text(element, "ram:URIID", document.external_location, "BT-124")
         _leaf(element, "ram:TypeCode", "916", {})
         _put_text(element, "ram:Name", document.description, "BT-123")
+        _write_attachment(element, document.attachment)
     project = _checked_text(invoice.project_reference, "BT-11")
     if project is not None:
         element = SubElement(agreement, "ram:SpecifiedProcuringProject")
@@ -944,6 +954,34 @@ def _write_references(agreement: Element, invoice: Invoice) -> None:
         # The XML Schema requires a name, which is no business term; KoSIT's test files write
         # this one.
         _leaf(element, "ram:Name", "Project reference", {})
+
+
+def _write_attachment(document: Element, attachment: object) -> None:
+    """BT-125 as `ram:AttachmentBinaryObject`, its bytes as Base64 without line breaks, with its
+    media type and file name; a reason never shows its content (ADR-011)."""
+    if attachment is None:
+        return
+    if not isinstance(attachment, Attachment):
+        raise InvoiceWriteError(f"BT-125 is not an Attachment but {type(attachment).__name__}")
+    content = cast(object, attachment.content)
+    if content is not None and not isinstance(content, bytes):
+        raise InvoiceWriteError(f"BT-125 is not bytes but {type(content).__name__}")
+    if not content:
+        raise InvoiceWriteError("BG-24 holds an attachment without its content (BT-125)")
+    mime_code = _checked_text(attachment.mime_code, "BT-125-1")
+    filename = _checked_text(attachment.filename, "BT-125-2")
+    # EN 16931 requires both in BT-125; Factur-X's XML Schema checks them for the EN 16931
+    # target, but no official rule does in CII D16B, which XRechnung's is checked against.
+    if mime_code is None:
+        raise InvoiceWriteError("BG-24 holds an attachment without its media type (BT-125-1)")
+    if filename is None:
+        raise InvoiceWriteError("BG-24 holds an attachment without its file name (BT-125-2)")
+    _leaf(
+        document,
+        "ram:AttachmentBinaryObject",
+        base64.b64encode(content).decode("ascii"),
+        {"mimeCode": mime_code, "filename": filename},
+    )
 
 
 def _write_additional_document(
@@ -960,7 +998,7 @@ def _write_party(parent: Element, tag: str, party: object, terms: PartyTerms) ->
     if party is None:
         return
     if not isinstance(party, Party):
-        raise InvoiceWriteError(f"{terms.party} is not a Party: {party!r}")
+        raise InvoiceWriteError(f"{terms.party} is not a Party: {quoted(party)}")
     ids = _group(party.identifiers, Identifier, terms.identifier)
     if terms.one_identifier and len(ids) > 1:
         raise InvoiceWriteError(
@@ -1072,7 +1110,7 @@ def _checked_identifier(value: object, term: str) -> Identifier | None:
     """An identifier of the model, which may hold anything, as its static types aren't checked
     at run time."""
     if value is not None and not isinstance(value, Identifier):
-        raise InvoiceWriteError(f"{term} is not an Identifier: {value!r}")
+        raise InvoiceWriteError(f"{term} is not an Identifier: {quoted(value)}")
     return value
 
 
@@ -1226,7 +1264,7 @@ def _checked_instructions(payment: object) -> PaymentInstructions | None:
     card = cast(object, payment.card)
     if card is not None:
         if not isinstance(card, PaymentCard):
-            raise InvoiceWriteError(f"BG-18 is not a PaymentCard: {card!r}")
+            raise InvoiceWriteError(f"BG-18 is not a PaymentCard: {quoted(card)}")
         # EN 16931 requires BT-87 in BG-18, and no official rule checks it in CII D16B.
         if card.account_number is None:
             raise InvoiceWriteError("BG-18 holds a card without its account number (BT-87)")
@@ -1277,7 +1315,7 @@ def _write_totals(settlement: Element, invoice: Invoice) -> None:
     if totals is None:
         return
     if not isinstance(totals, Totals):
-        raise InvoiceWriteError(f"BG-22 is not a Totals: {totals!r}")
+        raise InvoiceWriteError(f"BG-22 is not a Totals: {quoted(totals)}")
     if totals.vat_total_in_tax_currency is not None and invoice.tax_currency_code is None:
         raise InvoiceWriteError(
             "BT-111 needs the VAT accounting currency code (BT-6), which is missing"
@@ -1414,7 +1452,7 @@ def _checked_group[T](value: object, kind: type[T], group: str, holds: str) -> T
     if value is None:
         return None
     if not isinstance(value, kind):
-        raise InvoiceWriteError(f"{group} is not a {kind.__name__}: {value!r}")
+        raise InvoiceWriteError(f"{group} is not a {kind.__name__}: {quoted(value)}")
     if value == kind():
         raise InvoiceWriteError(f"{group} holds {holds} without any term")
     return value
@@ -1425,12 +1463,12 @@ def _group[T](values: object, kind: type[T], group: str, holds: str | None = Non
     aren't checked at run time, so a caller may pass anything. With `holds`, each must hold a
     term."""
     if not isinstance(values, tuple):
-        raise InvoiceWriteError(f"{group} is not a tuple of {kind.__name__}: {values!r}")
+        raise InvoiceWriteError(f"{group} is not a tuple of {kind.__name__}: {quoted(values)}")
     items: list[T] = []
     for value in cast(tuple[object, ...], values):
         if not isinstance(value, kind):
             raise InvoiceWriteError(
-                f"{group} holds something other than {kind.__name__}: {value!r}"
+                f"{group} holds something other than {kind.__name__}: {quoted(value)}"
             )
         if holds is not None and value == kind():
             raise InvoiceWriteError(f"{group} holds {holds} without any term")
@@ -1440,7 +1478,7 @@ def _group[T](values: object, kind: type[T], group: str, holds: str | None = Non
 
 def _checked_date(value: object, term: str) -> date | None:
     if value is not None and (not isinstance(value, date) or isinstance(value, datetime)):
-        raise InvoiceWriteError(f"{term} is not a date: {value!r}")
+        raise InvoiceWriteError(f"{term} is not a date: {quoted(value)}")
     return value
 
 
@@ -1448,14 +1486,14 @@ def _checked_text(value: object, term: str) -> str | None:
     if value is None:
         return None
     if not isinstance(value, str):
-        raise InvoiceWriteError(f"{term} is not a str: {value!r}")
+        raise InvoiceWriteError(f"{term} is not a str: {quoted(value)}")
     if not value:
         raise InvoiceWriteError(f"{term} is empty; a missing term is None")
     if value != value.strip(XML_WHITESPACE):
-        raise InvoiceWriteError(f"{term} has whitespace around it: {value!r}")
+        raise InvoiceWriteError(f"{term} has whitespace around it: {quoted(value)}")
     if (character := _NOT_XML.search(value)) is not None:
         raise InvoiceWriteError(
-            f"{term} holds a character XML doesn't allow, {character[0]!r}: {value!r}"
+            f"{term} holds a character XML doesn't allow, {character[0]!r}: {quoted(value)}"
         )
     return value
 
@@ -1474,13 +1512,13 @@ def _put_amount(
     if value is None:
         return
     if not isinstance(value, Decimal) or not value.is_finite():
-        raise InvoiceWriteError(f"{term} is not a finite Decimal: {value!r}")
+        raise InvoiceWriteError(f"{term} is not a finite Decimal: {quoted(value)}")
     digits, exponent = len(value.as_tuple().digits), int(value.as_tuple().exponent)
     if value.is_zero():
         digits, exponent = 1, min(exponent, 0)  # 0E+2000 is written 0
     if max(digits + exponent, digits, -exponent) > _MAX_DIGITS:
         raise InvoiceWriteError(
-            f"{term} has more than {_MAX_DIGITS:,} digits in plain notation: {value!r}"
+            f"{term} has more than {_MAX_DIGITS:,} digits in plain notation: {quoted(value)}"
         )
     _leaf(parent, path, format(value, "f"), attributes)
 

@@ -11,6 +11,7 @@ from haflinger._allowances import (
     allowances_and_charges,
     price_allowance,
 )
+from haflinger._attachments import attachment
 from haflinger._items import attributes, classifications
 from haflinger._parties import (
     BUYER,
@@ -203,6 +204,7 @@ def read(root: Node, specification_id: str | None, *, credit_note: bool) -> Invo
 _SUPPORTING_ONLY = (
     ("cbc:DocumentDescription", "BT-123"),
     ("cac:Attachment/cac:ExternalReference/cbc:URI", "BT-124"),
+    ("cac:Attachment/cbc:EmbeddedDocumentBinaryObject", "BT-125"),
 )
 
 
@@ -212,6 +214,9 @@ def _supporting_document(node: Node) -> SupportingDocument | None:
             reference=node.text("cbc:ID", "BT-122"),
             description=node.text("cbc:DocumentDescription", "BT-123"),
             external_location=node.text("cac:Attachment/cac:ExternalReference/cbc:URI", "BT-124"),
+            attachment=attachment(
+                node.first("cac:Attachment/cbc:EmbeddedDocumentBinaryObject", "BT-125")
+            ),
         )
     )
 

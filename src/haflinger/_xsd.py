@@ -43,6 +43,7 @@ _DECLARATION = re.compile(r"<\?xml[^>]*\?>")
 # validation, whichever thread ran it, and a lock around it could be left held by an exception
 # that a signal handler raises, such as RQ's job timeout (REQ-002-PRS-NF005).
 _COMPILED = threading.local()
+_MAX_TEXT = 500  # characters of a finding's text that a long one keeps
 
 
 def _schema(path: str) -> etree.XMLSchema:
@@ -88,4 +89,13 @@ def check_cii(document: bytes, *, factur_x_en16931: bool = False) -> list[Findin
 
 
 def _finding(schema: str, location: str, text: str) -> Finding:
+    """libxml2 quotes the value it refuses, a large attachment's Base64 too: a long message keeps
+    its start and its end (REQ-002-PRS-F011)."""
+    if len(text) > _MAX_TEXT:
+        start, end, left_out = (
+            text[: _MAX_TEXT // 2],
+            text[-_MAX_TEXT // 2 :],
+            len(text) - _MAX_TEXT,
+        )
+        text = f"{start} … ({left_out:,} characters left out) … {end}"
     return Finding(rule="HAFL-XSD", flag="fatal", location=location, text=f"{schema}: {text}")

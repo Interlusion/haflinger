@@ -3,6 +3,7 @@
 from typing import cast
 
 from haflinger import _saxon, _xsd, cii
+from haflinger._xml import quoted
 from haflinger.errors import InvoiceReadError, InvoiceWriteError
 from haflinger.findings import Finding
 from haflinger.model import Invoice
@@ -22,11 +23,11 @@ def write_cii(invoice: Invoice, *, timeout: float | None = None) -> bytes:
     (REQ-004-PRS-F001)."""
     # The model's static types aren't checked at run time; a caller may pass anything.
     if not isinstance(cast(object, invoice), Invoice):
-        raise InvoiceWriteError(f"the invoice is not an Invoice: {invoice!r}")
+        raise InvoiceWriteError(f"the invoice is not an Invoice: {quoted(invoice)}")
     limit = rules_timeout(timeout)
     if invoice.specification_id not in TARGET_PROFILES:
         raise InvoiceWriteError(
-            f"BT-24 {invoice.specification_id!r} is no target profile Haflinger writes;"
+            f"BT-24 {quoted(invoice.specification_id)} is no target profile Haflinger writes;"
             f" it writes {' and '.join(TARGET_PROFILES)}"
         )
     document = cii.write(invoice)

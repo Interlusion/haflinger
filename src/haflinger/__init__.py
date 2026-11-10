@@ -4,6 +4,7 @@ from haflinger.errors import InvoiceReadError, InvoiceWriteError
 from haflinger.findings import Finding
 from haflinger.model import (
     AllowanceCharge,
+    Attachment,
     Contact,
     CreditTransfer,
     Delivery,
@@ -31,6 +32,7 @@ from haflinger.write import write_cii
 
 __all__ = [
     "AllowanceCharge",
+    "Attachment",
     "Contact",
     "CreditTransfer",
     "Delivery",

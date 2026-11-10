@@ -64,15 +64,21 @@ def held_by_the_model() -> set[str]:
 
 
 def test_term_report_lists_only_terms_the_model_doesnt_hold() -> None:
+    """The model holds every term of KoSIT's test suite outside XRechnung's extension."""
     output = script("term_report.py")
     assert "kosit-testsuite: 86 files, 86 read" in output
-    rows = term_rows(output)
-    held = held_by_the_model()
-    assert {"BT-1", "BT-153", "BG-23", "BT-160"} <= held
-    assert "BT-125" not in held
-    assert rows
-    assert not held & set(rows)
-    assert rows["BT-125"] == ["Attached document", "BG-24", "32"]
+    assert {"BT-1", "BT-153", "BG-23", "BT-160", "BT-125"} <= held_by_the_model()
+    assert term_rows(output) == {}
+
+
+def test_term_report_lists_a_term_by_the_files_that_carry_it() -> None:
+    """With BT-125 left out of the model's terms, the report lists it with its name, its group
+    and the number of files carrying it."""
+    code = (
+        "import term_report; held = term_report.held;"
+        " term_report.held = lambda: held() - {'BT-125'}; term_report.main([])"
+    )
+    assert term_rows(in_scripts(code)) == {"BT-125": ["Attached document", "BG-24", "32"]}
 
 
 def test_term_report_counts_a_column_per_directory() -> None:

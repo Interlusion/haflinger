@@ -25,6 +25,7 @@ from haflinger._allowances import (
     LINE_CHARGE,
     AllowanceChargeTerms,
 )
+from haflinger._attachments import attachment
 from haflinger._items import attributes, classifications
 from haflinger._parties import (
     BUYER,
@@ -400,6 +401,7 @@ def _supporting_documents(invoice: Node) -> tuple[SupportingDocument, ...]:
                     reference=_text(node, "BT-122"),
                     description=_text(node, "BT-123"),
                     external_location=_text(node, "BT-124"),
+                    attachment=attachment(node.first(_term("BT-125"), "BT-125"), "mime_code"),
                 )
             )
         )

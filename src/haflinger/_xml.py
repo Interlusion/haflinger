@@ -7,6 +7,7 @@ further value of a term the model holds once is left out, with a `HAFL-DROPPED` 
 
 import codecs
 import re
+import reprlib
 from datetime import date
 from decimal import Decimal
 from xml.etree.ElementTree import Element, ParseError
@@ -22,6 +23,9 @@ MAX_SIZE = 100 * 1024 * 1024  # REQ-001-PRS-NF003
 # The lexical form of xs:decimal: REQ-001's term Value as written.
 _DECIMAL = re.compile(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)")
 XML_WHITESPACE = " \t\r\n"
+# A value a finding or a reason quotes, of at most about 200 characters: the start and the end of
+# a longer one, so that a file name, a text or a model holding a file stays readable.
+_QUOTED = reprlib.Repr(maxstring=200, maxother=200)
 
 
 def check_bytes(data: object) -> None:
@@ -278,8 +282,23 @@ class Node:
             self,
             "HAFL-VALUE",
             "error",
-            f"{term} is not written as {kind}: {value!r}; read as missing",
+            f"{term} is not written as {kind}: {shown(self, term, value)}; read as missing",
         )
+
+
+def quoted(value: object) -> str:
+    """`value`'s `repr`, a long one shortened to its start and its end."""
+    return _QUOTED.repr(value)
+
+
+def shown(node: Node, term: str, value: str | None = None) -> str:
+    """`value`, by default the element's, as a finding names it: quoted, and an attached
+    document (BT-125) by its file name, shortened, and the length of its Base64 text, not by its
+    content (REQ-003-PRS-F002)."""
+    value = node.value if value is None else value
+    if term == "BT-125":
+        return f"{quoted(node.attribute('filename'))} ({len(value or ''):,} characters of Base64)"
+    return repr(value)
 
 
 def none_if_empty[T](group: T) -> T | None:
@@ -330,7 +349,7 @@ def identifier_only(documents: list[Node], terms: tuple[tuple[str, str], ...], l
     for document in documents:
         for path, term in terms:
             for node in document.holding(term, path):
-                node.drop(f"{term} in {label} is left out: {node.value!r}")
+                node.drop(f"{term} in {label} is left out: {shown(node, term)}")
 
 
 def of_code(
@@ -375,7 +394,7 @@ def first_of(nodes: list[Node], term: str) -> Node | None:
     """The first of `nodes`, which hold values of `term`; each further one is left out with a
     finding."""
     for node in nodes[1:]:
-        node.drop(f"{term} appears more than once; this one is left out: {node.value!r}")
+        node.drop(f"{term} appears more than once; this one is left out: {shown(node, term)}")
     return nodes[0] if nodes else None
 
 

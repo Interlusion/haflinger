@@ -6,6 +6,7 @@ case 01.01a with one change.
 """
 
 import re
+from collections.abc import Callable
 from dataclasses import replace
 from datetime import date
 from decimal import Decimal
@@ -15,6 +16,7 @@ import pytest
 
 from haflinger import (
     AllowanceCharge,
+    Attachment,
     Contact,
     CreditTransfer,
     Delivery,
@@ -2917,22 +2919,26 @@ def test_a_lines_additional_document_not_of_bt_128_is_dropped(cii: bytes, ubl: b
 
 
 def test_a_lines_object_documents_other_elements_are_ignored() -> None:
-    """A description or location in BT-128's document is no term of the model, and no supporting
-    document (BG-24) either, which EN 16931 has only for the invoice: ignored, as an element
-    outside EN 16931 is, without a finding."""
+    """A description, location or attachment in BT-128's document is no term of the model, and no
+    supporting document (BG-24) either, which EN 16931 has only for the invoice: ignored, as an
+    element outside EN 16931 is, without a finding."""
     cii = cii_line_settlement(
         cii_document(
             b"130",
             b"O-1",
-            b"<ram:Name>Beschreibung</ram:Name><ram:URIID>https://example.com/o-1</ram:URIID>",
+            b"<ram:Name>Beschreibung</ram:Name><ram:URIID>https://example.com/o-1</ram:URIID>"
+            b"<ram:AttachmentBinaryObject " + ATTACHMENT + b"</ram:AttachmentBinaryObject>",
         )
     )
     ubl = ubl_line_documents(
         b"<cac:DocumentReference><cbc:ID>O-1</cbc:ID>"
         b"<cbc:DocumentTypeCode>130</cbc:DocumentTypeCode>"
         b"<cbc:DocumentDescription>Beschreibung</cbc:DocumentDescription>"
-        b"<cac:Attachment><cac:ExternalReference><cbc:URI>https://example.com/o-1</cbc:URI>"
-        b"</cac:ExternalReference></cac:Attachment></cac:DocumentReference>"
+        b"<cac:Attachment><cbc:EmbeddedDocumentBinaryObject "
+        + ATTACHMENT
+        + b"</cbc:EmbeddedDocumentBinaryObject><cac:ExternalReference>"
+        b"<cbc:URI>https://example.com/o-1</cbc:URI></cac:ExternalReference></cac:Attachment>"
+        b"</cac:DocumentReference>"
     )
     for data in (cii, ubl):
         result = read_invoice(data)
@@ -3346,11 +3352,14 @@ UBL_SUPPORTING = (
     b"</cac:AdditionalDocumentReference>"
     b"<cac:AdditionalDocumentReference><cbc:ID>A-2</cbc:ID></cac:AdditionalDocumentReference>"
 )
+PDF = b"%PDF-1.7\n"
+PDF_ATTACHMENT = Attachment(content=PDF, mime_code="application/pdf", filename="a-1.pdf")
 SUPPORTING_DOCUMENTS = (
     SupportingDocument(
         reference="A-1",
         description="Stundenzettel",
         external_location="https://example.com/a-1.pdf",
+        attachment=PDF_ATTACHMENT,
     ),
     SupportingDocument(reference="A-2"),
 )
@@ -3365,8 +3374,8 @@ SUPPORTING_DOCUMENTS = (
     ids=["cii", "ubl"],
 )
 def test_the_supporting_documents(base: bytes, data: bytes) -> None:
-    """BG-24 with every term the model holds, in document order; the attached document (BT-125)
-    isn't held."""
+    """BG-24 with every term, in document order; the attached document (BT-125) holds the bytes
+    its Base64 text gives."""
     result = read_invoice(data)
     assert result.invoice == replace(
         read_invoice(base).invoice, supporting_documents=SUPPORTING_DOCUMENTS
@@ -3380,12 +3389,17 @@ def test_a_credit_notes_supporting_document_beside_its_project_reference() -> No
         note,
         b"<cac:AccountingSupplierParty>",
         ubl_document(b"50", b"<cbc:ID>P-11</cbc:ID>")
-        + b"<cac:AdditionalDocumentReference><cbc:ID>A-1</cbc:ID>"
+        + b"<cac:AdditionalDocumentReference><cbc:ID>A-1</cbc:ID><cac:Attachment>"
+        b"<cbc:EmbeddedDocumentBinaryObject "
+        + ATTACHMENT
+        + b"</cbc:EmbeddedDocumentBinaryObject></cac:Attachment>"
         b"</cac:AdditionalDocumentReference><cac:AccountingSupplierParty>",
     )
     invoice = read_invoice(data).invoice
     assert invoice.project_reference == "P-11"
-    assert invoice.supporting_documents == (SupportingDocument(reference="A-1"),)
+    assert invoice.supporting_documents == (
+        SupportingDocument(reference="A-1", attachment=PDF_ATTACHMENT),
+    )
 
 
 @pytest.mark.parametrize(
@@ -3405,61 +3419,147 @@ def test_a_cii_additional_document_of_another_type_code_is_dropped(type_code: by
     assert dropped(result) == ["BG-24"]
 
 
-@pytest.mark.parametrize(
-    ("base", "data"),
-    [
-        (
-            CII,
-            edit(
-                CII,
-                CII_BUYER_END,
-                CII_BUYER_END
-                + b"<ram:AdditionalReferencedDocument><ram:TypeCode>916</ram:TypeCode>"
-                b"<ram:AttachmentBinaryObject "
-                + ATTACHMENT
-                + b"</ram:AttachmentBinaryObject></ram:AdditionalReferencedDocument>",
-            ),
-        ),
-        (
-            UBL,
-            edit(
-                UBL,
-                UBL_SUPPLIER,
-                b"<cac:AdditionalDocumentReference><cac:Attachment>"
-                b"<cbc:EmbeddedDocumentBinaryObject "
-                + ATTACHMENT
-                + b"</cbc:EmbeddedDocumentBinaryObject></cac:Attachment>"
-                b"</cac:AdditionalDocumentReference>" + UBL_SUPPLIER,
-            ),
-        ),
-    ],
-    ids=["cii", "ubl"],
-)
-def test_a_supporting_document_holding_only_an_attachment_isnt_read(
-    base: bytes, data: bytes
-) -> None:
-    result = read_invoice(data)
-    assert result.invoice == read_invoice(base).invoice
-    assert result.findings == ()
-
-
-@pytest.mark.parametrize(
-    "type_code",
-    [b"<ram:TypeCode>751</ram:TypeCode>", b"<ram:TypeCode>916</ram:TypeCode>"],
-    ids=["other-type-code", "916"],
-)
-def test_a_cii_document_holding_only_an_attachment_isnt_reported(type_code: bytes) -> None:
-    """The attached document (BT-125) isn't held, whatever the type code; no term is lost."""
-    document = (
-        b"<ram:AdditionalReferencedDocument>"
+def cii_attached(
+    *objects: bytes,
+    reference: bytes = b"<ram:IssuerAssignedID>A-1</ram:IssuerAssignedID>",
+    type_code: bytes = b"916",
+) -> bytes:
+    """KoSIT case 01.01a with a supporting document holding `reference` and each of `objects`, an
+    attached document's attributes and text (`ATTACHMENT`'s form)."""
+    return edit(
+        CII,
+        CII_BUYER_END,
+        CII_BUYER_END
+        + b"<ram:AdditionalReferencedDocument>"
+        + reference
+        + b"<ram:TypeCode>"
         + type_code
-        + b"<ram:AttachmentBinaryObject "
-        + ATTACHMENT
-        + b"</ram:AttachmentBinaryObject></ram:AdditionalReferencedDocument>"
+        + b"</ram:TypeCode>"
+        + b"".join(
+            b"<ram:AttachmentBinaryObject " + attached + b"</ram:AttachmentBinaryObject>"
+            for attached in objects
+        )
+        + b"</ram:AdditionalReferencedDocument>",
     )
-    result = read_invoice(edit(CII, CII_BUYER_END, CII_BUYER_END + document))
-    assert result.invoice.supporting_documents == ()
+
+
+def ubl_attached(attached: bytes, reference: bytes = b"<cbc:ID>A-1</cbc:ID>") -> bytes:
+    """The UBL form of `cii_attached` with one attached document."""
+    return edit(
+        UBL,
+        UBL_SUPPLIER,
+        b"<cac:AdditionalDocumentReference>"
+        + reference
+        + b"<cac:Attachment><cbc:EmbeddedDocumentBinaryObject "
+        + attached
+        + b"</cbc:EmbeddedDocumentBinaryObject></cac:Attachment>"
+        b"</cac:AdditionalDocumentReference>" + UBL_SUPPLIER,
+    )
+
+
+ATTACHED = pytest.mark.parametrize("attached", [cii_attached, ubl_attached], ids=["cii", "ubl"])
+
+
+@ATTACHED
+def test_an_attached_documents_base64_may_break_lines(attached: Callable[..., bytes]) -> None:
+    """`xs:base64Binary` allows whitespace between its characters: the bytes are the same."""
+    result = read_invoice(
+        attached(b'mimeCode="application/pdf" filename="a-1.pdf">\n  JVBE\r\n Ri0x\tLjcK\n')
+    )
+    assert result.invoice.supporting_documents == (
+        SupportingDocument(reference="A-1", attachment=PDF_ATTACHMENT),
+    )
     assert result.findings == ()
+
+
+@ATTACHED
+def test_a_supporting_document_holding_only_an_attachment_is_read(
+    attached: Callable[..., bytes],
+) -> None:
+    """The file reaches the caller; CEN's rules report the missing reference (BR-52), or in UBL
+    its XML Schema, which requires cbc:ID."""
+    data = attached(ATTACHMENT, reference=b"")
+    result = read_invoice(data)
+    assert result.invoice.supporting_documents == (SupportingDocument(attachment=PDF_ATTACHMENT),)
+    assert result.findings == ()
+    assert {finding.rule for finding in validate(data)} & {"BR-52", "HAFL-XSD"}
+
+
+@ATTACHED
+def test_an_attachment_without_media_type_and_file_name_is_read_without_them(
+    attached: Callable[..., bytes],
+) -> None:
+    result = read_invoice(attached(b">JVBERi0xLjcK"))
+    assert result.invoice.supporting_documents == (
+        SupportingDocument(reference="A-1", attachment=Attachment(content=PDF)),
+    )
+    assert result.findings == ()
+
+
+@ATTACHED
+def test_an_attachment_holding_no_text_isnt_read(attached: Callable[..., bytes]) -> None:
+    """Its media type and file name alone are no attached document."""
+    result = read_invoice(attached(b'mimeCode="application/pdf" filename="a-1.pdf"> \n'))
+    assert result.invoice.supporting_documents == (SupportingDocument(reference="A-1"),)
+    assert result.findings == ()
+
+
+@ATTACHED
+@pytest.mark.parametrize(
+    "text",
+    [b"JVBERi0x!LjcK", b"JVBERi0xLjc", "JVBERi0x\u00a0LjcK".encode(), b"JVBERi0xLjcKQR=="],
+    ids=["not-base64", "unpadded", "non-ascii", "bits-past-the-bytes"],
+)
+def test_an_attached_document_not_written_as_base64_is_missing(
+    attached: Callable[..., bytes], text: bytes
+) -> None:
+    """As `xs:base64Binary` writes it: `QR==` carries bits the byte `A` (`QQ==`) doesn't have,
+    which Python's decoder ignores and the XML Schemas refuse. libxml2, which checks them, lets
+    other characters through (ITEM-006)."""
+    data = attached(b'mimeCode="application/pdf" filename="a-1.pdf">' + text)
+    result = read_invoice(data)
+    assert result.invoice.supporting_documents == (SupportingDocument(reference="A-1"),)
+    assert [(f.rule, f.text.split()[0]) for f in result.findings] == [("HAFL-VALUE", "BT-125")]
+    assert "a-1.pdf" in result.findings[0].text
+    schema = "HAFL-XSD" in {finding.rule for finding in validate(data)}
+    assert schema == (text in {b"JVBERi0xLjc", b"JVBERi0xLjcKQR=="})
+
+
+@ATTACHED
+def test_findings_on_a_large_attachment_show_neither_its_content_nor_a_long_file_name(
+    attached: Callable[..., bytes],
+) -> None:
+    """Reading names the attachment by its file name, shortened, and validation shortens the
+    value the XML Schema quotes."""
+    filename = b"a" * 100_000 + b".pdf"
+    data = attached(
+        b'mimeCode="application/pdf" filename="' + filename + b'">' + b"JVBE" * 100_000 + b"QR=="
+    )
+    findings = (*read_invoice(data).findings, *validate(data))
+    assert {"HAFL-VALUE", "HAFL-XSD"} <= {finding.rule for finding in findings}
+    assert all(len(finding.text) < 1_000 for finding in findings), findings
+
+
+def test_a_second_attached_document_in_a_cii_supporting_document_is_dropped() -> None:
+    """CII D16B allows several, EN 16931 one; the finding names the file, not its content."""
+    result = read_invoice(
+        cii_attached(ATTACHMENT, b'mimeCode="image/png" filename="b-1.png">iVBORw0KGgo=')
+    )
+    assert result.invoice.supporting_documents == (
+        SupportingDocument(reference="A-1", attachment=PDF_ATTACHMENT),
+    )
+    assert dropped(result) == ["BT-125"]
+    assert "b-1.png" in result.findings[0].text
+    assert "iVBORw0KGgo" not in result.findings[0].text
+
+
+@pytest.mark.parametrize("type_code", [b"751", b""], ids=["other-type-code", "empty-type-code"])
+def test_a_cii_document_of_another_type_code_holding_only_an_attachment_is_dropped(
+    type_code: bytes,
+) -> None:
+    result = read_invoice(cii_attached(ATTACHMENT, reference=b"", type_code=type_code))
+    assert result.invoice.supporting_documents == ()
+    assert dropped(result) == ["BG-24"]
 
 
 @pytest.mark.parametrize(
@@ -3516,19 +3616,75 @@ def test_a_cii_document_holding_only_an_attachment_isnt_reported(type_code: byte
             None,
             ["BT-123", "BT-124"],
         ),
+        (
+            edit(
+                CII,
+                CII_BUYER_END,
+                CII_BUYER_END
+                + cii_document(
+                    b"50",
+                    b"T-17",
+                    b"<ram:AttachmentBinaryObject " + ATTACHMENT + b"</ram:AttachmentBinaryObject>",
+                ),
+            ),
+            "T-17",
+            None,
+            ["BT-125"],
+        ),
+        (
+            edit(
+                CII,
+                CII_BUYER_END,
+                CII_BUYER_END
+                + cii_document(
+                    b"130",
+                    b"O-18",
+                    b"<ram:AttachmentBinaryObject " + ATTACHMENT + b"</ram:AttachmentBinaryObject>",
+                ),
+            ),
+            None,
+            Identifier(value="O-18"),
+            ["BT-125"],
+        ),
+        (
+            edit(
+                UBL,
+                UBL_SUPPLIER,
+                b"<cac:AdditionalDocumentReference><cbc:ID>O-18</cbc:ID>"
+                b"<cbc:DocumentTypeCode>130</cbc:DocumentTypeCode>"
+                + b"<cac:Attachment><cbc:EmbeddedDocumentBinaryObject "
+                + ATTACHMENT
+                + b"</cbc:EmbeddedDocumentBinaryObject></cac:Attachment>"
+                + b"</cac:AdditionalDocumentReference>"
+                + UBL_SUPPLIER,
+            ),
+            None,
+            Identifier(value="O-18"),
+            ["BT-125"],
+        ),
     ],
-    ids=["cii-tender", "cii-130-without-identifier", "ubl-invoiced", "ubl-130-without-identifier"],
+    ids=[
+        "cii-tender",
+        "cii-130-without-identifier",
+        "ubl-invoiced",
+        "ubl-130-without-identifier",
+        "cii-tender-attachment",
+        "cii-invoiced-attachment",
+        "ubl-invoiced-attachment",
+    ],
 )
-def test_a_description_or_location_in_a_references_document_is_dropped(
+def test_a_description_location_or_attachment_in_a_references_document_is_dropped(
     data: bytes, tender: str | None, invoiced: Identifier | None, drops: list[str]
 ) -> None:
     """The type code decides: an additional document of BT-17's or BT-18's type code holds only
-    its identifier, and is no supporting document even without one."""
+    its identifier, and is no supporting document even without one. A finding names an attached
+    document by its file name, not its content."""
     result = read_invoice(data)
     assert result.invoice.tender_or_lot_reference == tender
     assert result.invoice.invoiced_object_id == invoiced
     assert result.invoice.supporting_documents == ()
     assert dropped(result) == drops
+    assert all("JVBERi0x" not in finding.text for finding in result.findings)
 
 
 # REQ-003-PRS-F002: the payee, the tax representative and the parties' remaining terms

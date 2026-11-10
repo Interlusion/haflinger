@@ -3,8 +3,8 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Draft |
-| **Version** | 0.19 |
-| **Date** | 2026-11-08 |
+| **Version** | 0.20 |
+| **Date** | 2026-11-09 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Intended Use
@@ -109,6 +109,7 @@ General vocabulary (CIUS, Leitweg-ID, Peppol …): the [E-Invoicing 101 glossary
 - **Exponent notation on writing** (REQ-004): a `Decimal` in exponent notation, which only a model built in code can hold, is written in plain notation with the same value.
 - **Notation of numbers on reading** (REQ-003): a number keeps its value and its decimal places, not the characters that carry neither: a `+` sign, leading zeros, a decimal point without digits after it, a missing zero before it. `+0336.90` reads as `336.90`, `336.` as `336` and `.5` as `0.5`.
 - **The VAT point date code in CII** (REQ-003, REQ-004): CII writes BT-8 with the codes of UNTDID 2475, `5` (date of invoice), `29` (date of delivery) and `72` (paid to date), where EN 16931 and UBL use those of UNTDID 2005 for the same dates, `3`, `35` and `432`; CEN's rules accept only the first in CII and only the second in UBL (`BR-CL-06`). The model holds EN 16931's code: a CII `5`, `29` or `72` reads as `3`, `35` or `432` and is written back as it was, so that the CII and the UBL file of an invoice read alike and a model read from either is written as valid CII. A CII `3`, `35` or `432`, which CEN's rules reject there, is EN 16931's code for its date and is written as CII's; a model holding `5`, `29` or `72` is refused before writing, naming EN 16931's code, so that every model written reads back alike. Any other code is read and written as it is.
+- **Base64 of an attached document** (REQ-003, REQ-004): the attached document (BT-125) is a file's bytes, which the XML carries as Base64 text. Reading decodes the text, without the whitespace `xs:base64Binary` allows within it, and writing encodes the bytes without line breaks: the bytes stay exactly as they are, the text that carries them may change ([ADR-011](../arc42/adr/ADR-011-attached-documents.md)).
 
 #### REQ-001-URS-NF002: Refuse or report, never guess
 
@@ -205,7 +206,8 @@ General vocabulary (CIUS, Leitweg-ID, Peppol …): the [E-Invoicing 101 glossary
 | `VatBreakdown.rate` | BT-119 | VAT category rate |  |
 | `VatBreakdown.exemption_reason` | BT-120 | VAT exemption reason text |  |
 | `VatBreakdown.exemption_reason_code` | BT-121 | VAT exemption reason code |  |
-| `Invoice.supporting_documents` | BG-24 | Additional supporting documents, any number: `reference` BT-122 (required in the group), `description` BT-123, `external_location` BT-124, but not the attached document |  |
+| `Invoice.supporting_documents` | BG-24 | Additional supporting documents, any number: `reference` BT-122 (required in the group), `description` BT-123, `external_location` BT-124, `attachment` BT-125 |  |
+| `SupportingDocument.attachment` | BT-125 | Attached document, an Attachment: `content` BT-125 (required in the group), the file's bytes, `mime_code` BT-125-1 (required in the group), `filename` BT-125-2 (required in the group) |  |
 | `Invoice.lines` | BG-25 | Invoice lines, at least one | required |
 | `InvoiceLine.id` | BT-126 | Invoice line identifier | required |
 | `InvoiceLine.note` | BT-127 | Invoice line note |  |
@@ -243,11 +245,11 @@ General vocabulary (CIUS, Leitweg-ID, Peppol …): the [E-Invoicing 101 glossary
 
 #### REQ-001-PRS-F002: Equality and origin
 
-**Description**: Two models SHALL compare equal when all their business terms are equal; numbers compare by value (`10.50` equals `10.5`). `Invoice.syntax` SHALL record the syntax an invoice was read from (`"cii"` or `"ubl"`), or `None` for a model built otherwise, and SHALL NOT take part in the comparison.
+**Description**: Two models SHALL compare equal when all their business terms are equal; numbers compare by value (`10.50` equals `10.5`). `Invoice.syntax` SHALL record the syntax an invoice was read from (`"cii"` or `"ubl"`), or `None` for a model built otherwise, and SHALL NOT take part in the comparison. An attachment (BT-125) compares by its bytes; its `repr` SHALL give its size, media type and file name, not its content, so that a model in a log or a failing test stays readable ([ADR-011](../arc42/adr/ADR-011-attached-documents.md)).
 
 **Related URS**: REQ-001-URS-F001
 
-**Definition of Done**: a test compares the CII and UBL models of one invoice as equal while their `syntax` differs; a model built in code has `syntax` `None`; two models that differ only in `10.50` and `10.5` compare equal (tests).
+**Definition of Done**: a test compares the CII and UBL models of one invoice as equal while their `syntax` differs; a model built in code has `syntax` `None`; two models that differ only in `10.50` and `10.5` compare equal; two attachments compare by their bytes, and an attachment's `repr` holds its size, media type and file name but not its content (tests).
 
 #### REQ-001-PRS-F003: Edition
 
@@ -277,11 +279,11 @@ General vocabulary (CIUS, Leitweg-ID, Peppol …): the [E-Invoicing 101 glossary
 
 #### REQ-001-PRS-NF001: Outside input
 
-**Description**: XML that contains a document type declaration or an entity declaration SHALL be refused before any reader, stylesheet or rule processes it; XML embedded in a PDF SHALL be parsed by nothing else before this check. Nothing referenced in outside input, in XML or in a PDF (external file specifications, URLs, actions), SHALL be fetched, opened or run. Reading and validation SHALL write nothing to the file system; `haflinger.pdf.embed`, whose input is the caller's own PDF, hands it to `factur-x` through a private temporary directory that is removed afterwards. The library SHALL use no value from an input as a path, URL or command; values such as file names are handed back as data.
+**Description**: XML that contains a document type declaration or an entity declaration SHALL be refused before any reader, stylesheet or rule processes it; XML embedded in a PDF SHALL be parsed by nothing else before this check. Nothing referenced in outside input, in XML or in a PDF (external file specifications, URLs, actions), SHALL be fetched, opened or run. Reading and validation SHALL write nothing to the file system; `haflinger.pdf.embed`, whose input is the caller's own PDF, hands it to `factur-x` through a private temporary directory that is removed afterwards. The library SHALL use no value from an input as a path, URL or command; values such as file names are handed back as data. An attached document's content (BT-125) SHALL be neither opened, rendered nor checked against its media type ([ADR-011](../arc42/adr/ADR-011-attached-documents.md)).
 
 **Related URS**: REQ-001-URS-NF003
 
-**Definition of Done**: tests with an internal DTD, an entity expansion and an external entity each get a refusal, from reading and from validation; a PDF whose embedded XML declares an external entity gets a refusal from reading; a PDF whose file specification points to a file outside it reads without that file being opened (tests); Saxon opens only local files, so that a stylesheet can't fetch a URL (test); no reference in an input is fetched, reading and validation write nothing to the file system, and no input value reaches a path, URL or command (inspection).
+**Definition of Done**: tests with an internal DTD, an entity expansion and an external entity each get a refusal, from reading and from validation; a PDF whose embedded XML declares an external entity gets a refusal from reading; a PDF whose file specification points to a file outside it reads without that file being opened (tests); Saxon opens only local files, so that a stylesheet can't fetch a URL (test); no reference in an input is fetched, reading and validation write nothing to the file system, and no input value reaches a path, URL or command, and no attached document is opened (inspection).
 
 #### REQ-001-PRS-NF002: No Frappe
 

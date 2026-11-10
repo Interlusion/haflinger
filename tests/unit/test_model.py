@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 from haflinger import model
-from haflinger.model import Invoice, Party, Totals
+from haflinger.model import Attachment, Invoice, Party, SupportingDocument, Totals
 
 ROOT = Path(__file__).resolve().parents[2]
 REQ_001 = ROOT / "docs/specs/req-001-core.md"
@@ -93,6 +93,22 @@ def test_invoices_compare_equal_whatever_their_syntax() -> None:
     assert cii == ubl
     assert hash(cii) == hash(ubl)
     assert cii.syntax != ubl.syntax
+
+
+def test_an_attachment_compares_by_its_bytes_and_shows_no_content() -> None:
+    """Its `repr` gives its size, media type and file name, so that a model in a log or a failing
+    test stays readable (ADR-011)."""
+    pdf = b"%PDF-1.7\n" * 1000
+    attachment = Attachment(content=pdf, mime_code="application/pdf", filename="a-1.pdf")
+    assert attachment == Attachment(
+        content=bytes(pdf), mime_code="application/pdf", filename="a-1.pdf"
+    )
+    assert attachment != dataclasses.replace(attachment, content=pdf + b"\n")
+    assert repr(attachment) == (
+        "Attachment(content=<9,000 bytes>, mime_code='application/pdf', filename='a-1.pdf')"
+    )
+    assert "%PDF" not in repr(SupportingDocument(reference="A-1", attachment=attachment))
+    assert repr(Attachment()) == "Attachment(content=None, mime_code=None, filename=None)"
 
 
 def test_a_model_built_in_code_has_no_syntax() -> None:

@@ -2,7 +2,7 @@
 
 E-invoicing in Python: ZUGFeRD, XRechnung and Peppol, on one model of the EN 16931 business terms. Built for ERPNext first. *Das Zugpferd für ZUGFeRD und XRechnung.*
 
-**Status:** built from its specs: reading CII, UBL and ZUGFeRD PDFs, validating with the official rules, writing CII and ZUGFeRD PDFs (EN 16931); the model holds the document's terms (references, parties, delivery, payment, allowances and charges, totals, VAT breakdown, supporting documents without their attachments) and a line's references, period, allowances and charges, price and item with its attributes: 82 of the 86 invoices of KoSIT's test suite, read and written again, pass the official rules. Nothing is released.
+**Status:** built from its specs: reading CII, UBL and ZUGFeRD PDFs, validating with the official rules, writing CII and ZUGFeRD PDFs (EN 16931); the model holds the document's terms (references, parties, delivery, payment, allowances and charges, totals, VAT breakdown, supporting documents with their attachments) and a line's references, period, allowances and charges, price and item with its attributes: 82 of the 86 invoices of KoSIT's test suite, read and written again, pass the official rules. Nothing is released.
 
 ## What it is
 
