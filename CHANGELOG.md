@@ -1,6 +1,6 @@
 # Changelog
 
-What changed in each release of Haflinger, for its callers. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html): while Haflinger is at 0.x, a minor version may break the interface ([ADR-013](docs/arc42/adr/ADR-013-releases.md)).
+What changed in each release of Haflinger, for its callers. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html): while Haflinger is at 0.x, a minor version may break the interface ([ADR-013](https://github.com/Interlusion/haflinger/blob/main/docs/arc42/adr/ADR-013-releases.md)).
 
 ## [Unreleased]
 

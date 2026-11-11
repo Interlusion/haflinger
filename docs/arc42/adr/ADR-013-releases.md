@@ -14,6 +14,8 @@ Its first caller, the ERPNext app, installs it into a bench ([ITEM-003](../../ba
 
 Uploading from a maintainer's machine needs a PyPI API token: a secret that lasts until it is revoked, and nothing ties the uploaded files to a commit. PyPI's Trusted Publishing lets a workflow of a named repository upload instead: GitHub gives the run a signed identity (OpenID Connect), PyPI checks it against the publisher configured for the project and hands out a token that expires within minutes. Uploaded this way, pypa's publish action also signs an attestation for each file (PEP 740): which repository, workflow and commit built it, which PyPI shows and anyone can verify.
 
+GitHub's "Watch → Releases" notifies people of GitHub Releases, not of tags, and a release can be created only through `api.github.com`, which scripts and agents otherwise keep off; CI's coverage comment is its one exception so far ([ADR-002](ADR-002-toolchain.md)).
+
 The README's links are absolute and point at `main`, so that they work on PyPI; PyPI keeps each release's README, so a release's page would show the files as they are on `main` later, not as they were released ([backlog](../../backlog/backlog.md)). `uv_build`, the build backend ([ADR-002](ADR-002-toolchain.md)), reads a static version from `pyproject.toml`; it has no dynamic versions from Git tags.
 
 ## Decision
@@ -24,10 +26,13 @@ The README's links are absolute and point at `main`, so that they work on PyPI; 
 - **One version, in `pyproject.toml`**, set with `uv version X.Y.Z`, which updates `uv.lock` too. Haflinger has no `__version__`, a name ADR-012 doesn't export; a caller asks `importlib.metadata.version("haflinger")`.
 - **`CHANGELOG.md`, in the format of Keep a Changelog 1.1.0**: a change a caller notices adds its entry under "Unreleased" in the same pull request, under Added, Changed, Deprecated, Removed, Fixed or Security; a new release of official files names that release. Tests, docs, CI and refactoring get no entry. A release moves the entries into a section of its own, `## [X.Y.Z] - YYYY-MM-DD`.
 - **A release is a tag** `vX.Y.Z` on the merge commit of the pull request that sets the version and the changelog's section, pushed by the maintainer. A version on PyPI is never replaced (PyPI refuses a file name once used), and its tag is never moved or deleted; a broken release is yanked and followed by a patch.
-- **`release.yml` runs on the tag**, in two jobs, with no token or password stored and no call to `api.github.com`:
-  - `build`, with `contents: read`: `scripts/prepare_release.py` refuses unless the tag is `v` and `pyproject.toml`'s version, and `CHANGELOG.md` has that version's section with a date and entries right below an empty "Unreleased", then points the links to `main` in the README and in `pyproject.toml`'s project URLs at the tag; the workflow refuses a commit that isn't on `main`; `uv build` builds the sdist and the wheel; the tests run against the wheel, installed with the extra `pdf` into an environment of its own; the files are kept as an artefact of the run.
+- **A release is checked against its tag**: the tag is annotated, names the commit the run builds, on `main`, and was pushed to `Interlusion/haflinger`, not a fork; it is `v` and `pyproject.toml`'s version, which has the form `X.Y.Z`; and `CHANGELOG.md` has that version's section with a date and entries right below an empty "Unreleased" (`scripts/prepare_release.py`).
+- **`release.yml` runs on the tag**, in three jobs, each with only the rights it needs and no token or password stored:
+  - `build`, with `contents: read`: the checks above; the links to `main` in the README and in `pyproject.toml`'s project URLs pointed at the tag; `uv build`, the sdist and the wheel; the tests against the wheel, installed with the extra `pdf` into an environment of its own; the GitHub Release's notes, the version's section of the changelog, shown in the run's summary; the files and the notes kept as artefacts of the run, for as long as an approval can wait (30 days).
   - `publish`, with `id-token: write` alone: in the environment `pypi`, which waits for the maintainer's approval and admits only tags `v*`, pypa's publish action uploads the files through Trusted Publishing, with their attestations; run again, it skips the files PyPI already has.
-- **No GitHub Release**: the tag and `CHANGELOG.md` are the record on GitHub. A release there would be a second call to `api.github.com`, and a copy of the changelog.
+  - `github-release`, with `contents: write` alone, after the upload: a GitHub Release for the tag with `build`'s notes, the sdist and the wheel attached; it runs no code of the repository. `gh` calls `api.github.com` with the workflow's token, as no other way creates a release; the second exception to keeping off it, beside CI's coverage comment. Run again, only it runs, and it brings an existing release up to date.
+- **A dry run before the tag**: started by hand (`workflow_dispatch`) on `main` with the version, once the release's pull request is merged, `release.yml` runs `build` alone, the checks of the tag aside, and publishes nothing; the tag then goes on the commit the dry run built, which its summary names. So a release's workflow has run on the tagged commit, all but the upload and the GitHub Release.
+- **The changelog is written for the GitHub Release too**: its links are absolute, as the README's, which the link check enforces, and names stay in backticks, so that no `@name` notifies anyone.
 - **Builds with the backend uv bundles**: the uv version `pyproject.toml` requires lies within the range of `uv_build` it names, so `uv build` downloads no backend; a test checks it.
 - **Settings outside the repository**, which the [releasing guide](../../guides/releasing.md) lists: the trusted publisher on PyPI (`Interlusion/haflinger`, `release.yml`, environment `pypi`), the environment `pypi` with the maintainer as required reviewer, and a ruleset for tags `v*` that restricts creating, updating and deleting them, with only the maintainer past it.
 
@@ -81,7 +86,15 @@ Its advantage: every check runs once more on the released commit.
 
 **Rejected because** the commit is on `main`, whose checks ran when it was merged, and `checks.yml`'s coverage comment asks for `pull-requests: write`, which the release workflow would have to grant. What the checks don't cover is the built package, and the release tests that.
 
-### Alternative 6: A trial upload to TestPyPI
+### Alternative 6: No GitHub Release
+
+The tag and `CHANGELOG.md` are the only record on GitHub.
+
+Its advantage: no second call to `api.github.com`, and no copy of the changelog.
+
+**Rejected because** "Watch → Releases" then notifies nobody, and GitHub's release page, where people look for versions and their files, stays empty; the call is one, with the workflow's token, in a job of its own.
+
+### Alternative 7: A trial upload to TestPyPI
 
 Each release goes to TestPyPI first, then to PyPI.
 
@@ -103,20 +116,22 @@ Its advantage: the upload itself is tried before it counts.
 
 - Each change a caller notices needs its changelog entry, by hand.
 - A release takes a pull request before the tag.
-- The `publish` job runs for the first time with the first release; until then only its configuration is checked (actionlint, zizmor).
+- The upload and the GitHub Release run for the first time with the first release; the dry run covers the rest, and actionlint and zizmor their configuration.
+- A second exception to keeping off `api.github.com`, and a job with the right to write the repository's contents.
 - The settings on PyPI and GitHub live outside the repository, where no check sees them.
 
 ## Reconsideration Triggers
 
 1. The ERPNext app runs on Haflinger in production, and the interface has held for a few minor versions: 1.0.0, after which a breaking change needs a major version and a deprecation before it.
 2. A caller needs pre-releases (`0.2.0rc1`): `prepare_release.py` and this ADR admit `X.Y.Z` only.
-3. Callers ask to be notified of releases on GitHub: a GitHub Release from the workflow, with the token's write right in a job of its own.
-4. PyPI or GitHub change Trusted Publishing or attestations.
-5. A second maintainer: who approves a release.
+3. PyPI or GitHub change Trusted Publishing or attestations.
+4. A second maintainer: who approves a release.
 
 ## Compliance
 
-- A release SHALL be published only by `release.yml`, from a tag `vX.Y.Z` on a commit of `main` that names `pyproject.toml`'s version.
+- A release SHALL be published only by `release.yml`, from an annotated tag `vX.Y.Z` on a commit of `main` of `Interlusion/haflinger` that names `pyproject.toml`'s version.
+- A release's workflow SHALL have run as a dry run on the commit its tag names, before the tag is pushed.
+- Only `github-release` SHALL have `contents: write`, and only it and CI's coverage comment SHALL call `api.github.com`.
 - `CHANGELOG.md` SHALL have a section for each released version, and "Unreleased" SHALL list every change a caller notices since the last release; in a release's commit, it SHALL be empty.
 - A version SHALL raise the part the table above gives for the largest change it brings.
 - No PyPI token SHALL be stored, in the repository or its secrets.

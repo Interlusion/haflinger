@@ -1,5 +1,6 @@
-"""The release's checks and the links to its tag: `scripts/prepare_release.py`, which
-`release.yml` runs before building; and the uv that builds it (ADR-013, releasing guide)."""
+"""The release's checks, the links to its tag and its notes: `scripts/prepare_release.py`, which
+`release.yml` runs before building and for the GitHub Release; and the uv that builds it
+(ADR-013, releasing guide)."""
 
 import re
 import subprocess
@@ -84,11 +85,36 @@ def test_check_only_changes_nothing(tmp_path: Path) -> None:
     assert unchanged(tmp_path)
 
 
-@pytest.mark.parametrize("arguments", [[], ["--check"], ["--check", "v0.1.0"], ["v0.1.0", "-x"]])
+def test_notes_are_the_versions_section(tmp_path: Path) -> None:
+    """The GitHub Release's notes: the section's body, without its heading and the links."""
+    result = prepare(project(tmp_path), "v0.1.0", "--notes")
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "### Added\n\n- Reading invoices.\n"
+    assert unchanged(tmp_path)
+
+
+def test_notes_end_at_the_release_before(tmp_path: Path) -> None:
+    older = "## [0.0.9] - 2026-11-01\n\n### Fixed\n\n- Older.\n\n"
+    changelog = CHANGELOG.replace("[unreleased]:", older + "[unreleased]:")
+    result = prepare(project(tmp_path, changelog=changelog), "v0.1.0", "--notes")
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "### Added\n\n- Reading invoices.\n"
+
+
+def test_no_notes_for_a_release_that_fails_its_checks(tmp_path: Path) -> None:
+    result = prepare(project(tmp_path), "v0.1.1", "--notes")
+    assert result.returncode == 1
+    assert result.stdout == ""
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [[], ["--check"], ["--check", "v0.1.0"], ["v0.1.0", "-x"], ["v0.1.0", "--check", "--notes"]],
+)
 def test_other_arguments_are_refused(tmp_path: Path, arguments: list[str]) -> None:
     result = prepare(project(tmp_path), *arguments)
     assert result.returncode == 2
-    assert "prepare_release.py vX.Y.Z [--check]" in result.stderr
+    assert "prepare_release.py vX.Y.Z [--check | --notes]" in result.stderr
     assert unchanged(tmp_path)
 
 

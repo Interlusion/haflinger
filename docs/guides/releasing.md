@@ -6,9 +6,9 @@
 | **Author** | loxy (drafted with Claude) |
 | **Status** | Current |
 
-How a version of Haflinger gets to PyPI. Why it works this way: [ADR-013](../arc42/adr/ADR-013-releases.md).
+How a version of Haflinger gets to PyPI and onto GitHub's Releases page. Why it works this way: [ADR-013](../arc42/adr/ADR-013-releases.md).
 
-In short: a pull request sets the version and the changelog's section; the maintainer tags the merged commit; `release.yml` checks, builds and tests the package and, once the maintainer approves, uploads it to PyPI through Trusted Publishing, without a token.
+In short: a pull request sets the version and the changelog's section; once it is merged, a dry run of `release.yml` checks, builds and tests the merged commit, and the maintainer tags that commit; `release.yml` does the same for the tag and, once the maintainer approves, uploads the package to PyPI through Trusted Publishing, without a token, and creates the GitHub Release.
 
 ## Once: the settings outside the repository
 
@@ -62,27 +62,30 @@ A version raises the part that the largest change since the last release calls f
    uv run python scripts/prepare_release.py vX.Y.Z --check
    ```
 
-   For the first release, three texts still say that nothing is released: the README's status, whose development section shows no installation either (add `uv add "haflinger[pdf]"`), the security policy's supported versions, and arc42 §7.
+   Commit as `chore: release X.Y.Z` and open the pull request.
 
-   Commit as `chore: release X.Y.Z`, open the pull request and merge it once its checks pass.
+   Merge the pull request once its checks pass. If you like, run the dry run below on its branch first; it's the merged commit that counts.
 
-3. **The tag**, on the release pull request's merge commit, which its page names, not on whatever `main` holds by then: a pull request merged after it would ship without its changelog entry.
+3. **The dry run**, on `main` right after the merge: in Actions, `Release` → Run workflow, the branch `main` and the version `X.Y.Z`. It runs the `build` job as the tag will, the checks of the tag aside, and publishes nothing. Its summary names the commit it built, `vX.Y.Z of <commit>`, and shows the GitHub Release's notes; its artefact `dist` holds the files. That commit should be the release pull request's merge commit: if another pull request was merged after it, its changes would ship in this release without their changelog entry, so they come into a new release pull request first.
+
+4. **The tag**, annotated (`-a`), on the commit the dry run built:
 
    ```sh
    git switch main && git pull --ff-only
-   git tag -a vX.Y.Z <merge commit> -m "Haflinger X.Y.Z"
+   git tag -a vX.Y.Z <the dry run's commit> -m "Haflinger X.Y.Z"
    git push origin vX.Y.Z
    ```
 
-4. **The workflow.** In Actions, `Release` runs for the tag. Its `build` job refuses a tag that doesn't name `pyproject.toml`'s version, a changelog without that version's section right below an empty "Unreleased", or a commit that isn't on `main`; it points the links to `main` in the README and in the project URLs at the tag, builds the sdist and the wheel and runs the tests against the wheel. Then `publish` waits for approval: review the deployment, approve it, and the files go to PyPI with their attestations. The built files are kept 30 days, as long as an approval can wait.
+5. **The workflow.** In Actions, `Release` runs for the tag. Its `build` job refuses a tag that isn't annotated, names another commit than the run's, isn't on `main` or wasn't pushed to `Interlusion/haflinger`, that doesn't name `pyproject.toml`'s version, or a changelog without that version's section right below an empty "Unreleased"; it points the links to `main` in the README and in the project URLs at the tag, builds the sdist and the wheel and runs the tests against the wheel. Then `publish` waits for approval: review the deployment, approve it, and the files go to PyPI with their attestations. The built files are kept 30 days, as long as an approval can wait. Last, `github-release` creates the GitHub Release for the tag, with the changelog's section as its notes and the files attached.
 
-5. **Check PyPI.** On [pypi.org/project/haflinger](https://pypi.org/project/haflinger/): the version, the README and the sidebar's links with the tag in them, and under "Download files" each file's provenance, naming `Interlusion/haflinger`, `release.yml` and the tag's commit.
+6. **Check PyPI and GitHub.** GitHub's Releases page shows `vX.Y.Z` with its notes and both files. On [pypi.org/project/haflinger](https://pypi.org/project/haflinger/): the version, the README and the sidebar's links with the tag in them, and under "Download files" each file's provenance, naming `Interlusion/haflinger`, `release.yml` and the tag's commit.
 
 ## When a release goes wrong
 
 - **Before the upload**, when `build` fails or the deployment is rejected, nothing has reached PyPI. Delete the tag (`git push origin :refs/tags/vX.Y.Z` and `git tag -d vX.Y.Z`), fix `main` with a pull request, and tag the fixed commit with the same version.
+- **The GitHub Release failed**, after the upload: run `github-release` again, alone (Re-run failed jobs); it brings a release that was created halfway up to date.
 - **A partial upload**, the sdist on PyPI and the wheel not, is finished by running `publish` again: it skips the files PyPI already has.
-- **After the upload**, the version stays: PyPI refuses a file name once used, even after a deletion. Yank the release on PyPI (Manage → Releases → Options → Yank) with the reason, so that installs no longer choose it unless they pin it, mark its section in the changelog `## [X.Y.Z] - YYYY-MM-DD [YANKED]`, and release the fix as the next patch, with the reason in its changelog entry.
+- **After the upload**, the version stays: PyPI refuses a file name once used, even after a deletion. Yank the release on PyPI (Manage → Releases → Options → Yank) with the reason, so that installs no longer choose it unless they pin it, mark its section in the changelog `## [X.Y.Z] - YYYY-MM-DD [YANKED]` and its GitHub Release (Edit: "Yanked:" and the reason at the top of its notes, and "Set as the latest release" off), and release the fix as the next patch, with the reason in its changelog entry.
 - **A security fix** goes out as a patch, with an entry under Security and a GitHub security advisory ([security policy](../../SECURITY.md)).
 
 ## References
