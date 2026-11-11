@@ -18,7 +18,7 @@ from haflinger import (
     InvoiceReadError,
     Party,
     Totals,
-    cii,
+    _cii,
     is_valid,
     read_invoice,
     validate,
@@ -302,7 +302,7 @@ def factur_x(specification_id: str, *edits: tuple[str, str], model: Invoice | No
             if "basic" in specification_id
             else MODEL
         )
-    text = cii.write(replace(model, specification_id=specification_id)).decode()
+    text = _cii.write(replace(model, specification_id=specification_id)).decode()
     for old, new in edits:
         assert text.count(old) == 1, old
         text = text.replace(old, new)
@@ -359,7 +359,7 @@ def test_a_rule_without_an_id() -> None:
 
 def test_the_factur_x_spellings_are_those_of_the_spec() -> None:
     """The BT-24 values of REQ-002-PRS-F003's Factur-X rows, alternative spellings included."""
-    from haflinger.validation import _FACTUR_X  # pyright: ignore[reportPrivateUsage]
+    from haflinger._validation import _FACTUR_X  # pyright: ignore[reportPrivateUsage]
 
     table = (ROOT / "docs/specs/req-002-conformance.md").read_text(encoding="utf-8")
     rows = [line for line in table.splitlines() if line.startswith("| Factur-X / ZUGFeRD ")]
@@ -377,7 +377,7 @@ def test_each_rule_set_is_kosits_scenario_for_its_document_and_bt_24() -> None:
     """The rule sets of REQ-002-PRS-F003 other than Factur-X's, by syntax and BT-24, are the
     scenarios whose match expressions name the same root element and BT-24; every scenario is
     used."""
-    from haflinger.validation import _FACTUR_X, _RULE_SETS  # pyright: ignore[reportPrivateUsage]
+    from haflinger._validation import _FACTUR_X, _RULE_SETS  # pyright: ignore[reportPrivateUsage]
 
     namespace = "{http://www.xoev.de/de/validator/framework/1/scenarios}"
     matches = {

@@ -444,7 +444,7 @@ def test_a_document_validation_refuses_is_refused_after_writing(
     def refuse(data: bytes, *also: str, timeout: float | None = None) -> list[object]:
         raise InvoiceReadError("the input is larger than max_size")
 
-    monkeypatch.setattr("haflinger.write.check_rules", refuse)
+    monkeypatch.setattr("haflinger._write.check_rules", refuse)
     with pytest.raises(InvoiceWriteError, match="larger than max_size") as refusal:
         write_cii(INVOICE)
     assert refusal.value.document is not None
@@ -1724,7 +1724,7 @@ def test_en16931_runs_ferds_rules_of_the_profile_too(monkeypatch: pytest.MonkeyP
         calls.append(also)
         return []
 
-    monkeypatch.setattr("haflinger.write.check_rules", rules)
+    monkeypatch.setattr("haflinger._write.check_rules", rules)
     write_cii(INVOICE)
     with contextlib.suppress(InvoiceWriteError):
         write_cii(replace(INVOICE, specification_id=XRECHNUNG))
@@ -1732,7 +1732,7 @@ def test_en16931_runs_ferds_rules_of_the_profile_too(monkeypatch: pytest.MonkeyP
 
 
 def test_written_invoices_pass_ferds_rules() -> None:
-    from haflinger.validation import FACTUR_X_EN16931, check_rules
+    from haflinger._validation import FACTUR_X_EN16931, check_rules
 
     findings = check_rules(write_cii(INVOICE), FACTUR_X_EN16931)
     assert [f for f in findings if f.flag in ("fatal", "error")] == []

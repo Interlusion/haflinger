@@ -24,6 +24,7 @@ from haflinger import (
     InvoiceReadError,
     InvoiceWriteError,
     _saxon,
+    is_valid,
     read_invoice,
     validate,
     write_cii,
@@ -54,10 +55,6 @@ def slow_invoice() -> bytes:
 SLOW = slow_invoice()
 
 
-def valid(findings: Sequence[Finding]) -> bool:
-    return not any(finding.flag in ("fatal", "error") for finding in findings)
-
-
 @pytest.fixture(autouse=True)
 def no_variable(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv(VARIABLE, raising=False)
@@ -71,7 +68,7 @@ def test_validate_gives_up_after_its_timeout() -> None:
     with pytest.raises(InvoiceReadError, match=r"took longer than 0\.5 s"):
         validate(SLOW, timeout=0.5)
     assert time.monotonic() - start < 1.5
-    assert valid(validate(CII.read_bytes()))
+    assert is_valid(validate(CII.read_bytes()))
 
 
 def test_write_cii_gives_up_after_its_timeout() -> None:
@@ -103,7 +100,7 @@ def test_an_explicit_timeout_overrides_the_variable(monkeypatch: pytest.MonkeyPa
     with pytest.raises(InvoiceReadError, match=r"took longer than 0\.5 s"):
         validate(SLOW, timeout=0.5)
     monkeypatch.setenv(VARIABLE, "abc")
-    assert valid(validate(CII.read_bytes(), timeout=60))
+    assert is_valid(validate(CII.read_bytes(), timeout=60))
 
 
 INVALID = [0, -1, float("nan"), float("inf"), 1e10, 10**400, 31_536_000.5, True, "60"]
@@ -176,7 +173,7 @@ def test_a_worker_killed_between_calls_is_replaced() -> None:
     deadline = time.monotonic() + 5
     while not _ended(pid) and time.monotonic() < deadline:
         time.sleep(0.01)  # until the kill has taken effect, as before a later call
-    assert valid(validate(CII.read_bytes()))
+    assert is_valid(validate(CII.read_bytes()))
     assert _saxon.worker_pid() not in (None, pid)
 
 
@@ -201,7 +198,7 @@ def test_a_worker_killed_during_a_call_is_reported() -> None:
             validate(SLOW, timeout=60)
     finally:
         killer.cancel()
-    assert valid(validate(CII.read_bytes()))
+    assert is_valid(validate(CII.read_bytes()))
 
 
 def test_a_forked_child_starts_its_own_worker(tmp_path: Path) -> None:
@@ -276,9 +273,9 @@ def test_what_saxon_prints_goes_to_logging(
 
 
 def test_a_year_is_accepted(monkeypatch: pytest.MonkeyPatch) -> None:
-    assert valid(validate(CII.read_bytes(), timeout=31_536_000))
+    assert is_valid(validate(CII.read_bytes(), timeout=31_536_000))
     monkeypatch.setenv(VARIABLE, "31536000")
-    assert valid(validate(CII.read_bytes()))
+    assert is_valid(validate(CII.read_bytes()))
 
 
 class _InterruptedError(Exception):
@@ -371,7 +368,7 @@ def test_validation_works_with_many_files_open() -> None:
     opened = [os.open(os.devnull, os.O_RDONLY) for _ in range(1100)]
     try:
         _saxon.clear_caches()  # the new worker's pipes get descriptors above 1,024
-        assert valid(validate(CII.read_bytes()))
+        assert is_valid(validate(CII.read_bytes()))
     finally:
         for descriptor in opened:
             os.close(descriptor)
@@ -641,7 +638,7 @@ def test_a_worker_killed_while_taking_a_request_is_reported(
     with pytest.raises(InvoiceReadError, match=r"worker .*died"):
         validate(SLOW, timeout=30)
     monkeypatch.undo()
-    assert valid(validate(CII.read_bytes()))
+    assert is_valid(validate(CII.read_bytes()))
 
 
 def test_a_thread_that_cant_start_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -660,10 +657,10 @@ def test_a_thread_that_cant_start_is_refused(monkeypatch: pytest.MonkeyPatch) ->
     with pytest.raises(InvoiceReadError, match="can't be started"):
         validate(CII.read_bytes())
     monkeypatch.undo()
-    assert valid(validate(CII.read_bytes()))
+    assert is_valid(validate(CII.read_bytes()))
 
 
 def test_an_import_path_entry_that_isnt_text_is_left_out(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(sys, "path", [*sys.path, None])
     _saxon.clear_caches()
-    assert valid(validate(CII.read_bytes()))
+    assert is_valid(validate(CII.read_bytes()))

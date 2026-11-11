@@ -5,8 +5,8 @@ and what reading them shares across the syntaxes (REQ-003-PRS-F002)."""
 from dataclasses import dataclass
 from typing import TypedDict
 
+from haflinger._model import Contact, Identifier
 from haflinger._xml import Node, first_of, none_if_empty
-from haflinger.model import Contact, Identifier
 
 
 @dataclass(frozen=True, kw_only=True)

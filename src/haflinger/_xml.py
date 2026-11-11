@@ -15,8 +15,8 @@ from xml.etree.ElementTree import Element, ParseError
 import defusedxml.ElementTree
 from defusedxml import DefusedXmlException
 
-from haflinger.errors import InvoiceReadError
-from haflinger.findings import Finding, Flag
+from haflinger._errors import InvoiceReadError
+from haflinger._findings import Finding, Flag
 
 MAX_SIZE = 100 * 1024 * 1024  # REQ-001-PRS-NF003
 

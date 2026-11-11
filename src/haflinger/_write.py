@@ -2,18 +2,17 @@
 
 from typing import cast
 
-from haflinger import _saxon, _xsd, cii
+from haflinger import _cii, _saxon, _xsd
+from haflinger._errors import InvoiceReadError, InvoiceWriteError
+from haflinger._findings import INVALID, Finding
+from haflinger._model import Invoice
+from haflinger._validation import FACTUR_X_EN16931, check_rules
 from haflinger._xml import quoted
-from haflinger.errors import InvoiceReadError, InvoiceWriteError
-from haflinger.findings import Finding
-from haflinger.model import Invoice
-from haflinger.validation import FACTUR_X_EN16931, check_rules
 
-# REQ-004-PRS-F002, by BT-24 exactly as given.
-TARGET_PROFILES = (
-    "urn:cen.eu:en16931:2017",
-    "urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0",
-)
+# REQ-004-PRS-F002, by BT-24 exactly as given. A ZUGFeRD PDF labels EN 16931 Factur-X EN 16931.
+EN16931 = "urn:cen.eu:en16931:2017"
+XRECHNUNG = f"{EN16931}#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0"
+TARGET_PROFILES = (EN16931, XRECHNUNG)
 
 
 def write_cii(invoice: Invoice, *, timeout: float | None = None) -> bytes:
@@ -30,7 +29,7 @@ def write_cii(invoice: Invoice, *, timeout: float | None = None) -> bytes:
             f"BT-24 {quoted(invoice.specification_id)} is no target profile Haflinger writes;"
             f" it writes {' and '.join(TARGET_PROFILES)}"
         )
-    document = cii.write(invoice)
+    document = _cii.write(invoice)
     refuse_if_invalid(check_written(document, invoice.specification_id, limit), document)
     return document
 
@@ -49,13 +48,13 @@ def check_written(
     """The findings of the XML Schemas and the official rules for a CII invoice of the target
     profile `specification_id` to hand out (REQ-004-PRS-F004, REQ-004-PRS-F005): for EN 16931,
     which a ZUGFeRD PDF labels Factur-X EN 16931, FeRD's schema and rules of that profile too."""
-    factur_x = specification_id == TARGET_PROFILES[0]
+    factur_x = specification_id == EN16931
     findings = tuple(_xsd.check_cii(document, factur_x_en16931=factur_x))
     if findings:
         return findings  # the rules run only on a schema-valid invoice (REQ-002-PRS-F011)
     try:
         also = [FACTUR_X_EN16931] if factur_x else []
-        return tuple(check_rules(document, *also, timeout=timeout))
+        return check_rules(document, *also, timeout=timeout)
     except InvoiceReadError as error:
         raise InvoiceWriteError(
             f"the invoice can't be validated: {error}", findings=findings, document=document
@@ -63,7 +62,7 @@ def check_written(
 
 
 def refuse_if_invalid(findings: tuple[Finding, ...], document: bytes) -> None:
-    failed = sorted({f.rule for f in findings if f.flag in ("fatal", "error")})
+    failed = sorted({f.rule for f in findings if f.flag in INVALID})
     if failed:
         raise InvoiceWriteError(
             f"the invoice is not valid; it fails {', '.join(failed)}",

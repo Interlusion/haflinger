@@ -1,8 +1,8 @@
 """The item of an invoice line (BG-31): what reading it shares across the syntaxes and with the
 tests' second reader (REQ-003-PRS-F002, REQ-003-PRS-F005)."""
 
+from haflinger._model import ItemAttribute, ItemClassification
 from haflinger._xml import Node, none_if_empty
-from haflinger.model import ItemAttribute, ItemClassification
 
 
 def attributes(

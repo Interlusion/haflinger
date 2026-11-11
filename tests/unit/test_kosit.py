@@ -7,14 +7,14 @@ from pathlib import Path
 
 import pytest
 
-from haflinger import InvoiceReadError, kosit, read_invoice
+from haflinger import InvoiceReadError, _kosit, read_invoice
 
 ROOT = Path(__file__).resolve().parents[2]
 CII = ROOT / "tests/data/kosit-testsuite/instances/standard/01.01a-INVOICE_uncefact.xml"
 
 
 def test_reads_the_terms_by_their_id() -> None:
-    invoice = kosit.read_invoice(CII.read_bytes()).invoice
+    invoice = _kosit.read_invoice(CII.read_bytes()).invoice
     assert invoice.syntax == "cii"
     assert invoice.number == "123456XX"
     assert invoice.totals is not None
@@ -29,7 +29,7 @@ def test_a_malformed_value_is_missing_with_a_finding() -> None:
     data = CII.read_bytes().replace(
         b">336.9</ram:GrandTotalAmount>", b">1E+2</ram:GrandTotalAmount>"
     )
-    result = kosit.read_invoice(data)
+    result = _kosit.read_invoice(data)
     assert result.invoice.totals is not None
     assert result.invoice.totals.total_with_vat is None
     assert [(finding.rule, finding.text) for finding in result.findings] == [
@@ -40,7 +40,7 @@ def test_a_malformed_value_is_missing_with_a_finding() -> None:
 def test_reads_the_encoding_the_input_declares() -> None:
     text = CII.read_text(encoding="utf-8").replace("[Seller name]", "Exämple GmbH")
     data = text.replace('encoding="UTF-8"', 'encoding="windows-1252"', 1).encode("cp1252")
-    invoice = kosit.read_invoice(data).invoice
+    invoice = _kosit.read_invoice(data).invoice
     assert invoice.seller is not None
     assert invoice.seller.name == "Exämple GmbH"
     assert invoice == read_invoice(data).invoice
@@ -56,7 +56,7 @@ def test_reads_the_encoding_the_input_declares() -> None:
 )
 def test_refuses_what_isnt_an_invoice(data: bytes, reason: str) -> None:
     with pytest.raises(InvoiceReadError, match=reason):
-        kosit.read_invoice(data)
+        _kosit.read_invoice(data)
 
 
 def test_read_invoice_runs_without_saxon() -> None:

@@ -13,8 +13,8 @@ from pathlib import Path
 
 import pytest
 
-from haflinger import model
-from haflinger.model import Attachment, Invoice, Party, SupportingDocument, Totals
+from haflinger import _model
+from haflinger._model import Attachment, Invoice, Party, SupportingDocument, Totals
 
 ROOT = Path(__file__).resolve().parents[2]
 REQ_001 = ROOT / "docs/specs/req-001-core.md"
@@ -50,7 +50,7 @@ def spec_fields() -> dict[str, set[str]]:
         # A group whose terms the row names inline, such as BG-1's.
         inline = re.findall(r"`(\w+)`", cells[2])
         if inline:
-            element = typing.get_args(typing.get_type_hints(getattr(model, cls))[name])[0]
+            element = typing.get_args(typing.get_type_hints(getattr(_model, cls))[name])[0]
             fields.setdefault(element.__name__, set()).update(inline)
     return fields
 
@@ -68,15 +68,15 @@ def specification_ids() -> list[str]:
 def test_fields_match_req_001() -> None:
     expected = spec_fields()
     expected["Invoice"] |= {"syntax"}
-    actual = {cls: {f.name for f in dataclasses.fields(getattr(model, cls))} for cls in expected}
+    actual = {cls: {f.name for f in dataclasses.fields(getattr(_model, cls))} for cls in expected}
     assert actual == expected
 
 
 @pytest.mark.parametrize("cls", sorted(spec_fields()))
 def test_each_fields_type_can_be_inspected(cls: str) -> None:
     """A field named like a type, such as `Delivery.date`, doesn't hide that type."""
-    hints = typing.get_type_hints(getattr(model, cls))
-    assert set(hints) >= {f.name for f in dataclasses.fields(getattr(model, cls))}
+    hints = typing.get_type_hints(getattr(_model, cls))
+    assert set(hints) >= {f.name for f in dataclasses.fields(getattr(_model, cls))}
 
 
 def test_missing_terms_are_none_and_missing_groups_empty() -> None:

@@ -6,8 +6,8 @@ discount."""
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from haflinger._model import AllowanceCharge
 from haflinger._xml import Node, first_group, none_if_empty
-from haflinger.model import AllowanceCharge
 
 
 @dataclass(frozen=True, kw_only=True)

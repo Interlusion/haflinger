@@ -6,8 +6,8 @@ Haflinger decodes an attachment's Base64 and hands back its bytes; it never open
 
 import binascii
 
+from haflinger._model import Attachment
 from haflinger._xml import XML_WHITESPACE, Node
-from haflinger.model import Attachment
 
 _NO_WHITESPACE = str.maketrans("", "", XML_WHITESPACE)
 

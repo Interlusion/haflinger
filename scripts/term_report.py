@@ -20,7 +20,7 @@ from xml.etree.ElementTree import Element
 
 from corpus_report import LARGE, invoice_files
 
-from haflinger import InvoiceReadError, kosit
+from haflinger import InvoiceReadError, _kosit
 from haflinger._saxon import TransformError, WorkerError
 from haflinger._xml import XML_WHITESPACE, local_name, parse
 from haflinger.pdf import extract_xml
@@ -28,7 +28,7 @@ from haflinger.pdf import extract_xml
 ROOT = Path(__file__).resolve().parents[1]
 SUITE = ROOT / "tests/data/kosit-testsuite"
 REQ_001 = ROOT / "docs/specs/req-001-core.md"
-_ID = f"{{{kosit.XR}}}id"
+_ID = f"{{{_kosit.XR}}}id"
 _TERM = re.compile(r"\b(?:BT|BG)-[0-9]+\b")
 # A business term of EN 16931 itself, not of an extension.
 _EN16931_TERM = re.compile(r"BT-[0-9]+")
@@ -83,7 +83,7 @@ def count(directory: Path, names: dict[str, tuple[str, str]]) -> Column:
             if len(xml) > LARGE:
                 column.not_read["above 5 MB"] += 1
                 continue
-            semantic, _ = kosit.semantic_xml(xml)
+            semantic, _ = _kosit.semantic_xml(xml)
         except OSError:
             column.not_read["unreadable"] += 1
             continue

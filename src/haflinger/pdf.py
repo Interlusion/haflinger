@@ -25,18 +25,21 @@ try:
 except ImportError as error:
     raise ImportError("haflinger.pdf needs the extra 'pdf': install haflinger[pdf]") from error
 
-from haflinger import cii, write
+from haflinger import _cii, _write
+from haflinger._errors import InvoiceReadError, InvoiceWriteError
 from haflinger._input import open_invoice
+from haflinger._model import Invoice
+from haflinger._write import EN16931
 from haflinger._xml import MAX_SIZE, check_size, parse
-from haflinger.errors import InvoiceReadError, InvoiceWriteError
-from haflinger.model import Invoice
+
+__all__ = ["embed", "extract_xml"]
 
 # The names of the embedded invoice (REQ-003-PRS-F007).
 INVOICE_NAMES = frozenset(
     {"factur-x.xml", "zugferd-invoice.xml", "xrechnung.xml", "ZUGFeRD-invoice.xml"}
 )
 # REQ-004-PRS-F007: the target profile embed writes, with its Factur-X level.
-_EMBED_LEVELS = {"urn:cen.eu:en16931:2017": "en16931"}
+_EMBED_LEVELS = {EN16931: "en16931"}
 _PDFA_ID = "http://www.aiim.org/pdfa/ns/id/"
 _RDF = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
 _MAX_DEPTH = 32  # of the name tree of embedded files
@@ -115,7 +118,7 @@ def embed(pdf: bytes, xml: bytes, *, timeout: float | None = None) -> bytes:
     for argument, value in (("PDF", cast(object, pdf)), ("XML", cast(object, xml))):
         if not isinstance(value, bytes):
             raise InvoiceWriteError(f"the {argument} is not bytes but {type(value).__name__}")
-    limit = write.rules_timeout(timeout)
+    limit = _write.rules_timeout(timeout)
     try:
         opened = open_invoice(xml, MAX_SIZE, pdf="the XML is a PDF")
     except InvoiceReadError as error:
@@ -129,8 +132,8 @@ def embed(pdf: bytes, xml: bytes, *, timeout: float | None = None) -> bytes:
             f" this is {opened.document} with BT-24 {specification_id!r}"
         )
     _check_pdf(pdf)
-    write.refuse_if_invalid(write.check_written(xml, specification_id, limit), xml)
-    invoice = cii.read(opened.reading.root, specification_id)
+    _write.refuse_if_invalid(_write.check_written(xml, specification_id, limit), xml)
+    invoice = _cii.read(opened.reading.root, specification_id)
     result = _embed(pdf, xml, level, _metadata(invoice))
     try:
         reader = PdfReader(io.BytesIO(result), strict=True)
