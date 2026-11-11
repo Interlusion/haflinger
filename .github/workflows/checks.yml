@@ -103,6 +103,27 @@ jobs:
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: scripts/check-secrets.sh "$BASE"
 
+  # The tests on Linux on ARM, for the native wheels of saxonche and lxml, and on macOS (Apple
+  # Silicon), where the rules' worker process, its pipes and fork handlers differ too (ADR-010).
+  # Not a required check until it has proven stable; bounded, as a hang would hold a runner.
+  platforms:
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04-arm, macos-15]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The version from pyproject.toml's required-version.
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: false
+      - run: uv sync --locked --no-dev --group test # the group holds haflinger[pdf]
+      - run: uv run --no-sync pytest -q
+
   # The tests with the versions of shared dependencies that Frappe/ERPNext v16 pin, so that
   # haflinger[pdf] stays installable into a bench (ADR-002).
   frappe-v16-pins:

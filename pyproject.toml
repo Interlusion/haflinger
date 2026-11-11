@@ -11,6 +11,7 @@ keywords = ["e-invoicing", "EN 16931", "ZUGFeRD", "Factur-X", "XRechnung", "Pepp
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
+    "Operating System :: MacOS",
     "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
