@@ -193,19 +193,20 @@ def test_the_repositorys_links_to_main_all_point_at_the_tag(tmp_path: Path) -> N
 
 
 def test_the_changelog_starts_with_unreleased_and_names_the_version() -> None:
-    """`pyproject.toml`'s version is the changelog's newest release, or 0.0.0 before the first;
-    so the release's pull request sets both. A yanked release keeps its section, marked."""
+    """`pyproject.toml`'s version is the changelog's newest release, so the release's pull
+    request sets both. A yanked release keeps its section, marked."""
     changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
     headings = re.findall(r"^## (.+)$", changelog, re.M)
     assert headings[0] == "[Unreleased]"
     release = r"\[(\d+\.\d+\.\d+)\] - \d{4}-\d{2}-\d{2}(?: \[YANKED\])?"
     releases = [re.fullmatch(release, heading) for heading in headings[1:]]
+    assert releases, headings
     assert all(releases), headings
     version = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"][
         "version"
     ]
-    newest = releases[0][1] if releases and releases[0] else "0.0.0"
-    assert version == newest
+    assert releases[0] is not None
+    assert version == releases[0][1]
 
 
 def test_uv_builds_with_the_backend_it_bundles() -> None:

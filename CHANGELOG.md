@@ -4,6 +4,10 @@ What changed in each release of Haflinger, for its callers. The format follows [
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-11
+
+The first release, an alpha; the README lists its known limits.
+
 ### Added
 
 - One model of the EN 16931 business terms, frozen dataclasses with amounts as `Decimal` exactly as written.
@@ -13,4 +17,5 @@ What changed in each release of Haflinger, for its callers. The format follows [
 - `haflinger.pdf.extract_xml` and `haflinger.pdf.embed`, with the extra `pdf`: the invoice taken out of a ZUGFeRD PDF, and embedded into a PDF/A as a ZUGFeRD PDF of the profile EN 16931.
 - The official files: KoSIT's validator configuration for XRechnung 3.0.2 (`v2026-08-31`, with CEN's rules 1.3.16), KoSIT's visualisation (`v2026-10-13`), FeRD's ZUGFeRD 2.5.2 (Factur-X 1.09.2) and SchXslt 1.10.1.
 
-[unreleased]: https://github.com/Interlusion/haflinger/commits/main
+[0.1.0]: https://github.com/Interlusion/haflinger/tree/v0.1.0
+[unreleased]: https://github.com/Interlusion/haflinger/compare/v0.1.0...HEAD

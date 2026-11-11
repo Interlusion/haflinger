@@ -8,7 +8,7 @@ Report it privately through GitHub's private vulnerability reporting: [report a 
 
 A useful report says:
 
-- the commit of Haflinger, or its version once it is released, the Python version and the platform;
+- the version of Haflinger, or the commit for one installed from Git, whose version only changes with a release, the Python version and the platform;
 - what an invoice, or a caller's input, makes Haflinger do that it shouldn't, and how;
 - the input that shows it: the name and release of an official test file, or an invoice built from scratch with placeholders such as `Example GmbH`, never a real invoice: invoices hold names, addresses, bank details and amounts.
 
@@ -31,7 +31,7 @@ Out of scope:
 
 ## Supported versions
 
-Haflinger isn't released yet; until then, reports concern `main`. Once it is, only the latest minor version gets security fixes, released as a patch of it as soon as it is ready, with a GitHub security advisory and an entry under Security in the [changelog](CHANGELOG.md). While Haflinger is at 0.x, a minor version may break the interface, so taking a fix can mean taking those changes too.
+Only the latest minor version gets security fixes, released as a patch of it as soon as it is ready, with a GitHub security advisory and an entry under Security in the [changelog](CHANGELOG.md). While Haflinger is at 0.x, a minor version may break the interface, so taking a fix can mean taking those changes too.
 
 ## What to expect
 
