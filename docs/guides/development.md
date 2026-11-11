@@ -2,7 +2,7 @@
 
 | Meta | Value |
 | :- | :- |
-| **Date** | 2026-11-10 |
+| **Date** | 2026-11-11 |
 | **Author** | loxy (drafted with Claude) |
 | **Status** | Current |
 
@@ -26,15 +26,17 @@ scripts/
   check-links.sh          the Markdown link check
   check-workflows.sh      actionlint and zizmor
   check-secrets.sh        gitleaks over the commits
+  prepare_release.py      a release's checks, and the links to its tag
 docs/                     specs, architecture, ADRs, guides, backlog
 AGENTS.md                 rules for coding agents; CLAUDE.md imports it
 CONTRIBUTING.md           how a change is made; SECURITY.md: reporting a vulnerability
+CHANGELOG.md              what each release changed, for callers (ADR-013)
 pyproject.toml, uv.lock, .python-version
 .gitattributes            keeps the vendored files byte for byte
 lychee.toml               the link check: local links and #anchors only, the README's
                           absolute links as the local files
 THIRD-PARTY-NOTICES       the vendored files in the package and their terms (ADR-009)
-.github/                  CI checks, Dependabot, the images of CI's tools,
+.github/                  CI checks and releases, Dependabot, the images of CI's tools,
                           issue and pull request templates, CODEOWNERS
 ```
 
@@ -66,7 +68,9 @@ uv run coverage erase && uv run coverage run -m pytest && uv run coverage combin
 - **`secrets`**: gitleaks over the pushed commits (`scripts/check-secrets.sh`), over all of HEAD's where the base before the push isn't in the clone, as after a force push;
 - **`frappe-v16-pins`**: the tests once more with the versions of shared dependencies that Frappe/ERPNext v16 pin (for now `pypdf==6.19.0` and `requests~=2.33.0`, which `factur-x` imports), so that Haflinger stays installable into a bench.
 
-A newer push to a pull request's branch cancels the run before it; on `main`, each commit keeps its run. Actions are pinned to a commit, the runner image to `ubuntu-24.04` and uv to a version (`required-version` in `pyproject.toml`); the images of actionlint, gitleaks and lychee are pinned by digest in `.github/<tool>/Dockerfile`. Dependabot proposes updates to Actions and images weekly once a new version is 14 days old, to `uv.lock` once it is 7 days old, minor and patch updates as one pull request per ecosystem; security updates come at once (`.github/dependabot.yml`).
+`release.yml` runs on a tag `vX.Y.Z` and publishes that version to PyPI, after the maintainer's approval ([releasing guide](releasing.md), [ADR-013](../arc42/adr/ADR-013-releases.md)): `build` checks the tag against `pyproject.toml` and `CHANGELOG.md` and that its commit is on `main`, points the links to `main` in the README and the project URLs at the tag, builds the package with the backend uv bundles and runs the tests against the wheel; `publish`, in the environment `pypi`, uploads it through Trusted Publishing, its only right `id-token: write`.
+
+A newer push to a pull request's branch cancels the run before it; on `main`, each commit keeps its run. Actions are pinned to a commit, the runner image to `ubuntu-24.04` and uv to a version (`required-version` in `pyproject.toml`), which lies within the range of `uv_build` that `[build-system]` names, so that `uv build` uses the backend uv bundles instead of downloading one (`tests/unit/test_release.py` checks it: an update of `uv_build` raises `required-version` with it); the images of actionlint, gitleaks and lychee are pinned by digest in `.github/<tool>/Dockerfile`. Dependabot proposes updates to Actions and images weekly once a new version is 14 days old, to `uv.lock` once it is 7 days old, minor and patch updates as one pull request per ecosystem; security updates come at once (`.github/dependabot.yml`).
 
 ## Tests
 

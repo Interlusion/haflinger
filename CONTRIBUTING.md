@@ -25,7 +25,7 @@ What Haflinger is not for:
 
 ## Commits and pull requests
 
-Commits follow [Conventional Commits](https://www.conventionalcommits.org/) with the types `feat`, `fix`, `docs`, `ci`, `chore`, `refactor` and `test`, one topic per commit, and name requirement IDs in full (`REQ-003-PRS-F004`) and business terms by their EN 16931 ID (`BT-110`). The pull request template lists what review looks for.
+Commits follow [Conventional Commits](https://www.conventionalcommits.org/) with the types `feat`, `fix`, `docs`, `ci`, `chore`, `refactor` and `test`, one topic per commit, and name requirement IDs in full (`REQ-003-PRS-F004`) and business terms by their EN 16931 ID (`BT-110`). A change a caller notices adds its entry under "Unreleased" in [CHANGELOG.md](CHANGELOG.md), in a caller's words; tests, docs and CI get none. The pull request template lists what review looks for.
 
 ## Licence
 
