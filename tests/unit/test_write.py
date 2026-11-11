@@ -12,6 +12,7 @@ from typing import Any
 import pytest
 
 from haflinger import (
+    TARGET_PROFILES,
     AllowanceCharge,
     Attachment,
     Contact,
@@ -283,6 +284,13 @@ def test_refuses_before_writing(invoice: Any, reason: str) -> None:
 
 
 # REQ-004-PRS-F002
+
+
+def test_target_profiles_are_those_written() -> None:
+    assert TARGET_PROFILES == (EN16931, XRECHNUNG)
+    for profile in TARGET_PROFILES:
+        invoice = replace(INVOICE, specification_id=profile)
+        assert read_invoice(write_cii(invoice)).invoice == invoice
 
 
 @pytest.mark.parametrize(

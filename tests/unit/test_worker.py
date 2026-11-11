@@ -10,7 +10,7 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Callable, Generator, Iterator
+from collections.abc import Callable, Generator, Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
@@ -54,7 +54,7 @@ def slow_invoice() -> bytes:
 SLOW = slow_invoice()
 
 
-def valid(findings: list[Finding]) -> bool:
+def valid(findings: Sequence[Finding]) -> bool:
     return not any(finding.flag in ("fatal", "error") for finding in findings)
 
 
@@ -583,10 +583,10 @@ assert not held & pipes, f"the child held {{sorted(held & pipes)}} of {{sorted(p
     subprocess.run([sys.executable, "-c", script], check=True, timeout=60)  # noqa: S603
 
 
-def _within(seconds: float, call: Callable[[], list[Finding]]) -> list[Finding] | None:
+def _within(seconds: float, call: Callable[[], Sequence[Finding]]) -> Sequence[Finding] | None:
     """`call`'s result, or None where it hasn't returned within `seconds`, as when it waits for
     a lock that was left held."""
-    results: list[list[Finding]] = []
+    results: list[Sequence[Finding]] = []
     thread = threading.Thread(target=lambda: results.append(call()), daemon=True)
     thread.start()
     thread.join(seconds)
