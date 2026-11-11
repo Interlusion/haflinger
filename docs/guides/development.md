@@ -133,7 +133,7 @@ The rules are in [ADR-008](../arc42/adr/ADR-008-vendoring-official-files.md). On
 
 ## Running the ZUGFeRD corpus
 
-`scripts/corpus_report.py` runs every PDF and XML file below a directory through Haflinger: the invoice taken out of a PDF, both readers, the business terms on which they differ (after KoSIT's known limits that `kosit.comparable` evens out: the UBL notes' subject codes, and a CII object identifier's scheme), and validation. It prints a summary, with any crash (an exception other than `InvoiceReadError`), and writes one row per file as TSV. A file below a `fail` folder is marked as filed as failing. Only a few of its files are vendored, in `tests/data/zugferd-corpus/` ([ITEM-002](../backlog/item-002-official-test-material.md)); clone it into a directory of its own:
+`scripts/corpus_report.py` runs every PDF and XML file below a directory through Haflinger: the invoice taken out of a PDF, both readers, the business terms on which they differ (after KoSIT's known limits that `_kosit.comparable` evens out: the UBL notes' subject codes, and a CII object identifier's scheme), and validation. It prints a summary, with any crash (an exception other than `InvoiceReadError`), and writes one row per file as TSV. A file below a `fail` folder is marked as filed as failing. Only a few of its files are vendored, in `tests/data/zugferd-corpus/` ([ITEM-002](../backlog/item-002-official-test-material.md)); clone it into a directory of its own:
 
 ```sh
 git clone --filter=blob:none https://github.com/ZUGFeRD/corpus /path/to/zugferd-corpus
