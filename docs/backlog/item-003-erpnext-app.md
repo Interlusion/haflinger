@@ -44,3 +44,4 @@ How it handles German content beyond the official rules (at commit `1385900`, 20
 - Which profile does an ERPNext invoice get by default: XRechnung for public buyers, ZUGFeRD EN 16931 otherwise?
 - The delivery date (BT-72) when ERPNext has none: write the invoice date, as European e-Invoice does (§14(4) UStG allows a delivery date equal to the invoice date, but the invoice then states a date nobody entered), or require a real one?
 - How does ERPNext produce PDF/A: a print-format setting, a different PDF generator, or a conversion step in the app?
+- May the GPL-3.0 app be published while Haflinger requires `saxonche`? To settle before publishing it ([ITEM-008](item-008-saxonche-licence.md)).

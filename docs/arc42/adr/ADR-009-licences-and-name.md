@@ -3,7 +3,7 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Proposed |
-| **Date** | 2026-11-01 |
+| **Date** | 2026-11-11 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Context
@@ -33,7 +33,9 @@ Frappe's trademark policy doesn't allow "ERPNext" or "Frappe" in the name of a t
 - **The ERPNext app is GPL-3.0**, in its own repository, because it imports ERPNext. Code from GPL projects such as ALYF's goes only into the app, with attribution.
 - **Vendored files keep their own licence**, stated in their provenance README with the licence file next to them ([ADR-008](ADR-008-vendoring-official-files.md)), and listed among the package's licence files. Copyleft material (EUPL-1.2) is shipped only as unchanged files.
 - **New runtime dependencies** need a licence that allows distributing them with an Apache-2.0 library; copyleft beyond unchanged files needs an ADR.
-- **Saxon's licence is confirmed before the first release**, and recorded here.
+- **The package says what it ships**: `THIRD-PARTY-NOTICES` lists the vendored files of the wheel with their terms, a `Licence` line of SPDX identifiers per directory, and holds the notices of UN/CEFACT and OASIS and W3C's licence, which have no licence file of their own; `pyproject.toml`'s licence expression is Apache-2.0 and those lines together. The licence files and `THIRD-PARTY-NOTICES` are among the package's licence files (PEP 639). It isn't named `NOTICE`, which Apache-2.0 section 4(d) would have every redistributor reproduce. The wheel holds only the runtime artefacts; the test files and veraPDF's PDF are in the repository only.
+- **ETSI's XAdES schemas**, which OASIS's UBL 2.1 schemas import, carry no notice, in ETSI's originals or in OASIS's copies, and no licence of them is known. They are shipped as OASIS's UBL 2.1 and KoSIT's configuration ship them, and `THIRD-PARTY-NOTICES` says so; ETSI's terms are to be asked before the first release ([backlog](../../backlog/backlog.md)). Without them, the UBL schemas still load, but the XML Schema check would no longer be KoSIT's.
+- **Saxon doesn't block Haflinger's releases**: Haflinger ships none of Saxon's files and only requires `saxonche`, and Apache-2.0 beside Saxon's MPL-2.0 isn't in question. Whether the GPL-3.0 app may use it is the app's question, to settle before the app is published ([ITEM-008](../../backlog/item-008-saxonche-licence.md)); [ADR-010](ADR-010-saxon-in-a-worker-process.md) keeps Saxon out of the caller's process.
 - **The name**: Haflinger in prose, `haflinger` as an identifier, `HAFLINGER_` for variables; the project code `HAFL`. "ERPNext" and "Frappe" are not in the project or package name; descriptions may say "for ERPNext", and the README says Haflinger is not affiliated with Frappe Technologies.
 
 ## Alternatives Considered
@@ -61,11 +63,12 @@ Frappe's trademark policy doesn't allow "ERPNext" or "Frappe" in the name of a t
 
 - Two repositories with two licences once the app exists.
 - Licences to track per source and dependency, by hand.
-- Shipping EUPL-1.2 files, and schemas under their owners' copyright notices, in an Apache-2.0 package needs a check before the first release, the package's licence metadata included.
+- A licence expression and `THIRD-PARTY-NOTICES` to keep in step with the vendored files, by hand, on each update ([development guide](../../guides/development.md#updating-official-files)); a test checks that they agree.
+- EUPL-1.2 files in an Apache-2.0 package: shipped unchanged and run as data by Saxon, as KoSIT's Apache-2.0 validator configuration ships them; the package isn't a derivative of them. This is a reading, not legal advice.
 
 ## Reconsideration Triggers
 
-1. Saxon's licence turns out not to allow distribution with Haflinger.
+1. Saxon's licence turns out not to allow requiring it from an Apache-2.0 library, or a lawyer's answer for the app (ITEM-008) changes how Haflinger runs it.
 2. A review before the first release finds a conflict with a vendored licence.
 3. Frappe changes its trademark policy.
 
@@ -73,6 +76,7 @@ Frappe's trademark policy doesn't allow "ERPNext" or "Frappe" in the name of a t
 
 - The library SHALL NOT contain code copied from GPL projects.
 - Every vendored source SHALL state its licence and ship its licence file.
+- `THIRD-PARTY-NOTICES` SHALL list every vendored directory the wheel ships with the licences of its files, and the package's licence expression SHALL be Apache-2.0 and those licences.
 - The project and package names SHALL NOT contain "ERPNext" or "Frappe".
 
 ## References

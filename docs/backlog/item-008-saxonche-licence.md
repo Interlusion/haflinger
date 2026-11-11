@@ -10,7 +10,7 @@
 
 ## Summary
 
-Find out whether the ERPNext app, GPL-3.0 because it imports ERPNext ([ADR-009](../arc42/adr/ADR-009-licences-and-name.md)), may use Haflinger while Haflinger depends on `saxonche`, whose files are mostly marked "Incompatible With Secondary Licenses" under MPL-2.0. Settle it before the app is published ([ITEM-003](item-003-erpnext-app.md)), and before Haflinger's first release, which ADR-009 already asks for the licence of `saxonche`.
+Find out whether the ERPNext app, GPL-3.0 because it imports ERPNext ([ADR-009](../arc42/adr/ADR-009-licences-and-name.md)), may use Haflinger while Haflinger depends on `saxonche`, whose files are mostly marked "Incompatible With Secondary Licenses" under MPL-2.0. Settle it before the app is published ([ITEM-003](item-003-erpnext-app.md)). It doesn't block Haflinger's releases, which ship none of Saxon's files ([ADR-009](../arc42/adr/ADR-009-licences-and-name.md)).
 
 ## Context / Motivation
 

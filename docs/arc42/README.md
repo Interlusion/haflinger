@@ -302,7 +302,7 @@ Speed serves conformance: every invoice, received or sent, is validated.
 
 | Risk | Mitigation |
 | :- | :- |
-| Saxon: large, native, licence not yet confirmed ([ADR-006](adr/ADR-006-validation-with-official-rules.md)) | [ADR-010](adr/ADR-010-saxon-in-a-worker-process.md) runs it in a worker process, out of the caller's; the platforms and the licence are open questions 1 and 2; without Saxon at runtime, incoming invoices couldn't be validated, so there is no fallback short of a new ADR |
+| Saxon: large, native, its licence beside the GPL-3.0 app not yet confirmed ([ADR-006](adr/ADR-006-validation-with-official-rules.md)) | [ADR-010](adr/ADR-010-saxon-in-a-worker-process.md) runs it in a worker process, out of the caller's; the platforms and the licence are open questions 1 and 2; without Saxon at runtime, incoming invoices couldn't be validated, so there is no fallback short of a new ADR |
 | EN 16931-1:2026 and XRechnung 4.0, in parallel with 2017 for years ([ITEM-001](../backlog/item-001-en16931-2026.md)) | Edition-aware model from the start ([ADR-007](adr/ADR-007-model-scope-and-editions.md)); follow KoSIT's and CEN's releases |
 | The model doesn't yet hold every term an invoice may hold (XRechnung's extension): harmless when reading, but a model read and written again loses them | Grow the model in slices ([ADR-007](adr/ADR-007-model-scope-and-editions.md)); the writer's tests list the rules still missed (REQ-004) |
 | Very large invoices | Our own mapping reads them; KoSIT's stylesheet only in tests; a size limit on every input (REQ-001) |
@@ -319,7 +319,7 @@ Speed serves conformance: every invoice, received or sent, is validated.
 | # | Question | Where to confirm | Affects |
 | -- | :- | :- | :- |
 | 1 | Is Saxon's size acceptable in a bench, and does any target lack a wheel ([ADR-006](adr/ADR-006-validation-with-official-rules.md))? | Maintainer, [backlog](../backlog/backlog.md) | §2, §7 |
-| 2 | Saxon's licence for SaxonC-HE, to confirm before a release, also beside the GPL-3.0 ERPNext app; Saxonica answered on 2026-11-02 without a verdict, [ADR-010](adr/ADR-010-saxon-in-a-worker-process.md) keeps Saxon out of the app's process | Saxonica's licence terms, [ITEM-008](../backlog/item-008-saxonche-licence.md), [backlog](../backlog/backlog.md) | [ADR-009](adr/ADR-009-licences-and-name.md) |
+| 2 | Saxon's licence for SaxonC-HE beside the GPL-3.0 ERPNext app, to confirm before the app is published (Haflinger's releases ship none of Saxon's files); Saxonica answered on 2026-11-02 without a verdict, [ADR-010](adr/ADR-010-saxon-in-a-worker-process.md) keeps Saxon out of the app's process | Saxonica's licence terms, [ITEM-008](../backlog/item-008-saxonche-licence.md), [backlog](../backlog/backlog.md) | [ADR-009](adr/ADR-009-licences-and-name.md) |
 
 ## 12. Glossary
 
