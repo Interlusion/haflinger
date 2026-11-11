@@ -19,7 +19,32 @@ from haflinger._allowances import (
     price_allowance,
 )
 from haflinger._attachments import attachment
+from haflinger._errors import InvoiceWriteError
 from haflinger._items import attributes, classifications
+from haflinger._model import (
+    AllowanceCharge,
+    Attachment,
+    Contact,
+    CreditTransfer,
+    Delivery,
+    DirectDebit,
+    Identifier,
+    Invoice,
+    InvoiceLine,
+    ItemAttribute,
+    ItemClassification,
+    Note,
+    Party,
+    Payee,
+    PaymentCard,
+    PaymentInstructions,
+    Period,
+    PrecedingInvoice,
+    SupportingDocument,
+    TaxRepresentative,
+    Totals,
+    VatBreakdown,
+)
 from haflinger._parties import (
     BUYER,
     DELIVER_TO,
@@ -51,31 +76,6 @@ from haflinger._xml import (
     one_value,
     quoted,
     vat_only,
-)
-from haflinger.errors import InvoiceWriteError
-from haflinger.model import (
-    AllowanceCharge,
-    Attachment,
-    Contact,
-    CreditTransfer,
-    Delivery,
-    DirectDebit,
-    Identifier,
-    Invoice,
-    InvoiceLine,
-    ItemAttribute,
-    ItemClassification,
-    Note,
-    Party,
-    Payee,
-    PaymentCard,
-    PaymentInstructions,
-    Period,
-    PrecedingInvoice,
-    SupportingDocument,
-    TaxRepresentative,
-    Totals,
-    VatBreakdown,
 )
 
 NAMESPACE = "urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100"

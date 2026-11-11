@@ -3,7 +3,7 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Draft |
-| **Version** | 0.21 |
+| **Version** | 0.22 |
 | **Date** | 2026-11-11 |
 | **Author** | loxy (drafted with Claude) |
 
@@ -46,6 +46,7 @@ Key constraints: few runtime dependencies, installable next to the versions its 
 - REQ-001-P1-2. As the operator, I need anything Haflinger can't handle refused or reported with a reason, so that nothing wrong reaches the books or a customer unnoticed.
 - REQ-001-P2-1. As the maintainer, I need behaviour checked against the official test files and rules, so that I can adopt a new release of them and see what changed.
 - REQ-001-P3-1. As the integrator, I need each value named by its EN 16931 business term, so that I can map it to my own system without reading CII or UBL.
+- REQ-001-P3-2. As the integrator, I need to know which of the library's names I can build on, so that an update doesn't break my software through a name I couldn't tell was internal.
 
 ## Requirement Rules
 
@@ -128,6 +129,12 @@ General vocabulary (CIUS, Leitweg-ID, Peppol …): the [E-Invoicing 101 glossary
 **Description**: The library SHALL run and be tested without any ERP system.
 
 **Related User Stories**: REQ-001-P2-1, REQ-001-P3-1 | **Rationale**: Behaviour checkable against the official files alone, and usable by any software ([ADR-001](../arc42/adr/ADR-001-library-and-app.md)).
+
+#### REQ-001-URS-NF005: A known interface
+
+**Description**: The library SHALL tell the names a caller may build on from its internals.
+
+**Related User Stories**: REQ-001-P3-2 | **Rationale**: A name that looks public is used, and then can't change ([ADR-012](../arc42/adr/ADR-012-public-api.md)).
 
 ## PRS — Functional
 
@@ -275,6 +282,19 @@ General vocabulary (CIUS, Leitweg-ID, Peppol …): the [E-Invoicing 101 glossary
 
 **Definition of Done**: a test reads an invoice with a malformed BT-9 and finds `BT-9` in the finding's text (REQ-003); a test writes a model with a float in BT-112 and finds `BT-112` in the refusal's reason (REQ-004); the findings tests of REQ-002 check the rule IDs.
 
+#### REQ-001-PRS-F006: The public interface
+
+**Description**: `haflinger` and `haflinger.pdf` SHALL be the library's only public modules; the name of every other module of the package SHALL start with an underscore. The public names SHALL be those their `__all__` lists, each importable from its module:
+
+- `haflinger`: the entry points `read_invoice` (REQ-003-PRS-F001), `validate` (REQ-002-PRS-F001) and `write_cii` (REQ-004-PRS-F001); the model's classes (REQ-001-PRS-F001) and `Syntax`, the type of `Invoice.syntax` (REQ-001-PRS-F002); `ReadResult`; `Finding`, `Flag` and `is_valid` (REQ-002-PRS-F002); `TARGET_PROFILES` (REQ-004-PRS-F002); `InvoiceReadError` and `InvoiceWriteError`.
+- `haflinger.pdf`, with the extra `pdf`: `extract_xml` (REQ-003-PRS-F007) and `embed` (REQ-004-PRS-F007).
+
+The docstring of `haflinger` SHALL name its entry points and `haflinger.pdf`'s. Every other name, and every name in a module whose name starts with an underscore, is internal.
+
+**Related URS**: REQ-001-URS-NF005 | **Rationale**: [ADR-012](../arc42/adr/ADR-012-public-api.md). `haflinger.pdf` is a module of its own because it needs the extra; importing `haflinger` doesn't.
+
+**Definition of Done**: tests that the package's modules other than `haflinger` and `haflinger.pdf` start with an underscore, that the two `__all__` list exactly these names, that each resolves, and that the docstring of `haflinger` names the five entry points.
+
 ## PRS — Non-Functional
 
 #### REQ-001-PRS-NF001: Outside input
@@ -308,6 +328,7 @@ General vocabulary (CIUS, Leitweg-ID, Peppol …): the [E-Invoicing 101 glossary
 - Outside XML with a DTD or entity is refused before anything processes it, also when embedded in a PDF; outside input beyond its size limit is refused before parsing.
 - Every refusal names its business term where there is one, every finding its rule.
 - The library loads no Frappe or ERPNext module.
+- The public names are those of `haflinger` and `haflinger.pdf`; every other module is private.
 
 ## Assumptions
 

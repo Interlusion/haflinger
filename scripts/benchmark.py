@@ -19,12 +19,12 @@ from dataclasses import replace
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
-from haflinger import Party, Totals, cii, read_invoice, validate
+from haflinger import Party, Totals, _cii, read_invoice, validate
 from haflinger._input import open_invoice
+from haflinger._validation import _RULE_SETS as RULE_SETS  # pyright: ignore[reportPrivateUsage]
+from haflinger._validation import _scenarios, rule_set  # pyright: ignore[reportPrivateUsage]
 from haflinger._xml import MAX_SIZE
 from haflinger._xsd import check
-from haflinger.validation import _RULE_SETS as RULE_SETS  # pyright: ignore[reportPrivateUsage]
-from haflinger.validation import _scenarios, rule_set  # pyright: ignore[reportPrivateUsage]
 
 ROOT = Path(__file__).resolve().parents[1]
 SUITE = sorted((ROOT / "tests/data/kosit-testsuite/instances").rglob("*.xml"))
@@ -40,12 +40,12 @@ import resource, sys, time
 from pathlib import Path
 step, path = sys.argv[1], Path(sys.argv[2])
 start = time.perf_counter()
-from haflinger import cii, read_invoice, validate
+from haflinger import _cii, read_invoice, validate
 data = path.read_bytes()
 if step == "write":
-    invoice = cii.with_one_preceding_invoice(read_invoice(data).invoice)
+    invoice = _cii.with_one_preceding_invoice(read_invoice(data).invoice)
     start = time.perf_counter()
-    cii.write(invoice)
+    _cii.write(invoice)
 elif step == "read":
     start = time.perf_counter()
     read_invoice(data)
@@ -206,7 +206,7 @@ def factur_x(specification_id: str) -> bytes:
             allowances=(),
             charges=(),
         )
-    return cii.write(replace(model, specification_id=specification_id))
+    return _cii.write(replace(model, specification_id=specification_id))
 
 
 def installed(name: str) -> str:
@@ -224,11 +224,11 @@ def main(arguments: list[str]) -> int:
 def measure(corpus: Path | None, scratch: Path) -> int:
     rows: list[tuple[str, str, str, str]] = []
 
-    models = [cii.with_one_preceding_invoice(read_invoice(p.read_bytes()).invoice) for p in SUITE]
+    models = [_cii.with_one_preceding_invoice(read_invoice(p.read_bytes()).invoice) for p in SUITE]
     rows.append(
         ("REQ-003-PRS-NF002", "Read a KoSIT file", "20 ms", ms(per_file(read_invoice, SUITE)))
     )
-    write_times = timed(cii.write, models)
+    write_times = timed(_cii.write, models)
     rows.append(
         (
             "REQ-004-PRS-NF001",

@@ -15,5 +15,6 @@ Decisions about Haflinger. The architecture they shape is in the [arc42 overview
 | [ADR-009](ADR-009-licences-and-name.md) | Apache-2.0, the licences of what is vendored, and a name without ERPNext or Frappe | Proposed | 2026-11-01 |
 | [ADR-010](ADR-010-saxon-in-a-worker-process.md) | Saxon runs in a worker process, never in the caller's | Proposed | 2026-11-02 |
 | [ADR-011](ADR-011-attached-documents.md) | Attached documents in the model, as bytes, within the input's size limit | Proposed | 2026-11-08 |
+| [ADR-012](ADR-012-public-api.md) | Two public modules, the rest private, the API what their `__all__` lists | Proposed | 2026-11-11 |
 
 New ADRs take the highest number + 1 and start as Proposed. An ADR is Accepted when the maintainer accepts it. While it is Proposed, it is edited in place; once Accepted, a change is a new ADR that supersedes it. Agent-drafted ADRs say so under Author.

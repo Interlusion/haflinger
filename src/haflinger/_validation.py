@@ -12,10 +12,10 @@ from functools import cache
 from xml.etree.ElementTree import Element
 
 from haflinger import _saxon, _xsd
+from haflinger._errors import InvoiceReadError
+from haflinger._findings import Finding, Flag
 from haflinger._input import Document, Opened, open_invoice
 from haflinger._xml import MAX_SIZE, XML_WHITESPACE, decode, parse
-from haflinger.errors import InvoiceReadError
-from haflinger.findings import Finding, Flag
 
 _CONFIGURATION = "kosit-validator-xrechnung"
 _SCENARIOS_NAMESPACE = "{http://www.xoev.de/de/validator/framework/1/scenarios}"
@@ -126,7 +126,7 @@ class _Scenario:
 
 def validate(
     data: bytes, *, max_size: int = MAX_SIZE, timeout: float | None = None
-) -> list[Finding]:
+) -> tuple[Finding, ...]:
     """Validate a CII invoice or a UBL invoice or credit note with the rule set its syntax and
     BT-24 call for. Raises `InvoiceReadError` for input that can't be read (REQ-002-PRS-F001),
     and where the rules don't end within `timeout` seconds, by default `HAFLINGER_RULES_TIMEOUT`
@@ -142,8 +142,8 @@ def validate(
     findings = [] if no_profile is None else [no_profile]
     schema = _xsd.check(decode(data), _scenarios()[name].schema)
     if schema:
-        return [*findings, *schema]
-    return [*findings, *_rules(data, name, opened, limit, time.monotonic())]
+        return (*findings, *schema)
+    return (*findings, *_rules(data, name, opened, limit, time.monotonic()))
 
 
 def _refuse_costly(opened: Opened) -> None:
@@ -177,7 +177,7 @@ def _refuse_costly(opened: Opened) -> None:
         )
 
 
-def check_rules(data: bytes, *also: str, timeout: float | None = None) -> list[Finding]:
+def check_rules(data: bytes, *also: str, timeout: float | None = None) -> tuple[Finding, ...]:
     """Like `validate`, without the XML Schema check: for fragments that aren't whole invoices,
     as in CEN's per-rule unit tests, and for written invoices, whose schemas `write` checks.
     `also` names further rule sets to run, such as `FACTUR_X_EN16931`; `timeout` bounds them
@@ -189,7 +189,7 @@ def check_rules(data: bytes, *also: str, timeout: float | None = None) -> list[F
     findings = [] if no_profile is None else [no_profile]
     for each in (name, *also):
         findings.extend(_rules(data, each, opened, limit, started))
-    return findings
+    return tuple(findings)
 
 
 def _rules(data: bytes, name: str, opened: Opened, timeout: float, started: float) -> list[Finding]:

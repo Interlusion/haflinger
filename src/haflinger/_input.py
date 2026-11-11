@@ -4,10 +4,10 @@
 from dataclasses import dataclass
 from typing import Literal
 
-from haflinger import cii, ubl
+from haflinger import _cii, _ubl
+from haflinger._errors import InvoiceReadError
+from haflinger._model import Invoice
 from haflinger._xml import Node, Reading, check_bytes, check_size, local_name, parse
-from haflinger.errors import InvoiceReadError
-from haflinger.model import Invoice
 
 type Document = Literal["cii", "ubl-invoice", "ubl-credit-note"]
 
@@ -47,15 +47,15 @@ def open_invoice(data: bytes, max_size: int, *, pdf: str) -> Opened:
         raise InvoiceReadError(pdf)
     root = parse(data)
     match root.tag:
-        case cii.TAG:
-            reading = Reading(root, cii.NAMESPACES, f"rsm:{cii.ROOT}")
+        case _cii.TAG:
+            reading = Reading(root, _cii.NAMESPACES, f"rsm:{_cii.ROOT}")
             document: Document = "cii"
-            specification = cii.specification(reading.root)
-        case ubl.INVOICE_TAG | ubl.CREDIT_NOTE_TAG:
+            specification = _cii.specification(reading.root)
+        case _ubl.INVOICE_TAG | _ubl.CREDIT_NOTE_TAG:
             name = local_name(root.tag)
-            reading = Reading(root, ubl.NAMESPACES, name)
+            reading = Reading(root, _ubl.NAMESPACES, name)
             document = "ubl-credit-note" if name == "CreditNote" else "ubl-invoice"
-            specification = ubl.specification(reading.root)
+            specification = _ubl.specification(reading.root)
         case _:
             other = _OTHER_FORMATS.get(local_name(root.tag))
             if other is not None:

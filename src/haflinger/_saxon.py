@@ -29,9 +29,9 @@ from pathlib import Path
 from queue import Empty, SimpleQueue
 from typing import IO, cast
 
+from haflinger._errors import InvoiceReadError
 from haflinger._frames import LENGTH, frames
 from haflinger._xml import decode
-from haflinger.errors import InvoiceReadError
 
 ARTEFACTS = Path(__file__).parent / "artefacts"
 VARIABLE = "HAFLINGER_RULES_TIMEOUT"

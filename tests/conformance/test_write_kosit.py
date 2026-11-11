@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from haflinger import Finding, Invoice, InvoiceWriteError, kosit, read_invoice, write_cii
-from haflinger.cii import with_one_preceding_invoice
+from haflinger import Finding, Invoice, InvoiceWriteError, _kosit, read_invoice, write_cii
+from haflinger._cii import with_one_preceding_invoice
 
 ROOT = Path(__file__).resolve().parents[2]
 SUITE = ROOT / "tests/data/kosit-testsuite/instances"
@@ -74,9 +74,9 @@ def test_reads_back_with_haflinger(path: Path) -> None:
 @pytest.mark.parametrize("path", FILES, ids=lambda path: path.name)
 def test_reads_back_with_kosit(path: Path) -> None:
     invoice, document, _ = write(path)
-    result = kosit.read_invoice(document)
+    result = _kosit.read_invoice(document)
     assert result.findings == ()
-    expected, read = kosit.comparable(invoice, result.invoice)
+    expected, read = _kosit.comparable(invoice, result.invoice)
     assert read == expected
 
 
@@ -111,5 +111,5 @@ def test_written_as_en16931_passes_both_schemas_and_reads_back(path: Path) -> No
     assert document is not None
     assert "HAFL-XSD" not in {finding.rule for finding in findings}
     assert read_invoice(document).invoice == invoice
-    expected, read = kosit.comparable(invoice, kosit.read_invoice(document).invoice)
+    expected, read = _kosit.comparable(invoice, _kosit.read_invoice(document).invoice)
     assert read == expected

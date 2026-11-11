@@ -3,7 +3,7 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Draft |
-| **Version** | 0.7 |
+| **Version** | 0.8 |
 | **Date** | 2026-11-11 |
 | **Author** | loxy (drafted with Claude) |
 
@@ -94,7 +94,7 @@ The personas are [REQ-001's](req-001-core.md#personas).
 
 #### REQ-002-PRS-F001: One entry point
 
-**Description**: `haflinger.validate(data: bytes, *, max_size: int = …, timeout: float = …) -> list[Finding]` SHALL validate a CII or UBL invoice with the rule set of REQ-002-PRS-F003 and return its findings. It SHALL raise `haflinger.InvoiceReadError`, and no other exception, with a reason that names the problem, when the input:
+**Description**: `haflinger.validate(data: bytes, *, max_size: int = …, timeout: float = …) -> tuple[Finding, ...]` SHALL validate a CII or UBL invoice with the rule set of REQ-002-PRS-F003 and return its findings. It SHALL raise `haflinger.InvoiceReadError`, and no other exception, with a reason that names the problem, when the input:
 
 - isn't `bytes` (the reason names its type);
 - is not well-formed XML, which includes a byte order mark that contradicts the encoding declaration; for a PDF the reason says to extract its XML first (REQ-003-PRS-F007);
@@ -114,11 +114,11 @@ A value the rules find wrong is a finding, not a refusal, and so is a failure of
 
 #### REQ-002-PRS-F002: Findings
 
-**Description**: A `Finding` SHALL carry `rule` (the rule's ID, e.g. `BR-CO-15`; empty where the rule set gives none, as FeRD's reports of elements a profile doesn't use), `flag` (`fatal`, `error`, `warning` or `information`; `error` where the rule set gives none or another), `location` (where in the invoice) and `text` (the rule's text). An invoice SHALL count as valid when no finding has the flag `fatal` or `error`.
+**Description**: A `Finding` SHALL carry `rule` (the rule's ID, e.g. `BR-CO-15`; empty where the rule set gives none, as FeRD's reports of elements a profile doesn't use), `flag` (`fatal`, `error`, `warning` or `information`; `error` where the rule set gives none or another), `location` (where in the invoice) and `text` (the rule's text); `haflinger.Flag` SHALL be the type of `flag`. An invoice SHALL count as valid when no finding has the flag `fatal` or `error`, and `haflinger.is_valid(findings: Iterable[Finding]) -> bool` SHALL apply this rule to the findings of `validate`. It judges the rules that ran: a `HAFL-PROFILE` warning (REQ-002-PRS-F004) says the profile's own rules didn't, and the invoice counts as valid against CEN's EN 16931 rules alone. Reading's findings are no verdict (REQ-003-PRS-F008), and an `InvoiceWriteError` is a refusal whatever findings it holds (REQ-004-PRS-F001).
 
-**Related URS**: REQ-002-URS-F003
+**Related URS**: REQ-002-URS-F003 | **Rationale**: Each caller would otherwise write the rule again ([ADR-012](../arc42/adr/ADR-012-public-api.md)).
 
-**Definition of Done**: a test changes BT-112 of KoSIT case 01.01a by one cent and gets findings `BR-CO-15` and `BR-CO-16` with flag `fatal`, a location and the rules' texts.
+**Definition of Done**: a test changes BT-112 of KoSIT case 01.01a by one cent and gets findings `BR-CO-15` and `BR-CO-16` with flag `fatal`, a location and the rules' texts, which `is_valid` calls invalid; `is_valid` calls findings valid that hold only warnings and information, or none, and invalid that hold one `fatal` or `error`, given as a tuple, a list or a generator (tests).
 
 #### REQ-002-PRS-F003: Rule sets
 

@@ -3,8 +3,8 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Draft |
-| **Version** | 0.22 |
-| **Date** | 2026-11-09 |
+| **Version** | 0.23 |
+| **Date** | 2026-11-11 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Intended Use
@@ -101,9 +101,11 @@ The personas are [REQ-001's](req-001-core.md#personas).
 | ZUGFeRD / Factur-X EN 16931, also plain EN 16931 | `urn:cen.eu:en16931:2017` |
 | XRechnung 3.0 | `urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0` |
 
+`haflinger.TARGET_PROFILES` SHALL hold these BT-24 values, as a tuple in this order, so that a caller chooses BT-24 from it.
+
 **Related URS**: REQ-004-URS-F002
 
-**Definition of Done**: tests with the Peppol BIS identifier, the Factur-X MINIMUM identifier, `urn:cen.eu:en16931:2017:compliant:factur-x.eu:1p0:basic` and `urn:cen.eu:en16931:2026` in BT-24 each get the refusal, naming BT-24.
+**Definition of Done**: `TARGET_PROFILES` holds exactly the two values, and a model with each is written (tests); tests with the Peppol BIS identifier, the Factur-X MINIMUM identifier, `urn:cen.eu:en16931:2017:compliant:factur-x.eu:1p0:basic` and `urn:cen.eu:en16931:2026` in BT-24 each get the refusal, naming BT-24.
 
 #### REQ-004-PRS-F003: Writing choices
 

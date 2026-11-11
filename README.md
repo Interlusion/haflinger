@@ -23,17 +23,22 @@ Reading, validating and writing an invoice:
 from dataclasses import replace
 from pathlib import Path
 
-from haflinger import read_invoice, validate, write_cii
+from haflinger import TARGET_PROFILES, is_valid, read_invoice, validate, write_cii
 
 data = Path("invoice.xml").read_bytes()  # CII or UBL
 result = read_invoice(data)  # the model, and what reading couldn't take in
 findings = validate(data)  # the XML Schema's and the official rules' verdict, within 60 s
 invoice = result.invoice
-print(invoice.number, invoice.totals and invoice.totals.amount_due, len(findings))
+print(invoice.number, invoice.totals and invoice.totals.amount_due, is_valid(findings))
 
 # CII, handed out only when it passes the XML Schema and the official rules
-xml = write_cii(replace(invoice, specification_id="urn:cen.eu:en16931:2017"))
+# of its target profile: plain EN 16931 or XRechnung 3.0
+xml = write_cii(replace(invoice, specification_id=TARGET_PROFILES[0]))
 ```
+
+`is_valid` judges the rules that ran: where BT-24 names no supported profile, or none, `validate` runs CEN's EN 16931 rules alone and adds a `HAFL-PROFILE` warning. Reading's findings are no verdict, and an `InvoiceWriteError` is a refusal whatever findings it holds.
+
+The names `haflinger` and `haflinger.pdf` export are the API; every other module is internal ([ADR-012](docs/arc42/adr/ADR-012-public-api.md)).
 
 The official rules run in a worker process that Haflinger starts, within a time limit: `timeout=` on `validate`, `write_cii` and `embed`, by default the environment variable `HAFLINGER_RULES_TIMEOUT` or 60 seconds.
 
@@ -44,7 +49,7 @@ from haflinger.pdf import embed, extract_xml
 
 pdf = Path("invoice.pdf").read_bytes()
 findings = validate(extract_xml(pdf))
-zugferd = embed(Path("rendered-pdfa.pdf").read_bytes(), xml)  # PDF/A in, PDF/A-3 out
+zugferd = embed(Path("rendered-pdfa.pdf").read_bytes(), xml)  # PDF/A in, PDF/A-3 out; EN 16931 only
 ```
 
 ## Development

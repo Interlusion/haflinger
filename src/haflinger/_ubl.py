@@ -13,6 +13,26 @@ from haflinger._allowances import (
 )
 from haflinger._attachments import attachment
 from haflinger._items import attributes, classifications
+from haflinger._model import (
+    AllowanceCharge,
+    CreditTransfer,
+    Delivery,
+    DirectDebit,
+    Identifier,
+    Invoice,
+    InvoiceLine,
+    Note,
+    Party,
+    Payee,
+    PaymentCard,
+    PaymentInstructions,
+    Period,
+    PrecedingInvoice,
+    SupportingDocument,
+    TaxRepresentative,
+    Totals,
+    VatBreakdown,
+)
 from haflinger._parties import (
     BUYER,
     DELIVER_TO,
@@ -43,26 +63,6 @@ from haflinger._xml import (
     of_code,
     one_value,
     vat_only,
-)
-from haflinger.model import (
-    AllowanceCharge,
-    CreditTransfer,
-    Delivery,
-    DirectDebit,
-    Identifier,
-    Invoice,
-    InvoiceLine,
-    Note,
-    Party,
-    Payee,
-    PaymentCard,
-    PaymentInstructions,
-    Period,
-    PrecedingInvoice,
-    SupportingDocument,
-    TaxRepresentative,
-    Totals,
-    VatBreakdown,
 )
 
 INVOICE = "urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"

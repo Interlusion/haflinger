@@ -7,7 +7,7 @@ from pathlib import Path
 
 from lxml import etree
 
-from haflinger.findings import Finding
+from haflinger._findings import Finding
 
 _ARTEFACTS = Path(__file__).parent / "artefacts"
 _UBL = "kosit-validator-xrechnung/resources/ubl/2.1/xsd/maindoc"

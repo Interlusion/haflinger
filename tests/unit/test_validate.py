@@ -2,6 +2,7 @@
 
 import re
 import time
+from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
@@ -12,11 +13,13 @@ import pytest
 
 from haflinger import (
     Finding,
+    Flag,
     Invoice,
     InvoiceReadError,
     Party,
     Totals,
-    cii,
+    _cii,
+    is_valid,
     read_invoice,
     validate,
 )
@@ -67,19 +70,19 @@ def with_specification_id(path: Path, specification_id: str, *edits: tuple[str, 
     return edited(path, (f">{XRECHNUNG}<", f">{specification_id}<"), *edits)
 
 
-def rules(findings: list[Finding]) -> set[tuple[str, str]]:
+def rules(findings: Sequence[Finding]) -> set[tuple[str, str]]:
     return {(finding.rule, finding.flag) for finding in findings}
 
 
-def invalid(findings: list[Finding]) -> list[Finding]:
+def invalid(findings: Sequence[Finding]) -> list[Finding]:
     return [finding for finding in findings if finding.flag in ("fatal", "error")]
 
 
-def profile_findings(findings: list[Finding]) -> list[Finding]:
+def profile_findings(findings: Sequence[Finding]) -> list[Finding]:
     return [finding for finding in findings if finding.rule == "HAFL-PROFILE"]
 
 
-def xrechnung_rules(findings: list[Finding]) -> set[str]:
+def xrechnung_rules(findings: Sequence[Finding]) -> set[str]:
     return {finding.rule for finding in findings if finding.rule.startswith("BR-DE-")}
 
 
@@ -88,7 +91,10 @@ def xrechnung_rules(findings: list[Finding]) -> set[str]:
 
 @pytest.mark.parametrize("path", [CII, UBL], ids=["cii", "ubl"])
 def test_validates_cii_and_ubl(path: Path) -> None:
-    assert invalid(validate(path.read_bytes())) == []
+    findings = validate(path.read_bytes())
+    assert isinstance(findings, tuple)
+    assert invalid(findings) == []
+    assert is_valid(findings)
 
 
 @pytest.mark.parametrize(
@@ -126,6 +132,27 @@ def test_a_total_one_cent_off_fails_br_co_15_and_br_co_16(path: Path) -> None:
         assert finding.flag == "fatal"
         assert finding.location.startswith("/")
         assert finding.text.startswith(f"[{rule}]")
+    assert not is_valid(findings)
+
+
+def finding(flag: Flag) -> Finding:
+    return Finding(rule="BR-01", flag=flag, location="/", text="[BR-01] A rule.")
+
+
+@pytest.mark.parametrize(
+    ("flags", "valid"),
+    [
+        ((), True),
+        (("warning", "information"), True),
+        (("warning", "fatal"), False),
+        (("information", "error"), False),
+    ],
+)
+def test_is_valid_applies_the_rule(flags: tuple[Flag, ...], valid: bool) -> None:
+    findings = [finding(flag) for flag in flags]
+    assert is_valid(tuple(findings)) is valid
+    assert is_valid(findings) is valid
+    assert is_valid(finding for finding in findings) is valid
 
 
 # REQ-002-PRS-F003: each row's rule set ran.
@@ -148,7 +175,7 @@ def test_en16931_runs_cens_rules_only(path: Path) -> None:
 
 
 def test_en16931_credit_note() -> None:
-    assert validate(CREDIT_NOTE.read_bytes()) == []
+    assert validate(CREDIT_NOTE.read_bytes()) == ()
 
 
 @pytest.mark.parametrize(
@@ -275,7 +302,7 @@ def factur_x(specification_id: str, *edits: tuple[str, str], model: Invoice | No
             if "basic" in specification_id
             else MODEL
         )
-    text = cii.write(replace(model, specification_id=specification_id)).decode()
+    text = _cii.write(replace(model, specification_id=specification_id)).decode()
     for old, new in edits:
         assert text.count(old) == 1, old
         text = text.replace(old, new)
@@ -332,7 +359,7 @@ def test_a_rule_without_an_id() -> None:
 
 def test_the_factur_x_spellings_are_those_of_the_spec() -> None:
     """The BT-24 values of REQ-002-PRS-F003's Factur-X rows, alternative spellings included."""
-    from haflinger.validation import _FACTUR_X  # pyright: ignore[reportPrivateUsage]
+    from haflinger._validation import _FACTUR_X  # pyright: ignore[reportPrivateUsage]
 
     table = (ROOT / "docs/specs/req-002-conformance.md").read_text(encoding="utf-8")
     rows = [line for line in table.splitlines() if line.startswith("| Factur-X / ZUGFeRD ")]
@@ -350,7 +377,7 @@ def test_each_rule_set_is_kosits_scenario_for_its_document_and_bt_24() -> None:
     """The rule sets of REQ-002-PRS-F003 other than Factur-X's, by syntax and BT-24, are the
     scenarios whose match expressions name the same root element and BT-24; every scenario is
     used."""
-    from haflinger.validation import _FACTUR_X, _RULE_SETS  # pyright: ignore[reportPrivateUsage]
+    from haflinger._validation import _FACTUR_X, _RULE_SETS  # pyright: ignore[reportPrivateUsage]
 
     namespace = "{http://www.xoev.de/de/validator/framework/1/scenarios}"
     matches = {

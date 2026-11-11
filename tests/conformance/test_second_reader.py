@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from haflinger import Identifier, InvoiceReadError, kosit, read_invoice
+from haflinger import Identifier, InvoiceReadError, _kosit, read_invoice
 from haflinger.pdf import extract_xml
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -36,31 +36,31 @@ def test_the_files_are_there() -> None:
 def test_kosit_reads_what_haflinger_reads(path: Path) -> None:
     data = path.read_bytes()
     xml = extract_xml(data) if path.suffix == ".pdf" else data
-    ours, theirs = read_invoice(data), kosit.read_invoice(xml)
+    ours, theirs = read_invoice(data), _kosit.read_invoice(xml)
     assert theirs.findings == ()
     assert theirs.invoice.syntax == ours.invoice.syntax
-    expected, read = kosit.comparable(ours.invoice, theirs.invoice)
+    expected, read = _kosit.comparable(ours.invoice, theirs.invoice)
     assert read == expected
 
 
 def test_kosit_still_loses_a_cii_line_objects_scheme() -> None:
     """Once a new release gives `ram:ReferenceTypeCode` as BT-128-1 without a schemeID,
-    `kosit.comparable` stops evening it out."""
+    `_kosit.comparable` stops evening it out."""
     data = (SUITE / "standard/03.07a-INVOICE_uncefact.xml").read_bytes()
     ours = [line.object_id for line in read_invoice(data).invoice.lines if line.object_id]
-    theirs = [line.object_id for line in kosit.read_invoice(data).invoice.lines if line.object_id]
+    theirs = [line.object_id for line in _kosit.read_invoice(data).invoice.lines if line.object_id]
     assert ours == [Identifier(value="ANG987654321", scheme="ABZ")]
     assert theirs == [Identifier(value="ANG987654321")]
 
 
 def test_kosit_still_loses_a_cii_invoiced_objects_scheme() -> None:
     """Once a new release gives `ram:ReferenceTypeCode` as BT-18-1 without a schemeID,
-    `kosit.comparable` stops evening it out."""
+    `_kosit.comparable` stops evening it out."""
     data = with_invoiced_object(b"<ram:ReferenceTypeCode>ABZ</ram:ReferenceTypeCode>")
-    ours, theirs = read_invoice(data).invoice, kosit.read_invoice(data).invoice
+    ours, theirs = read_invoice(data).invoice, _kosit.read_invoice(data).invoice
     assert ours.invoiced_object_id == Identifier(value="O-18", scheme="ABZ")
     assert theirs.invoiced_object_id == Identifier(value="O-18")
-    expected, read = kosit.comparable(ours, theirs)
+    expected, read = _kosit.comparable(ours, theirs)
     assert read == expected
 
 
@@ -88,24 +88,24 @@ def test_comparable_still_compares_the_schemes_kosit_gives() -> None:
         invoiced_object_id=Identifier(value="O-18", scheme="ABZ"),
         lines=(replace(line, object_id=Identifier(value="O-1", scheme="AAA")), *ours.lines[1:]),
     )
-    expected, read = kosit.comparable(ours, theirs)
+    expected, read = _kosit.comparable(ours, theirs)
     assert read.invoiced_object_id != expected.invoiced_object_id
     assert read.lines[0].object_id != expected.lines[0].object_id
     lost = replace(theirs, invoiced_object_id=Identifier(value="O-18"))
-    assert kosit.comparable(ours, lost)[0].invoiced_object_id == Identifier(value="O-18")
+    assert _kosit.comparable(ours, lost)[0].invoiced_object_id == Identifier(value="O-18")
     ubl = replace(ours, syntax="ubl")
-    expected, read = kosit.comparable(ubl, replace(lost, syntax="ubl"))
+    expected, read = _kosit.comparable(ubl, replace(lost, syntax="ubl"))
     assert expected.invoiced_object_id == other
     assert read.invoiced_object_id == Identifier(value="O-18")
 
 
 def test_kosit_still_gives_a_cii_vat_point_date_code_as_written() -> None:
-    """Once a new release gives EN 16931's code for CII's, `kosit.comparable` stops evening it
+    """Once a new release gives EN 16931's code for CII's, `_kosit.comparable` stops evening it
     out."""
     data = (SUITE / "technical-cases/cius/01.02_comprehensive_test_uncefact.xml").read_bytes()
-    ours, theirs = read_invoice(data).invoice, kosit.read_invoice(data).invoice
+    ours, theirs = read_invoice(data).invoice, _kosit.read_invoice(data).invoice
     assert (ours.vat_point_date_code, theirs.vat_point_date_code) == ("3", "5")
-    expected, read = kosit.comparable(ours, theirs)
+    expected, read = _kosit.comparable(ours, theirs)
     assert read == expected
 
 
@@ -136,9 +136,9 @@ def test_kosit_reads_a_cii_vat_point_date_code_repeated_in_each_vat_entry_once()
             )
         )
 
-    same = kosit.read_invoice(second_tax(b"5"))
+    same = _kosit.read_invoice(second_tax(b"5"))
     assert (same.invoice.vat_point_date_code, same.findings) == ("5", ())
-    other = kosit.read_invoice(second_tax(b"29"))
+    other = _kosit.read_invoice(second_tax(b"29"))
     assert other.invoice.vat_point_date_code == "5"
     assert [finding.text.split()[0] for finding in other.findings] == ["BT-8"]
 
@@ -150,7 +150,7 @@ def test_kosit_reads_a_repeated_ubl_vat_point_date_code_as_haflinger_does() -> N
     period = b"<cac:InvoicePeriod><cbc:DescriptionCode>35</cbc:DescriptionCode></cac:InvoicePeriod>"
     assert data.count(supplier) == 1
     data = data.replace(supplier, period + period + supplier)
-    for result in (read_invoice(data), kosit.read_invoice(data)):
+    for result in (read_invoice(data), _kosit.read_invoice(data)):
         assert result.invoice.vat_point_date_code == "35"
         assert [finding.text.split()[0] for finding in result.findings] == ["BT-8"]
 
@@ -166,15 +166,15 @@ def test_kosit_reads_no_allowance_where_its_elements_are_empty() -> None:
     period, terms = b"</ram:BillingSpecifiedPeriod>", b"<ram:SpecifiedTradePaymentTerms>"
     assert data.count(period) == data.count(terms) == 1
     data = data.replace(period, period + empty).replace(terms, empty + terms)
-    for result in (read_invoice(data), kosit.read_invoice(data)):
+    for result in (read_invoice(data), _kosit.read_invoice(data)):
         assert (result.invoice.allowances, result.invoice.lines[0].allowances) == ((), ())
         assert result.findings == ()
 
 
 def test_kosit_still_leaves_the_subject_code_in_ubl_notes() -> None:
-    """Once a new release reads `#XXX#` as BT-21, `kosit.comparable` stops evening it out."""
+    """Once a new release reads `#XXX#` as BT-21, `_kosit.comparable` stops evening it out."""
     data = (SUITE / "standard/01.01a-INVOICE_ubl.xml").read_bytes()
-    (note,) = kosit.read_invoice(data).invoice.notes
+    (note,) = _kosit.read_invoice(data).invoice.notes
     assert note.subject_code is None
     assert (note.text or "").startswith("#ADU#")
 
@@ -193,5 +193,5 @@ def test_kosit_leaves_out_the_references_documents_as_supporting_documents() -> 
     )
     end = b"</ram:BuyerTradeParty>"
     assert data.count(end) == 1
-    invoice = kosit.read_invoice(data.replace(end, end + documents)).invoice
+    invoice = _kosit.read_invoice(data.replace(end, end + documents)).invoice
     assert (invoice.tender_or_lot_reference, invoice.supporting_documents) == ("T-17", ())

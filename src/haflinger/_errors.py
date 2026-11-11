@@ -1,6 +1,6 @@
 """The exceptions Haflinger raises instead of a result."""
 
-from haflinger.findings import Finding
+from haflinger._findings import Finding
 
 
 class InvoiceReadError(ValueError):

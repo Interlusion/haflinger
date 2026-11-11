@@ -7,7 +7,7 @@ import defusedxml.ElementTree
 import pytest
 
 from haflinger import validate
-from haflinger.validation import check_rules
+from haflinger._validation import check_rules
 
 ROOT = Path(__file__).resolve().parents[2]
 SUITE = ROOT / "tests/data/kosit-testsuite/instances"

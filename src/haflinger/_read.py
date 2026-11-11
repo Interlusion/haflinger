@@ -2,12 +2,12 @@
 
 from dataclasses import dataclass
 
-from haflinger import cii, ubl
+from haflinger import _cii, _ubl
+from haflinger._errors import InvoiceReadError
+from haflinger._findings import Finding
 from haflinger._input import is_pdf, open_invoice
+from haflinger._model import Invoice
 from haflinger._xml import MAX_SIZE, check_bytes, check_size
-from haflinger.errors import InvoiceReadError
-from haflinger.findings import Finding
-from haflinger.model import Invoice
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -28,10 +28,10 @@ def read_invoice(data: bytes, *, max_size: int = MAX_SIZE) -> ReadResult:
     root, specification_id = opened.reading.root, opened.specification_id
     match opened.document:
         case "cii":
-            invoice = cii.read(root, specification_id)
+            invoice = _cii.read(root, specification_id)
         case "ubl-invoice" | "ubl-credit-note":
             credit_note = opened.document == "ubl-credit-note"
-            invoice = ubl.read(root, specification_id, credit_note=credit_note)
+            invoice = _ubl.read(root, specification_id, credit_note=credit_note)
     return ReadResult(invoice=invoice, findings=opened.reading.findings())
 
 

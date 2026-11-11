@@ -17,7 +17,7 @@ from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 
-from haflinger import _saxon, cii, ubl
+from haflinger import _cii, _saxon, _ubl
 from haflinger._allowances import (
     ALLOWANCE,
     CHARGE,
@@ -26,26 +26,9 @@ from haflinger._allowances import (
     AllowanceChargeTerms,
 )
 from haflinger._attachments import attachment
+from haflinger._errors import InvoiceReadError
 from haflinger._items import attributes, classifications
-from haflinger._parties import (
-    BUYER,
-    DELIVER_TO,
-    LOCATION,
-    PAYEE_IDENTIFIER,
-    SELLER,
-    TAX_REPRESENTATIVE_ADDRESS,
-    Address,
-    AddressTerms,
-    PartyTerms,
-    contact,
-    identifier,
-    identifiers,
-    one_identifier,
-)
-from haflinger._periods import INVOICING_PERIOD, LINE_PERIOD, PeriodTerms
-from haflinger._xml import XML_WHITESPACE, Node, Reading, none_if_empty, one_value, parse
-from haflinger.errors import InvoiceReadError
-from haflinger.model import (
+from haflinger._model import (
     AllowanceCharge,
     CreditTransfer,
     Delivery,
@@ -66,14 +49,31 @@ from haflinger.model import (
     Totals,
     VatBreakdown,
 )
-from haflinger.read import ReadResult
+from haflinger._parties import (
+    BUYER,
+    DELIVER_TO,
+    LOCATION,
+    PAYEE_IDENTIFIER,
+    SELLER,
+    TAX_REPRESENTATIVE_ADDRESS,
+    Address,
+    AddressTerms,
+    PartyTerms,
+    contact,
+    identifier,
+    identifiers,
+    one_identifier,
+)
+from haflinger._periods import INVOICING_PERIOD, LINE_PERIOD, PeriodTerms
+from haflinger._read import ReadResult
+from haflinger._xml import XML_WHITESPACE, Node, Reading, none_if_empty, one_value, parse
 
 XR = "urn:ce.eu:en16931:2017:xoev-de:kosit:standard:xrechnung-1"
 
 _STYLESHEETS: dict[str, tuple[str, Syntax]] = {
-    cii.TAG: ("kosit-visualization/xsl/cii-xr.xsl", "cii"),
-    ubl.INVOICE_TAG: ("kosit-visualization/xsl/ubl-invoice-xr.xsl", "ubl"),
-    ubl.CREDIT_NOTE_TAG: ("kosit-visualization/xsl/ubl-creditnote-xr.xsl", "ubl"),
+    _cii.TAG: ("kosit-visualization/xsl/cii-xr.xsl", "cii"),
+    _ubl.INVOICE_TAG: ("kosit-visualization/xsl/ubl-invoice-xr.xsl", "ubl"),
+    _ubl.CREDIT_NOTE_TAG: ("kosit-visualization/xsl/ubl-creditnote-xr.xsl", "ubl"),
 }
 # The source path KoSIT's stylesheet gives a BT-84 read from ram:IBANID, indexed where repeated.
 _IBAN_SOURCE = re.compile(r"ram:IBANID(\[[0-9]+\])?$")

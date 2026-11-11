@@ -16,7 +16,8 @@ from dataclasses import dataclass, field, fields, is_dataclass
 from pathlib import Path
 from typing import cast
 
-from haflinger import Invoice, InvoiceReadError, kosit, read_invoice, validate
+from haflinger import Invoice, InvoiceReadError, _kosit, read_invoice, validate
+from haflinger._findings import INVALID
 from haflinger.pdf import extract_xml
 
 # KoSIT's stylesheet takes minutes for invoices of tens of MB; their size is the benchmarks'.
@@ -120,8 +121,8 @@ def run(path: Path, base: Path) -> Row:
         row.kosit = row.validation = f"skipped: {len(xml) / 1e6:.1f} MB"
         return row
     try:
-        semantic = kosit.read_invoice(xml)
-        ours, theirs = kosit.comparable(ours, semantic.invoice)
+        semantic = _kosit.read_invoice(xml)
+        ours, theirs = _kosit.comparable(ours, semantic.invoice)
         row.kosit = "ok"
         # A limit of KoSIT's stylesheet shows here: two EXTENDED due dates joined into one value
         # are a HAFL-VALUE for BT-9 (ADR-005).
@@ -135,7 +136,7 @@ def run(path: Path, base: Path) -> Row:
     except Exception as error:  # noqa: BLE001
         row.validation = outcome(error)
         return row
-    failed = [finding for finding in findings if finding.flag in ("fatal", "error")]
+    failed = [finding for finding in findings if finding.flag in INVALID]
     row.validation = f"invalid ({len(failed)})" if failed else "valid"
     row.rules = sorted({finding.rule for finding in failed})
     if any(finding.rule == "HAFL-PROFILE" for finding in findings):
