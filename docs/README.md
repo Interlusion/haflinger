@@ -25,8 +25,8 @@
 
 | Document | Status |
 | :- | :- |
-| Specs | Draft until baselined |
-| ADRs | Proposed until accepted, edited in place until then; once Accepted, superseded by new ADRs rather than rewritten |
+| Specs | Draft until baselined; edited in place until Haflinger 1.0.0, changed with a history entry from then on; requirement IDs never reused ([specs index](specs/README.md#changes)) |
+| ADRs | Proposed until accepted; edited in place until Haflinger 1.0.0, superseded by new ADRs rather than rewritten from then on ([ADR index](arc42/adr/README.md)) |
 | Architecture, guides | Kept current with every change they describe |
 | Analyses | Temporary; archived once their findings are carried over |
 | Backlog | Living |

@@ -43,7 +43,7 @@ A version raises the part that the largest change since the last release calls f
 
 - **While Haflinger is at 0.x**, a breaking change is a minor version, not a major one.
 - **The changelog names every official release** a version brings, a patch's too, so that a caller sees why verdicts changed.
-- **From 1.0.0**, a name or a profile that a major version removes is listed under Deprecated at least one minor version before, with a `DeprecationWarning` where the code can give one. 1.0.0 comes once the ERPNext app runs on Haflinger in production and the interface has held for a few minor versions.
+- **From 1.0.0**, a name or a profile that a major version removes is listed under Deprecated at least one minor version before, with a `DeprecationWarning` where the code can give one. 1.0.0 comes once the ERPNext app runs on Haflinger in production and the interface has held for a few minor versions. From the merge of its release pull request on, ADRs and specs are no longer edited in place: an ADR changes through a new one, a spec with an entry in its history ([ADR index](../arc42/adr/README.md), [specs index](../specs/README.md#changes)).
 - **A security fix** is a patch of the latest minor version, as the [security policy](../../SECURITY.md#supported-versions) promises.
 
 ## Releasing a version

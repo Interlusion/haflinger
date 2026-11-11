@@ -4,10 +4,10 @@ REQ-001 is the base spec: the personas, stories and terms, the model of the EN 1
 
 | Spec | Area | Status |
 | :- | :- | :- |
-| [REQ-001](req-001-core.md) | Core: personas, stories and terms, the model, the rules every spec follows | Draft |
-| [REQ-002](req-002-conformance.md) | Conformance: official artefacts and test files, profiles and versions, validation | Draft |
-| [REQ-003](req-003-incoming-invoices.md) | Incoming invoices: reading CII, UBL and ZUGFeRD PDFs into the model | Draft |
-| [REQ-004](req-004-outgoing-invoices.md) | Outgoing invoices: writing CII and ZUGFeRD PDFs from the model | Draft |
+| [REQ-001](req-001-core.md) | Core: personas, stories and terms, the model, the rules every spec follows | Baselined |
+| [REQ-002](req-002-conformance.md) | Conformance: official artefacts and test files, profiles and versions, validation | Baselined |
+| [REQ-003](req-003-incoming-invoices.md) | Incoming invoices: reading CII, UBL and ZUGFeRD PDFs into the model | Baselined |
+| [REQ-004](req-004-outgoing-invoices.md) | Outgoing invoices: writing CII and ZUGFeRD PDFs from the model | Baselined |
 
 Why the specs are cut this way: [ADR-004](../arc42/adr/ADR-004-specs-by-direction.md).
 
@@ -35,7 +35,10 @@ The project code is **HAFL**. Outside this repository, IDs carry it: `HAFL-REQ-0
 
 ## Changes
 
-A spec is Draft until the maintainer baselines it, and edited in place until then. After baseline:
+A **substantive change** adds, removes or rewords a requirement, or changes a term so that a requirement covers other cases; a typo, a link, formatting or clearer wording keeps the meaning and isn't one. A spec's `Date` is the date of its last change.
 
-- **A substantive change** (a requirement added, removed or reworded, or a term changed so that a requirement covers other cases) is folded into the body, and a sibling `req-NNN-name.history.md` records the dated reason, most recent first. The spec's `Version` goes up with each entry.
-- **A change that keeps the meaning** (a typo, a link, formatting, clearer wording) is made in the body only.
+- **Draft:** edited in place.
+- **Baselined, until Haflinger 1.0.0:** still edited in place; a substantive change raises the spec's `Version`. REQ-001 to REQ-004 were baselined on 2026-11-11.
+- **From the merge of the 1.0.0 release pull request on** ([ADR-013](../arc42/adr/ADR-013-releases.md)): a substantive change is folded into the body, and a sibling `req-NNN-name.history.md` records the dated reason, most recent first; the `Version` goes up with each entry. A change that keeps the meaning is made in the body only.
+
+From baseline on, requirement IDs are never renumbered or reused: a removed requirement's ID stays retired, as tests, code comments, commit messages and other repositories cite it.
