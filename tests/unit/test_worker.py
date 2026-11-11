@@ -567,11 +567,14 @@ read, write = os.pipe()
 pid = os.fork()
 if pid == 0:
     os.close(read)
-    os.write(write, " ".join(os.listdir("/proc/self/fd")).encode())
+    # /dev/fd lists the open descriptors on Linux and on macOS, which has no /proc.
+    os.write(write, " ".join(os.listdir("/dev/fd")).encode())
     os._exit(0)
 os.close(write)
 held = {{int(fd) for fd in os.read(read, 65536).split()}}
-os.waitpid(pid, 0)
+_, status = os.waitpid(pid, 0)
+assert os.waitstatus_to_exitcode(status) == 0, "the child failed"
+assert held, "the child reported no descriptors"
 caller.join()
 worker = _saxon._helper.worker
 pipes = {{worker.stdin.fileno(), worker.stdout.fileno(), worker.stderr.fileno()}}
