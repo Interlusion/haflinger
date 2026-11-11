@@ -379,13 +379,19 @@ def test_validation_works_with_many_files_open() -> None:
         resource.setrlimit(resource.RLIMIT_NOFILE, (soft, hard))
 
 
-def test_the_worker_uses_the_callers_haflinger(tmp_path: Path) -> None:
-    """A copy of Haflinger found on the caller's own import path, as with PYTHONPATH: the worker
-    runs that copy, not the one installed in the environment."""
+def _copy_of_haflinger(tmp_path: Path) -> Path:
+    """A copy of Haflinger's package without its bytecode cache, for a caller's import path."""
     import shutil
 
     copy = tmp_path / "path" / "haflinger"
     shutil.copytree(ROOT / "src/haflinger", copy, ignore=shutil.ignore_patterns("__pycache__"))
+    return copy
+
+
+def test_the_worker_uses_the_callers_haflinger(tmp_path: Path) -> None:
+    """A copy of Haflinger found on the caller's own import path, as with PYTHONPATH: the worker
+    runs that copy, not the one installed in the environment."""
+    copy = _copy_of_haflinger(tmp_path)
     worker = copy / "_worker.py"
     text = worker.read_text(encoding="utf-8")
     marker = "def main() -> None:\n"
@@ -406,6 +412,31 @@ haflinger.validate(open({str(CII)!r}, "rb").read())
         [sys.executable, "-c", script], check=True, capture_output=True, text=True, timeout=60
     )
     assert f"worker from {copy / '_worker.py'}" in result.stderr
+
+
+def _validate_in(copy: Path, *flags: str) -> None:
+    """Validates in a fresh interpreter started with `flags` that imports Haflinger from `copy`."""
+    script = f"""
+import sys
+sys.path.insert(0, {str(copy.parent)!r})
+import haflinger
+haflinger.validate(open({str(CII)!r}, "rb").read())
+"""
+    subprocess.run([sys.executable, *flags, "-c", script], check=True, timeout=60)  # noqa: S603
+
+
+def test_the_worker_writes_no_bytecode_where_the_caller_writes_none(tmp_path: Path) -> None:
+    copy = _copy_of_haflinger(tmp_path)
+    _validate_in(copy, "-B")
+    assert not list(copy.rglob("__pycache__"))
+
+
+def test_the_worker_writes_bytecode_where_the_caller_does(tmp_path: Path) -> None:
+    copy = _copy_of_haflinger(tmp_path)
+    prefix = tmp_path / "pycache"
+    _validate_in(copy, "-X", f"pycache_prefix={prefix}")
+    assert not list(copy.rglob("__pycache__"))
+    assert list(prefix.rglob("_worker.*.pyc")), "the worker's bytecode isn't under the prefix"
 
 
 def test_haflinger_imports_without_fork_handlers() -> None:
