@@ -225,7 +225,7 @@ flowchart LR
     lib -- "starts, pipes" --> worker --> saxon
 ```
 
-Nothing is released yet; the name is reserved on PyPI ([backlog](../backlog/backlog.md)). `saxonche` is a native wheel per platform; which platforms it covers, and its size, are in [ADR-006](adr/ADR-006-validation-with-official-rules.md).
+Releases go to PyPI from a tag, built and tested in CI and uploaded through Trusted Publishing with attestations ([ADR-013](adr/ADR-013-releases.md)); nothing is released yet. `saxonche` is a native wheel per platform; which platforms it covers, and its size, are in [ADR-006](adr/ADR-006-validation-with-official-rules.md).
 
 ## 8. Cross-cutting concepts
 

@@ -31,7 +31,7 @@ Out of scope:
 
 ## Supported versions
 
-Haflinger isn't released yet; until then, reports concern `main`. Once it is, only the latest minor version gets security fixes, released as a patch of it as soon as it is ready, with a GitHub security advisory. While Haflinger is at 0.x, a minor version may break the interface, so taking a fix can mean taking those changes too.
+Haflinger isn't released yet; until then, reports concern `main`. Once it is, only the latest minor version gets security fixes, released as a patch of it as soon as it is ready, with a GitHub security advisory and an entry under Security in the [changelog](CHANGELOG.md). While Haflinger is at 0.x, a minor version may break the interface, so taking a fix can mean taking those changes too.
 
 ## What to expect
 

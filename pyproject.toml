@@ -28,6 +28,7 @@ dependencies = [
 Repository = "https://github.com/Interlusion/haflinger"
 Documentation = "https://github.com/Interlusion/haflinger/blob/main/docs/README.md"
 Issues = "https://github.com/Interlusion/haflinger/issues"
+Changelog = "https://github.com/Interlusion/haflinger/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 pdf = [
@@ -54,7 +55,7 @@ dev = [
 
 [tool.uv]
 # The one place uv's version is pinned: uv refuses another locally, and CI's setup-uv reads it.
-required-version = "==0.13.6"
+required-version = "==0.13.7"
 
 [build-system]
 requires = ["uv_build>=0.13.7,<0.14"]

@@ -9,6 +9,7 @@
 | Understand how it fits together | [Architecture](arc42/README.md) |
 | Know why it is built this way | [ADRs](arc42/adr/README.md) |
 | Work on it: setup, checks, tests, updating official files | [Development](guides/development.md) |
+| Release a version | [Releasing](guides/releasing.md); what each release changed: the [changelog](../CHANGELOG.md) |
 | See past analyses | The [archive](analysis/archive/): explorations, spikes and reviews, each carried into ADRs, specs, guides or the backlog |
 | See open work | [Backlog](backlog/backlog.md): quick items, and the `item-NNN` files in the same [folder](backlog/) |
 
