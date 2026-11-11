@@ -58,6 +58,10 @@ uv run pytest
 
 Documentation: [docs/README.md](docs/README.md).
 
+## Scope
+
+Haflinger is maintained for our own use, first for ERPNext. Contributions are welcome ([contributing](CONTRIBUTING.md)); support isn't promised. Report vulnerabilities privately, as the [security policy](SECURITY.md) describes.
+
 ## Licence
 
 Apache-2.0. Vendored official files keep their own licences, named next to them ([ADR-009](docs/arc42/adr/ADR-009-licences-and-name.md)).

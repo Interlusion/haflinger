@@ -1,0 +1,69 @@
+name: Bug report
+description: Haflinger reads, validates or writes an invoice other than its specs say.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Issues are public. Never attach or paste a real invoice, nor anything from one
+        (names, addresses, VAT IDs, bank details, amounts): invoices hold personal and
+        business data. Name the official test file that shows the problem, with its
+        release, or build an invoice with placeholders such as Example GmbH and the IBAN
+        DE79000000001234567890. A
+        vulnerability goes through
+        [private vulnerability reporting](https://github.com/interlusion/haflinger/security/advisories/new)
+        instead (SECURITY.md).
+  - type: input
+    id: version
+    attributes:
+      label: Haflinger commit or version
+      description: The commit you installed (`git rev-parse HEAD` in a checkout), or the version once Haflinger is released.
+      placeholder: a1b2c3d
+    validations:
+      required: true
+  - type: input
+    id: python
+    attributes:
+      label: Python version and platform
+      placeholder: 3.14.1, Linux x86_64
+    validations:
+      required: true
+  - type: dropdown
+    id: entry
+    attributes:
+      label: Entry point
+      options:
+        - read_invoice
+        - validate
+        - write_cii
+        - haflinger.pdf.extract_xml
+        - haflinger.pdf.embed
+        - Several, or not sure
+    validations:
+      required: true
+  - type: textarea
+    id: input
+    attributes:
+      label: Input
+      description: >-
+        The official test file's name and its release, such as KoSIT's test suite
+        v2026-08-31 and 01.01a-INVOICE_ubl.xml; or the invoice built with placeholders, attached
+        or in a code block; for writing, the model given.
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: The call, and what Haflinger returned or raised, with the findings' rules and texts.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: >-
+        Where possible, the spec requirement (REQ-00N-PRS-…), the business term (BT-…) or
+        the official rule, or what KoSIT's validator says about the same file.
+    validations:
+      required: true
