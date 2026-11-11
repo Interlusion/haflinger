@@ -1,6 +1,7 @@
 #!/bin/bash
 # Markdown links: relative Markdown links only (no Obsidian wiki-links, which
-# GitHub shows as text), and every local link and #anchor resolves.
+# GitHub shows as text), absolute ones into this repository in the README, which
+# PyPI shows too, and every local link and #anchor resolves.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -32,4 +33,12 @@ if [ -n "$wiki" ]; then
   exit 1
 fi
 docker build -q -t haflinger-lychee .github/lychee >/dev/null
+# The README's links, as lychee parses them (inline, reference and HTML links, not code), without
+# the remap below: none may resolve to a local file, an #anchor included, as PyPI shows the README.
+relative=$(docker run --rm -v "$PWD":/w:ro -w /w haflinger-lychee --config /dev/null --dump README.md | grep '^file://' || true)
+if [ -n "$relative" ]; then
+  echo "$relative"
+  echo "::error::README.md links above are relative, which break on PyPI; link https://github.com/Interlusion/haflinger/blob/main/<path>"
+  exit 1
+fi
 md docker run --rm -v "$PWD":/w:ro -w /w haflinger-lychee --config lychee.toml --no-progress

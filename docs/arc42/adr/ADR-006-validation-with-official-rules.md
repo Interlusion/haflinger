@@ -70,7 +70,7 @@ Small, MIT-licensed and buildable for every platform, musl included: it would re
 
 - About 105 MB of native code in the host's environment, and no wheels for musl-based images.
 - No time bound on hostile input within Saxon: a crafted invoice of a few MB runs the rules for minutes, which only a worker process that can be killed bounds ([ADR-010](ADR-010-saxon-in-a-worker-process.md)).
-- The licence of `saxonche` is to be confirmed before a release ([ADR-009](ADR-009-licences-and-name.md)); beside the GPL-3.0 app, Saxonica neither allows nor forbids it in the app's process, which [ADR-010](ADR-010-saxon-in-a-worker-process.md) answers with a worker process.
+- The licence of `saxonche` doesn't block Haflinger's releases, which ship none of its files ([ADR-009](ADR-009-licences-and-name.md)); beside the GPL-3.0 app, Saxonica neither allows nor forbids it in the app's process, which [ADR-010](ADR-010-saxon-in-a-worker-process.md) answers with a worker process.
 - Haflinger has to maintain the choice of rule set and KoSIT's rule levels as glue.
 
 ## Reconsideration Triggers

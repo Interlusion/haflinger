@@ -7,8 +7,8 @@ E-invoicing in Python: ZUGFeRD, XRechnung and Peppol, on one model of the EN 169
 ## What it is
 
 - **A Python library.** One model of the EN 16931 business terms. It reads invoices in CII, UBL and from ZUGFeRD PDFs, validates them with the official rules, and writes CII and ZUGFeRD PDFs. Any Python software can use it; it needs no ERP system to run or to be tested.
-- **Built on the official artefacts**: KoSIT's and CEN's rules run unchanged, and the official test files are the reference ([ADR-003](docs/arc42/adr/ADR-003-integrate-dont-implement.md)).
-- **ERPNext first.** A slim ERPNext app, later and in its own repository, maps ERPNext's sales and purchase invoices to and from the model ([ADR-001](docs/arc42/adr/ADR-001-library-and-app.md)).
+- **Built on the official artefacts**: KoSIT's and CEN's rules run unchanged, and the official test files are the reference ([ADR-003](https://github.com/Interlusion/haflinger/blob/main/docs/arc42/adr/ADR-003-integrate-dont-implement.md)).
+- **ERPNext first.** A slim ERPNext app, later and in its own repository, maps ERPNext's sales and purchase invoices to and from the model ([ADR-001](https://github.com/Interlusion/haflinger/blob/main/docs/arc42/adr/ADR-001-library-and-app.md)).
 
 ## What it is not
 
@@ -38,7 +38,7 @@ xml = write_cii(replace(invoice, specification_id=TARGET_PROFILES[0]))
 
 `is_valid` judges the rules that ran: where BT-24 names no supported profile, or none, `validate` runs CEN's EN 16931 rules alone and adds a `HAFL-PROFILE` warning. Reading's findings are no verdict, and an `InvoiceWriteError` is a refusal whatever findings it holds.
 
-The names `haflinger` and `haflinger.pdf` export are the API; every other module is internal ([ADR-012](docs/arc42/adr/ADR-012-public-api.md)).
+The names `haflinger` and `haflinger.pdf` export are the API; every other module is internal ([ADR-012](https://github.com/Interlusion/haflinger/blob/main/docs/arc42/adr/ADR-012-public-api.md)).
 
 The official rules run in a worker process that Haflinger starts, within a time limit: `timeout=` on `validate`, `write_cii` and `embed`, by default the environment variable `HAFLINGER_RULES_TIMEOUT` or 60 seconds.
 
@@ -54,21 +54,21 @@ zugferd = embed(Path("rendered-pdfa.pdf").read_bytes(), xml)  # PDF/A in, PDF/A-
 
 ## Development
 
-Python 3.14 and [uv](https://docs.astral.sh/uv/); details in the [development guide](docs/guides/development.md).
+Python 3.14 and [uv](https://docs.astral.sh/uv/); details in the [development guide](https://github.com/Interlusion/haflinger/blob/main/docs/guides/development.md).
 
 ```sh
 uv sync --all-extras
 uv run pytest
 ```
 
-Documentation: [docs/README.md](docs/README.md).
+Documentation: [docs/README.md](https://github.com/Interlusion/haflinger/blob/main/docs/README.md).
 
 ## Scope
 
-Haflinger is maintained for our own use, first for ERPNext. Contributions are welcome ([contributing](CONTRIBUTING.md)); support isn't promised. Report vulnerabilities privately, as the [security policy](SECURITY.md) describes.
+Haflinger is maintained for our own use, first for ERPNext. Contributions are welcome ([contributing](https://github.com/Interlusion/haflinger/blob/main/CONTRIBUTING.md)); support isn't promised. Report vulnerabilities privately, as the [security policy](https://github.com/Interlusion/haflinger/blob/main/SECURITY.md) describes.
 
 ## Licence
 
-Apache-2.0. Vendored official files keep their own licences, named next to them ([ADR-009](docs/arc42/adr/ADR-009-licences-and-name.md)).
+Haflinger's code is Apache-2.0. The package also ships official files under their own terms, unchanged: CEN's EN 16931 rules under EUPL-1.2, SchXslt under MIT, the XML Schemas of UN/CEFACT, OASIS and W3C under the notices in their headers, and two schemas of ETSI's that carry none. [THIRD-PARTY-NOTICES](https://github.com/Interlusion/haflinger/blob/main/THIRD-PARTY-NOTICES) lists them with their terms ([ADR-009](https://github.com/Interlusion/haflinger/blob/main/docs/arc42/adr/ADR-009-licences-and-name.md)).
 
 Validation runs the official rules with The Saxon XSLT and XQuery Processor from Saxonica Limited (https://www.saxonica.com/): SaxonC-HE, installed as the `saxonche` package under MPL-2.0. Haflinger requires it and ships none of its files.

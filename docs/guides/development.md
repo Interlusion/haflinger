@@ -31,7 +31,9 @@ AGENTS.md                 rules for coding agents; CLAUDE.md imports it
 CONTRIBUTING.md           how a change is made; SECURITY.md: reporting a vulnerability
 pyproject.toml, uv.lock, .python-version
 .gitattributes            keeps the vendored files byte for byte
-lychee.toml               the link check: local links and #anchors only
+lychee.toml               the link check: local links and #anchors only, the README's
+                          absolute links as the local files
+THIRD-PARTY-NOTICES       the vendored files in the package and their terms (ADR-009)
 .github/                  CI checks, Dependabot, the images of CI's tools,
                           issue and pull request templates, CODEOWNERS
 ```
@@ -58,7 +60,7 @@ uv run coverage erase && uv run coverage run -m pytest && uv run coverage combin
 
 `checks.yml` runs on pull requests and pushes to `main`, without secrets ([ADR-002](../arc42/adr/ADR-002-toolchain.md)):
 
-- **`checks`**: the lock, ruff, mdformat, the Markdown link check, basedpyright, pytest with branch coverage, the rules' worker process included (the table in the run's summary and, for pull requests from this repository's branches, as one comment on the pull request that each push updates; not a gate), and the workflows and Dependabot's configuration (actionlint, zizmor);
+- **`checks`**: the lock, ruff, mdformat, the Markdown link check (the README's links absolute, as PyPI shows it, and checked as the local files), basedpyright, pytest with branch coverage, the rules' worker process included (the table in the run's summary and, for pull requests from this repository's branches, as one comment on the pull request that each push updates; not a gate), and the workflows and Dependabot's configuration (actionlint, zizmor);
 - **`coverage-comment`**: posts that comment with `gh pr comment`, authenticated with the workflow's token: the one exception to keeping scripts off `api.github.com`, whose limit binds requests without a token; the only job that may write, and it runs no code of the pull request;
 - **`audit`**: the vulnerability audit of the lock (`uv audit --locked`), a job of its own, so that a new advisory or the advisory database out of reach fails it alone;
 - **`secrets`**: gitleaks over the pushed commits (`scripts/check-secrets.sh`), over all of HEAD's where the base before the push isn't in the clone, as after a force push;
@@ -125,7 +127,7 @@ The rules are in [ADR-008](../arc42/adr/ADR-008-vendoring-official-files.md). On
 
 3. Replace the vendored files with the new ones, the same files as before unless the release adds or removes one the code uses. Don't edit them.
 
-4. Update the source's README: release, commit, SHA-256, licence; and the licence file if it changed.
+4. Update the source's README: release, commit, SHA-256, licence; and the licence file if it changed. For a runtime source, also its block in `THIRD-PARTY-NOTICES`, with its `Licence` line, and the licence expression in `pyproject.toml` where a licence was added or dropped; `tests/unit/test_vendoring.py` checks that they agree.
 
 5. If the rules changed, take the tests that check them from the same release (CEN's unit tests with CEN's rules).
 
