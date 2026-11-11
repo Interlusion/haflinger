@@ -2,7 +2,7 @@
 
 | Meta | Value |
 | :- | :- |
-| **Date** | 2026-11-11 |
+| **Date** | 2026-11-12 |
 | **Author** | loxy (drafted with Claude) |
 | **Status** | Current |
 
@@ -66,11 +66,12 @@ uv run coverage erase && uv run coverage run -m pytest && uv run coverage combin
 - **`coverage-comment`**: posts that comment with `gh pr comment`, authenticated with the workflow's token. Scripts keep off `api.github.com`, whose limit binds requests without a token; this comment and the release's GitHub Release are the two exceptions. The only job of `checks.yml` that may write, and it runs no code of the pull request;
 - **`audit`**: the vulnerability audit of the lock (`uv audit --locked`), a job of its own, so that a new advisory or the advisory database out of reach fails it alone;
 - **`secrets`**: gitleaks over the pushed commits (`scripts/check-secrets.sh`), over all of HEAD's where the base before the push isn't in the clone, as after a force push;
+- **`platforms`**: the tests on Linux on ARM (`ubuntu-24.04-arm`), for the native wheels of `saxonche` and `lxml`, and on macOS (`macos-15`, Apple Silicon), where the rules' worker process, its pipes and fork handlers differ too ([ADR-010](../arc42/adr/ADR-010-saxon-in-a-worker-process.md)); within 30 minutes; not a required check until it has proven stable;
 - **`frappe-v16-pins`**: the tests once more with the versions of shared dependencies that Frappe/ERPNext v16 pin (for now `pypdf==6.19.0` and `requests~=2.33.0`, which `factur-x` imports), so that Haflinger stays installable into a bench.
 
 `release.yml` runs on a tag `vX.Y.Z` and publishes that version to PyPI and as a GitHub Release, after the maintainer's approval; started by hand with a version, it is the dry run, which publishes nothing ([releasing guide](releasing.md), [ADR-013](../arc42/adr/ADR-013-releases.md)). `build` checks that the tag is annotated, names the commit the run builds, is on `main` and in this repository, and that it matches `pyproject.toml` and `CHANGELOG.md`, points the links to `main` in the README and the project URLs at the tag, writes the GitHub Release's notes into the run's summary, builds the package with the backend uv bundles and runs the tests against the wheel; `publish`, in the environment `pypi`, uploads it through Trusted Publishing, its only right `id-token: write`; `github-release`, its only right `contents: write`, creates the GitHub Release with `build`'s notes and files, and runs no code of the repository.
 
-A newer push to a pull request's branch cancels the run before it; on `main`, each commit keeps its run. Actions are pinned to a commit, the runner image to `ubuntu-24.04` and uv to a version (`required-version` in `pyproject.toml`), which lies within the range of `uv_build` that `[build-system]` names, so that `uv build` uses the backend uv bundles instead of downloading one (`tests/unit/test_release.py` checks it: an update of `uv_build` raises `required-version` with it); the images of actionlint, gitleaks and lychee are pinned by digest in `.github/<tool>/Dockerfile`. Dependabot proposes updates to Actions and images weekly once a new version is 14 days old, to `uv.lock` once it is 7 days old, minor and patch updates as one pull request per ecosystem; security updates come at once (`.github/dependabot.yml`).
+A newer push to a pull request's branch cancels the run before it; on `main`, each commit keeps its run. Actions are pinned to a commit, the runner images to `ubuntu-24.04`, `ubuntu-24.04-arm` and `macos-15`, and uv to a version (`required-version` in `pyproject.toml`), which lies within the range of `uv_build` that `[build-system]` names, so that `uv build` uses the backend uv bundles instead of downloading one (`tests/unit/test_release.py` checks it: an update of `uv_build` raises `required-version` with it); the images of actionlint, gitleaks and lychee are pinned by digest in `.github/<tool>/Dockerfile`. Dependabot proposes updates to Actions and images weekly once a new version is 14 days old, to `uv.lock` once it is 7 days old, minor and patch updates as one pull request per ecosystem; security updates come at once (`.github/dependabot.yml`).
 
 ## Tests
 

@@ -2,7 +2,7 @@
 
 | Meta | Value |
 | :- | :- |
-| **Date** | 2026-11-11 |
+| **Date** | 2026-11-12 |
 | **Author** | loxy (drafted with Claude) |
 | **Status** | Current |
 
@@ -48,7 +48,7 @@ A version raises the part that the largest change since the last release calls f
 
 ## Releasing a version
 
-1. **Check `main`.** The checks of its latest commit passed, and "Unreleased" in `CHANGELOG.md` lists every change a caller notices since the last release.
+1. **Check `main`.** All the checks of its latest commit passed, `platforms` on Linux on ARM and macOS included, required or not, and "Unreleased" in `CHANGELOG.md` lists every change a caller notices since the last release.
 
 2. **The release's pull request**, on a branch `chore/release-X.Y.Z`:
 
