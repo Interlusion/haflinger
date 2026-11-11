@@ -1,3 +1,6 @@
 # Local links and their #anchors only (https://lychee.cli.rs/usage/config/).
 offline = true
 include_fragments = "full"
+# The README's links are absolute, as PyPI shows it too; they are checked as the local files,
+# below /w, where scripts/check-links.sh mounts the repository.
+remap = ["^https://github\\.com/Interlusion/haflinger/(blob|tree)/main/(.*)$ file:///w/$2"]
