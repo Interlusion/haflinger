@@ -28,10 +28,12 @@ scripts/
   check-secrets.sh        gitleaks over the commits
 docs/                     specs, architecture, ADRs, guides, backlog
 AGENTS.md                 rules for coding agents; CLAUDE.md imports it
+CONTRIBUTING.md           how a change is made; SECURITY.md: reporting a vulnerability
 pyproject.toml, uv.lock, .python-version
 .gitattributes            keeps the vendored files byte for byte
 lychee.toml               the link check: local links and #anchors only
-.github/                  CI checks, Dependabot, the images of CI's tools
+.github/                  CI checks, Dependabot, the images of CI's tools,
+                          issue and pull request templates, CODEOWNERS
 ```
 
 Why this toolchain: [ADR-002](../arc42/adr/ADR-002-toolchain.md).

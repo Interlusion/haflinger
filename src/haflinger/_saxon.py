@@ -105,6 +105,11 @@ class _Worker:
         if not sys.executable:
             raise _cant_start("Python doesn't know its own interpreter (sys.executable is empty)")
         flags = ["-E", "-P", *(["-s"] if sys.flags.no_user_site else [])]
+        # The caller's bytecode cache settings, which -E would otherwise drop with the variables.
+        if sys.dont_write_bytecode:
+            flags.append("-B")
+        if sys.pycache_prefix is not None:
+            flags += ["-X", f"pycache_prefix={sys.pycache_prefix}"]
         # Entries that aren't text, which import ignores, may be in it too.
         path = [entry for entry in cast(list[object], sys.path) if isinstance(entry, str) and entry]
         with _starting:  # a fork waits until the worker is in `_workers`

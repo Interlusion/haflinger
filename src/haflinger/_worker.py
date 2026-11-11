@@ -1,11 +1,12 @@
 """The worker process that runs the official stylesheets with Saxon (ADR-010).
 
-`_saxon` starts it with `python -E -P -c` and a few lines that set its import path to the caller's
-and call `main`, with ARTEFACTS as the first argument. Each request on stdin is three frames
-(`_frames`): its number, the names of stylesheets below ARTEFACTS, one per line, and the document
-as text. Each reply on stdout repeats the number, then holds `ok` and one frame per stylesheet's
-output, `error` and Saxon's message on the document, or `broken` and Saxon's message on a
-stylesheet that doesn't compile. The worker ends when stdin ends.
+`_saxon` starts it with `python -E -P -c`, the caller's `-s`, `-B` and cache prefix added, and a
+few lines that set its import path to the caller's and call `main`, with ARTEFACTS as the first
+argument. Each request on stdin is three frames (`_frames`): its number, the names of stylesheets
+below ARTEFACTS, one per line, and the document as text. Each reply on stdout repeats the number,
+then holds `ok` and one frame per stylesheet's output, `error` and Saxon's message on the document,
+or `broken` and Saxon's message on a stylesheet that doesn't compile. The worker ends when stdin
+ends.
 """
 
 import os

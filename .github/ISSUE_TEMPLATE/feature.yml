@@ -1,0 +1,41 @@
+name: Feature
+description: A business term, profile or behaviour. Changes start in a spec, so this asks what it would add there.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Haflinger runs the official rules unchanged and doesn't reimplement them (ADR-003);
+        a rule they lack goes to KoSIT, CEN or FeRD first. Mapping ERPNext's documents
+        belongs to the ERPNext app, not to the library (ADR-001). Never attach a real
+        invoice; use an official test file or placeholders such as Example GmbH.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: >-
+        The specs it touches (docs/specs/README.md); a new business term touches REQ-001,
+        REQ-003 and REQ-004.
+      multiple: true
+      options:
+        - The model, business terms, outside input (REQ-001)
+        - Official files, profiles, versions, validation (REQ-002)
+        - Reading CII, UBL and ZUGFeRD PDFs (REQ-003)
+        - Writing CII and ZUGFeRD PDFs (REQ-004)
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: need
+    attributes:
+      label: What a caller should be able to do
+      description: The task, as a user story if you like, and why Haflinger doesn't cover it yet.
+    validations:
+      required: true
+  - type: textarea
+    id: standard
+    attributes:
+      label: In the standards
+      description: >-
+        The business terms (BT-…, BG-…), syntax elements, profiles or official rules
+        involved, and an official test file that carries them, if there is one.

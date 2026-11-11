@@ -3,8 +3,8 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Draft |
-| **Version** | 0.20 |
-| **Date** | 2026-11-09 |
+| **Version** | 0.21 |
+| **Date** | 2026-11-11 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Intended Use
@@ -279,11 +279,11 @@ General vocabulary (CIUS, Leitweg-ID, Peppol …): the [E-Invoicing 101 glossary
 
 #### REQ-001-PRS-NF001: Outside input
 
-**Description**: XML that contains a document type declaration or an entity declaration SHALL be refused before any reader, stylesheet or rule processes it; XML embedded in a PDF SHALL be parsed by nothing else before this check. Nothing referenced in outside input, in XML or in a PDF (external file specifications, URLs, actions), SHALL be fetched, opened or run. Reading and validation SHALL write nothing to the file system; `haflinger.pdf.embed`, whose input is the caller's own PDF, hands it to `factur-x` through a private temporary directory that is removed afterwards. The library SHALL use no value from an input as a path, URL or command; values such as file names are handed back as data. An attached document's content (BT-125) SHALL be neither opened, rendered nor checked against its media type ([ADR-011](../arc42/adr/ADR-011-attached-documents.md)).
+**Description**: XML that contains a document type declaration or an entity declaration SHALL be refused before any reader, stylesheet or rule processes it; XML embedded in a PDF SHALL be parsed by nothing else before this check. Nothing referenced in outside input, in XML or in a PDF (external file specifications, URLs, actions), SHALL be fetched, opened or run. Reading and validation SHALL create no file and write nothing from an input to the file system; Python's bytecode cache of the library's own modules, which the interpreter writes on import as the caller has set it (REQ-002-PRS-NF005), is no such file. `haflinger.pdf.embed`, whose input is the caller's own PDF, hands it to `factur-x` through a private temporary directory that is removed afterwards. The library SHALL use no value from an input as a path, URL or command; values such as file names are handed back as data. An attached document's content (BT-125) SHALL be neither opened, rendered nor checked against its media type ([ADR-011](../arc42/adr/ADR-011-attached-documents.md)).
 
 **Related URS**: REQ-001-URS-NF003
 
-**Definition of Done**: tests with an internal DTD, an entity expansion and an external entity each get a refusal, from reading and from validation; a PDF whose embedded XML declares an external entity gets a refusal from reading; a PDF whose file specification points to a file outside it reads without that file being opened (tests); Saxon opens only local files, so that a stylesheet can't fetch a URL (test); no reference in an input is fetched, reading and validation write nothing to the file system, and no input value reaches a path, URL or command, and no attached document is opened (inspection).
+**Definition of Done**: tests with an internal DTD, an entity expansion and an external entity each get a refusal, from reading and from validation; a PDF whose embedded XML declares an external entity gets a refusal from reading; a PDF whose file specification points to a file outside it reads without that file being opened (tests); Saxon opens only local files, so that a stylesheet can't fetch a URL (test); no reference in an input is fetched, reading and validation create no file and write nothing from an input, and no input value reaches a path, URL or command, and no attached document is opened (inspection).
 
 #### REQ-001-PRS-NF002: No Frappe
 
