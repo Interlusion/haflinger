@@ -2,7 +2,7 @@
 
 | Meta | Value |
 | :- | :- |
-| **Status** | Draft |
+| **Status** | Baselined |
 | **Version** | 0.22 |
 | **Date** | 2026-11-11 |
 | **Author** | loxy (drafted with Claude) |

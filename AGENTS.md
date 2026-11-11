@@ -20,7 +20,7 @@ Haflinger: e-invoicing in Python (ZUGFeRD, XRechnung, Peppol). A library with on
 
 ## Docs
 
-Start at `docs/README.md`. The specs in `docs/specs/` are the contract: a new business term or a changed behaviour starts there, then tests, then code. Read REQ-001 first, then the spec the placement map in the [specs index](docs/specs/README.md) names. Decisions are ADRs in `docs/arc42/adr/`; a decision that changes one is a new ADR or, while it is Proposed, an edit.
+Start at `docs/README.md`. The specs in `docs/specs/` are the contract: a new business term or a changed behaviour starts there, then tests, then code. Read REQ-001 first, then the spec the placement map in the [specs index](docs/specs/README.md) names. Decisions are ADRs in `docs/arc42/adr/`. How an ADR or a spec changes, before Haflinger 1.0.0 and after, with its date and version: the [ADR index](docs/arc42/adr/README.md) and the [specs index](docs/specs/README.md#changes); requirement IDs are never renumbered or reused.
 
 - **Tests first** where a spec's Definition of Done describes the behaviour: write the failing test from it, run it red, then write the code. Commit the tests before the code (`test:` then `feat:`).
 - Write requirement IDs in full (`REQ-003-PRS-F004`, not `PRS-F004`), and business terms by their EN 16931 ID (`BT-110`, `BG-23`).

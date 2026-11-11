@@ -2,7 +2,7 @@
 
 | Meta | Value |
 | :- | :- |
-| **Status** | Proposed |
+| **Status** | Accepted |
 | **Date** | 2026-11-11 |
 | **Author** | loxy (drafted with Claude) |
 
@@ -19,7 +19,7 @@ The README's links are absolute and point at `main`, so that they work on PyPI; 
 ## Decision
 
 - **Versions follow Semantic Versioning, from 0.1.0**, raised by what changes for a caller, as the table below gives. The interface is ADR-012's: the names the two `__all__` list and the behaviour the specs describe. Haflinger promises the official verdict of the official files it ships, not a frozen one: a new release of them that fixes rules is a fix, whether or not Haflinger's code changes. While Haflinger is at 0.x, a minor version takes the place of a major one: 0.2.0 may break what 0.1.x offers. Versions have the form `X.Y.Z`, without leading zeros, the same in SemVer and in Python's versions (PEP 440).
-- **1.0.0** comes once the ERPNext app runs on Haflinger in production and the interface has gone a few minor versions without a breaking change.
+- **1.0.0** comes once the ERPNext app runs on Haflinger in production and the interface has gone a few minor versions without a breaking change. With it, ADRs and specs stop being edited in place: an ADR changes through a new one that supersedes it, a spec with an entry in its history ([ADR index](README.md), [specs index](../../specs/README.md#changes)).
 - **Deprecated before removed**: from 1.0.0, a name or a profile that a major version removes is listed under Deprecated in the changelog, with a `DeprecationWarning` where the code can give one, at least one minor version before.
 - **One version, in `pyproject.toml`**, set with `uv version X.Y.Z`, which updates `uv.lock` too. Haflinger has no `__version__`, a name ADR-012 doesn't export; a caller asks `importlib.metadata.version("haflinger")`.
 - **`CHANGELOG.md`, in the format of Keep a Changelog 1.1.0**: a change a caller notices adds its entry under "Unreleased" in the same pull request, under Added, Changed, Deprecated, Removed, Fixed or Security; a new release of official files names that release. Tests, docs, CI and refactoring get no entry. A release moves the entries into a section of its own, `## [X.Y.Z] - YYYY-MM-DD`.
