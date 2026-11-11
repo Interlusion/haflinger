@@ -16,9 +16,9 @@ body:
   - type: input
     id: version
     attributes:
-      label: Haflinger commit or version
-      description: The commit you installed (`git rev-parse HEAD` in a checkout), or the version once Haflinger is released.
-      placeholder: a1b2c3d
+      label: Haflinger version or commit
+      description: The version you installed (`uv pip show haflinger` or `pip show haflinger`). Installed from Git, the commit instead (`git rev-parse HEAD` in a checkout), as the version only changes with a release.
+      placeholder: 0.1.0
     validations:
       required: true
   - type: input

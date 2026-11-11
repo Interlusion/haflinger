@@ -2,7 +2,7 @@
 
 E-invoicing in Python: ZUGFeRD, XRechnung and Peppol, on one model of the EN 16931 business terms. Built for ERPNext first. *Das Zugpferd für ZUGFeRD und XRechnung.*
 
-**Status:** built from its specs: reading CII, UBL and ZUGFeRD PDFs, validating with the official rules, writing CII and ZUGFeRD PDFs (EN 16931); the model holds the document's terms (references, parties, delivery, payment, allowances and charges, totals, VAT breakdown, supporting documents with their attachments) and a line's references, period, allowances and charges, price and item with its attributes: 82 of the 86 invoices of KoSIT's test suite, read and written again, pass the official rules. Nothing is released.
+**Status:** built from its specs: reading CII, UBL and ZUGFeRD PDFs, validating with the official rules, writing CII and ZUGFeRD PDFs (EN 16931); the model holds the document's terms (references, parties, delivery, payment, allowances and charges, totals, VAT breakdown, supporting documents with their attachments) and a line's references, period, allowances and charges, price and item with its attributes: 82 of the 86 invoices of KoSIT's test suite, read and written again as XRechnung 3.0 with at most one preceding invoice, pass the official rules. Released on PyPI, an alpha: while Haflinger is at 0.x, a minor version may change the API ([changelog](https://github.com/Interlusion/haflinger/blob/main/CHANGELOG.md)), and the known limits below say what it doesn't do yet.
 
 ## What it is
 
@@ -14,6 +14,14 @@ E-invoicing in Python: ZUGFeRD, XRechnung and Peppol, on one model of the EN 169
 
 - Not a Peppol access point: Peppol goes through a certified provider.
 - Not affiliated with or endorsed by Frappe Technologies. ERPNext and Frappe are their trademarks.
+
+## Installation
+
+From PyPI, with the extra `pdf` for ZUGFeRD PDFs; Python 3.14, tested on Linux (later Python versions and macOS should work, but aren't tested):
+
+```sh
+uv add "haflinger[pdf]"    # or: pip install "haflinger[pdf]"
+```
 
 ## Example
 
@@ -51,6 +59,19 @@ pdf = Path("invoice.pdf").read_bytes()
 findings = validate(extract_xml(pdf))
 zugferd = embed(Path("rendered-pdfa.pdf").read_bytes(), xml)  # PDF/A in, PDF/A-3 out; EN 16931 only
 ```
+
+## Known limits
+
+What Haflinger doesn't do yet ([backlog](https://github.com/Interlusion/haflinger/blob/main/docs/backlog/backlog.md)):
+
+- **Writing** targets EN 16931 and XRechnung 3.0, as CII: not XRechnung's extension or CVD, the other Factur-X profiles, or UBL. `write_cii` refuses a model whose BT-24 names another profile before it writes, as it does 4 of KoSIT's 86 test invoices.
+- **One preceding invoice**: CII D16B holds one (BG-3), so `write_cii` refuses a model with more, as UBL invoices can carry, before it writes.
+- **ZUGFeRD PDFs**: `embed` writes the profile EN 16931 only, from a PDF that already is PDF/A; veraPDF checks its output where it is installed, not yet in CI.
+- **Peppol**: the Peppol BIS rules don't run; a Peppol invoice gets CEN's EN 16931 rules and a `HAFL-PROFILE` warning.
+- **The 2017 edition only**: the model holds the terms of EN 16931-1:2017, and reading, validation and writing refuse an invoice of another edition, such as 2026, naming it; extensions, such as XRechnung's, stay in the original invoice.
+- **Nesting**: Saxon, which runs the official rules, refuses a document nested deeper than 100 elements, which reading accepts.
+- **Platforms**: tested on Linux with Python 3.14; the official rules run in a worker process that needs a POSIX system, so not Windows, and `saxonche` has no wheel for musl (Alpine).
+- **Large outside input**: reading a hostile file near the default `max_size` takes a lot of memory; pass a smaller `max_size` for invoices from outside.
 
 ## Development
 
