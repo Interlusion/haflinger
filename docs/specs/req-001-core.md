@@ -3,8 +3,8 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Baselined |
-| **Version** | 0.22 |
-| **Date** | 2026-11-11 |
+| **Version** | 0.23 |
+| **Date** | 2026-11-12 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Intended Use
@@ -311,7 +311,7 @@ The docstring of `haflinger` SHALL name its entry points and `haflinger.pdf`'s. 
 
 **Related URS**: REQ-001-URS-NF004
 
-**Definition of Done**: the tests run in an environment without Frappe; a test asserts that no `frappe` or `erpnext` module is loaded after using the library.
+**Definition of Done**: a test makes stand-ins for `frappe` and `erpnext` importable, as they are in a bench, then imports every module of the library and uses it in a fresh interpreter, reading CII, UBL and a ZUGFeRD PDF, validating, writing and embedding, and asserts that the stand-ins are the ones that interpreter finds and that neither was imported, in it or in the rules' worker process, whose findings show it ran.
 
 #### REQ-001-PRS-NF003: Size limit
 
