@@ -59,3 +59,23 @@ def test_the_package_names_the_licences_of_what_it_ships() -> None:
     for reference in (term for term in named if term.startswith("LicenseRef-")):
         heading = rf"^.*\({re.escape(reference)}\)\n-+$"
         assert re.search(heading, notices, re.MULTILINE), reference
+
+
+def test_kosit_validator_runs_with_the_vendored_configuration() -> None:
+    """KoSIT's validator in CI runs with the whole ZIP of the configuration release Haflinger
+    vendors, checked against the same SHA-256 (REQ-002-PRS-F007, development guide)."""
+    readme = (ROOT / "src/haflinger/artefacts/kosit-validator-xrechnung/README.md").read_text(
+        encoding="utf-8"
+    )
+    release = re.search(r"^\| \*\*Release\*\* \| `([^`]+)`", readme, re.MULTILINE)
+    asset = re.search(r"release asset `([^`]+\.zip)`", readme)
+    digest = re.search(r"^\| \*\*SHA-256 of the ZIP\*\* \| `([0-9a-f]{64})`", readme, re.MULTILINE)
+    assert release, readme
+    assert asset, readme
+    assert digest, readme
+    url = (
+        "https://github.com/itplr-kosit/validator-configuration-xrechnung/releases/download/"
+        f"{release[1]}/{asset[1]}"
+    )
+    dockerfile = (ROOT / ".github/kosit-validator/Dockerfile").read_text(encoding="utf-8")
+    assert re.search(rf"^ADD --checksum=sha256:{digest[1]} {re.escape(url)} ", dockerfile, re.M)

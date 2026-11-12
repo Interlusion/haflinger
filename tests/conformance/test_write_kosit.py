@@ -42,15 +42,16 @@ EN16931 = "urn:cen.eu:en16931:2017"
 
 
 @cache
-def write(path: Path) -> tuple[Invoice, bytes, tuple[Finding, ...]]:
+def write(path: Path, profile: str = XRECHNUNG) -> tuple[Invoice, bytes, tuple[Finding, ...]]:
     """The file's model, the document written from it, and the findings of the refusal.
 
-    The model's BT-24 becomes XRechnung 3.0 where it names the extension or CVD, which aren't
-    target profiles (REQ-004-PRS-F002), and its preceding invoices (BG-3) the first where it
-    holds more than CII D16B can (REQ-004-PRS-F006)."""
+    The model's BT-24 becomes the target profile, XRechnung 3.0 unless another is given, as the
+    suite's files also name XRechnung's extension and CVD, which aren't target profiles
+    (REQ-004-PRS-F002); and its preceding invoices (BG-3) become the first where they are more
+    than CII D16B can hold (REQ-004-PRS-F006)."""
     invoice = with_one_preceding_invoice(read_invoice(path.read_bytes()).invoice)
-    if invoice.specification_id != XRECHNUNG:
-        invoice = replace(invoice, specification_id=XRECHNUNG)
+    if invoice.specification_id != profile:
+        invoice = replace(invoice, specification_id=profile)
     try:
         return invoice, write_cii(invoice), ()
     except InvoiceWriteError as error:
@@ -100,15 +101,7 @@ def test_every_listed_rule_still_fails() -> None:
 @pytest.mark.parametrize("path", FILES, ids=lambda path: path.name)
 def test_written_as_en16931_passes_both_schemas_and_reads_back(path: Path) -> None:
     """REQ-004-PRS-F004: the EN 16931 target also passes Factur-X's XML Schema."""
-    invoice = replace(
-        with_one_preceding_invoice(read_invoice(path.read_bytes()).invoice),
-        specification_id=EN16931,
-    )
-    try:
-        document, findings = write_cii(invoice), ()
-    except InvoiceWriteError as error:
-        document, findings = error.document, error.findings
-    assert document is not None
+    invoice, document, findings = write(path, EN16931)
     assert "HAFL-XSD" not in {finding.rule for finding in findings}
     assert read_invoice(document).invoice == invoice
     expected, read = _kosit.comparable(invoice, _kosit.read_invoice(document).invoice)
