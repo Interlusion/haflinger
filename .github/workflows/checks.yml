@@ -33,8 +33,11 @@ jobs:
       - name: Markdown links
         run: scripts/check-links.sh
       - run: uv run basedpyright
-      # The rules' worker process too, each process to a file of its own (ADR-010).
+      # The rules' worker process too, each process to a file of its own (ADR-010); veraPDF over
+      # the PDFs embed writes, from its image (REQ-004).
       - name: Tests with branch coverage
+        env:
+          HAFLINGER_VERAPDF: ${{ github.workspace }}/scripts/verapdf.sh
         run: |
           uv run coverage run -m pytest -q
           uv run coverage combine -q
@@ -105,7 +108,8 @@ jobs:
 
   # The tests on Linux on ARM, for the native wheels of saxonche and lxml, and on macOS (Apple
   # Silicon), where the rules' worker process, its pipes and fork handlers differ too (ADR-010).
-  # Not a required check until it has proven stable; bounded, as a hang would hold a runner.
+  # veraPDF on Linux only, as macOS runners have no Docker. Not a required check until it has
+  # proven stable; bounded, as a hang would hold a runner.
   platforms:
     timeout-minutes: 30
     strategy:
@@ -122,7 +126,10 @@ jobs:
         with:
           enable-cache: false
       - run: uv sync --locked --no-dev --group test # the group holds haflinger[pdf]
-      - run: uv run --no-sync pytest -q
+      - name: Tests
+        env:
+          HAFLINGER_VERAPDF: ${{ runner.os == 'Linux' && format('{0}/scripts/verapdf.sh', github.workspace) || '' }}
+        run: uv run --no-sync pytest -q
 
   # The tests with the versions of shared dependencies that Frappe/ERPNext v16 pin, so that
   # haflinger[pdf] stays installable into a bench (ADR-002).

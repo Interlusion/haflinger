@@ -21,9 +21,9 @@ updates:
     groups:
       python:
         update-types: [minor, patch]
-  # The images of CI's tools (actionlint, gitleaks, lychee), pinned by digest.
+  # The images of CI's tools (actionlint, gitleaks, lychee, veraPDF), pinned by digest.
   - package-ecosystem: docker
-    directories: [/.github/actionlint, /.github/gitleaks, /.github/lychee]
+    directories: [/.github/actionlint, /.github/gitleaks, /.github/lychee, /.github/verapdf]
     schedule:
       interval: weekly
     cooldown:
