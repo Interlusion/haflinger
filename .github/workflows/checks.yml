@@ -16,6 +16,7 @@ concurrency:
 
 jobs:
   checks:
+    timeout-minutes: 30
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -61,6 +62,7 @@ jobs:
   # A job of its own: a new advisory, or the advisory database out of reach, fails it alone,
   # not the checks above.
   audit:
+    timeout-minutes: 10
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -79,6 +81,7 @@ jobs:
   coverage-comment:
     needs: checks
     if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    timeout-minutes: 10
     runs-on: ubuntu-24.04
     permissions:
       pull-requests: write
@@ -95,6 +98,7 @@ jobs:
         run: gh pr comment "$PR" --edit-last --create-if-none --body-file "$RUNNER_TEMP/coverage/coverage.md"
 
   secrets:
+    timeout-minutes: 10
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -109,7 +113,7 @@ jobs:
   # The tests on Linux on ARM, for the native wheels of saxonche and lxml, and on macOS (Apple
   # Silicon), where the rules' worker process, its pipes and fork handlers differ too (ADR-010).
   # veraPDF on Linux only, as macOS runners have no Docker. Not a required check until it has
-  # proven stable; bounded, as a hang would hold a runner.
+  # proven stable.
   platforms:
     timeout-minutes: 30
     strategy:
@@ -134,6 +138,7 @@ jobs:
   # The tests with the versions of shared dependencies that Frappe/ERPNext v16 pin, so that
   # haflinger[pdf] stays installable into a bench (ADR-002).
   frappe-v16-pins:
+    timeout-minutes: 30
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -145,5 +150,5 @@ jobs:
           enable-cache: false
       # A real install, so that a version range clashing with the pins fails here.
       - run: uv venv --python 3.14 "$RUNNER_TEMP/bench"
-      - run: uv pip install --python "$RUNNER_TEMP/bench" ".[pdf]" "pypdf==6.19.0" "requests~=2.33.0" pytest
+      - run: uv pip install --python "$RUNNER_TEMP/bench" ".[pdf]" "pypdf==6.19.0" "requests~=2.33.0" pytest pytest-timeout
       - run: '"$RUNNER_TEMP/bench/bin/python" -m pytest'

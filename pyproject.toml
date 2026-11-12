@@ -42,6 +42,7 @@ pdf = [
 test = [
     "haflinger[pdf]",
     "pytest>=9.1.1",
+    "pytest-timeout>=2.4.0",
 ]
 dev = [
     { include-group = "test" },
@@ -81,7 +82,13 @@ include = ["src", "tests", "scripts"]
 
 [tool.pytest]
 testpaths = ["tests"]
-addopts = ["--strict-markers"]
+# The summary names what failed, as by default, and also what was skipped and why, so that a
+# check that didn't run shows.
+addopts = ["--strict-markers", "-rfEs"]
+# A test that hangs fails after 5 minutes, and the run goes on; the tests that use SIGALRM
+# themselves take a thread instead, which ends the run.
+required_plugins = ["pytest-timeout"]
+timeout = "300"
 
 [tool.coverage.run]
 branch = true
