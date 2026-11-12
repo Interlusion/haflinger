@@ -66,7 +66,7 @@ What Haflinger doesn't do yet ([backlog](https://github.com/Interlusion/haflinge
 
 - **Writing** targets EN 16931 and XRechnung 3.0, as CII: not XRechnung's extension or CVD, the other Factur-X profiles, or UBL. `write_cii` refuses a model whose BT-24 names another profile before it writes, as it does 4 of KoSIT's 86 test invoices.
 - **One preceding invoice**: CII D16B holds one (BG-3), so `write_cii` refuses a model with more, as UBL invoices can carry, before it writes.
-- **ZUGFeRD PDFs**: `embed` writes the profile EN 16931 only, from a PDF that already is PDF/A; veraPDF checks its output where it is installed, not yet in CI.
+- **ZUGFeRD PDFs**: `embed` writes the profile EN 16931 only, from a PDF that already is PDF/A.
 - **Peppol**: the Peppol BIS rules don't run; a Peppol invoice gets CEN's EN 16931 rules and a `HAFL-PROFILE` warning.
 - **The 2017 edition only**: the model holds the terms of EN 16931-1:2017, and reading, validation and writing refuse an invoice of another edition, such as 2026, naming it; extensions, such as XRechnung's, stay in the original invoice.
 - **Nesting**: Saxon, which runs the official rules, refuses a document nested deeper than 100 elements, which reading accepts.
