@@ -4,6 +4,10 @@ What changed in each release of Haflinger, for its callers. The format follows [
 
 ## [Unreleased]
 
+### Changed
+
+- Tested on Linux on ARM and on macOS on Apple Silicon too, besides Linux on x86; the package names macOS among its operating systems.
+
 ## [0.1.0] - 2026-11-11
 
 The first release, an alpha; the README lists its known limits.
