@@ -9,7 +9,7 @@ Decisions about Haflinger. The architecture they shape is in the [arc42 overview
 | [ADR-003](ADR-003-integrate-dont-implement.md) | Integrate, don't implement; receive everything, send one format | Accepted | 2026-11-01 |
 | [ADR-004](ADR-004-specs-by-direction.md) | Requirement specs by direction, with one core spec | Accepted | 2026-10-30 |
 | [ADR-005](ADR-005-own-mapping-kosit-as-check.md) | Our own mapping reads; KoSIT's reading stylesheet checks it | Accepted | 2026-11-01 |
-| [ADR-006](ADR-006-validation-with-official-rules.md) | Validation with the official rules, run unchanged with Saxon | Accepted | 2026-11-01 |
+| [ADR-006](ADR-006-validation-with-official-rules.md) | Validation with the official rules, run unchanged with Saxon | Accepted | 2026-11-12 |
 | [ADR-007](ADR-007-model-scope-and-editions.md) | A model that grows towards all of EN 16931, edition-aware from the start | Accepted | 2026-11-01 |
 | [ADR-008](ADR-008-vendoring-official-files.md) | Official artefacts and test files vendored, pinned and byte for byte | Accepted | 2026-11-01 |
 | [ADR-009](ADR-009-licences-and-name.md) | Apache-2.0, the licences of what is vendored, and a name without ERPNext or Frappe | Accepted | 2026-11-11 |

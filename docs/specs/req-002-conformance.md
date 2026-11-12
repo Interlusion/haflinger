@@ -3,8 +3,8 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Baselined |
-| **Version** | 0.8 |
-| **Date** | 2026-11-11 |
+| **Version** | 0.9 |
+| **Date** | 2026-11-12 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Intended Use
@@ -174,6 +174,7 @@ A value the rules find wrong is a finding, not a refusal, and so is a failure of
 - Every file of the KoSIT test suite is valid (no `fatal` or `error` finding).
 - Every expectation of CEN's per-rule unit tests, from the release of the EN 16931 rules in use, is met: each listed rule fails where the test expects an error and doesn't where it expects success.
 - Every sample of FeRD's ZUGFeRD package for the Factur-X profiles of REQ-002-PRS-F003 is valid. The samples aren't vendored, as no terms name them ([ITEM-002](../backlog/item-002-official-test-material.md)): the test reads the maintainer's copy of the package and is skipped where it isn't present.
+- KoSIT's validator, the official tool, run with the same release of KoSIT's configuration, gives the same verdict and the same findings for every file of the KoSIT test suite and every invoice written from it as each target profile (REQ-004-PRS-F006): each rule with its level after the configuration's levels (REQ-002-PRS-F005), `fatal` as `error`, which KoSIT's reports name it, and its location. It is Java, so it runs as an oracle in CI and where `HAFLINGER_KOSIT_VALIDATOR` names it, never at runtime; the test is skipped elsewhere.
 
 #### REQ-002-PRS-F008: Differences in the official files
 

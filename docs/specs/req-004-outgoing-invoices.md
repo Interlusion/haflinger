@@ -3,7 +3,7 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Baselined |
-| **Version** | 0.24 |
+| **Version** | 0.25 |
 | **Date** | 2026-11-12 |
 | **Author** | loxy (drafted with Claude) |
 
@@ -144,7 +144,7 @@ The personas are [REQ-001's](req-001-core.md#personas).
 
 **Related URS**: REQ-004-URS-F002 | **Rationale**: A recipient may check a ZUGFeRD PDF with FeRD's rules rather than CEN's; FeRD's rules of the profile also reject what the profile doesn't use, such as a line's VAT exemption reason.
 
-**Definition of Done**: in the round trip of REQ-004-PRS-F006, every `fatal` or `error` finding of a written KoSIT file is a rule that needs a business term the model doesn't hold yet, or that a code only the file's own profile allows fails, as the round trip writes XRechnung's extension and CVD as XRechnung 3.0; the test lists those rules in two lists, with the missing terms and with the codes, and a further test fails once a listed rule no longer fires on any file, so that the first list shrinks as the model grows; every invoice handed out passes FeRD's EN 16931 rules without `fatal` or `error`.
+**Definition of Done**: in the round trip of REQ-004-PRS-F006, every `fatal` or `error` finding of a written KoSIT file is a rule that needs a business term the model doesn't hold yet, or that a code only the file's own profile allows fails, as the round trip writes XRechnung's extension and CVD as XRechnung 3.0; the test lists those rules in two lists, with the missing terms and with the codes, and a further test fails once a listed rule no longer fires on any file, so that the first list shrinks as the model grows; every invoice handed out passes FeRD's EN 16931 rules without `fatal` or `error`; KoSIT's validator accepts every invoice handed out (REQ-002-PRS-F007).
 
 #### REQ-004-PRS-F006: Round trip over the KoSIT suite
 

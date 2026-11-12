@@ -8,6 +8,7 @@ What changed in each release of Haflinger, for its callers. The format follows [
 
 - Tested on Linux on ARM and on macOS on Apple Silicon too, besides Linux on x86; the package names macOS among its operating systems.
 - veraPDF, the reference PDF/A validator, checks in CI that the PDFs `haflinger.pdf.embed` writes are PDF/A-3.
+- KoSIT's validator, the official tool, checks in CI that it gives the same verdict and the same findings as `validate` over KoSIT's test suite and the invoices `write_cii` writes from it.
 
 ## [0.1.0] - 2026-11-11
 
