@@ -7,6 +7,7 @@ What changed in each release of Haflinger, for its callers. The format follows [
 ### Changed
 
 - Tested on Linux on ARM and on macOS on Apple Silicon too, besides Linux on x86; the package names macOS among its operating systems.
+- veraPDF, the reference PDF/A validator, checks in CI that the PDFs `haflinger.pdf.embed` writes are PDF/A-3.
 
 ## [0.1.0] - 2026-11-11
 

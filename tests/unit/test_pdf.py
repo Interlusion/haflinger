@@ -294,15 +294,29 @@ def verapdf() -> str | None:
     return os.environ.get("HAFLINGER_VERAPDF") or shutil.which("verapdf")
 
 
+def pdfa_3(pdf: bytes) -> tuple[int, str]:
+    """veraPDF's exit status and verdict on `pdf`, given on its standard input, as PDF/A-3b;
+    bounded, as in CI it may first download its image."""
+    command = [str(verapdf()), "--flavour", "3b", "--format", "text"]
+    result = subprocess.run(command, input=pdf, capture_output=True, check=False, timeout=600)  # noqa: S603
+    return result.returncode, (result.stdout + result.stderr).decode(errors="replace")
+
+
 @pytest.mark.skipif(verapdf() is None, reason="veraPDF isn't installed")
-def test_verapdf_finds_the_result_pdfa_3(tmp_path: Path) -> None:
+@pytest.mark.parametrize("incremental", [False, True], ids=["pdfa", "incrementally updated"])
+def test_verapdf_finds_the_result_pdfa_3(incremental: bool) -> None:
     """veraPDF, the reference PDF/A validator, as the oracle; it runs where it is installed (on
-    PATH, or named by HAFLINGER_VERAPDF)."""
-    path = tmp_path / "invoice.pdf"
-    path.write_bytes(embed(PDFA, XML))
-    command = [str(verapdf()), "--flavour", "3b", "--format", "text", str(path)]
-    output = subprocess.run(command, capture_output=True, text=True, check=False).stdout  # noqa: S603
-    assert output.startswith("PASS"), output
+    PATH, or named by HAFLINGER_VERAPDF), and in CI (`scripts/verapdf.sh`)."""
+    pdf = incrementally_updated(PDFA) if incremental else PDFA
+    status, output = pdfa_3(embed(pdf, XML))
+    assert (status, output.split()[:1]) == (0, ["PASS"]), output
+
+
+@pytest.mark.skipif(verapdf() is None, reason="veraPDF isn't installed")
+def test_verapdf_finds_the_pdfa_2_input_not_pdfa_3() -> None:
+    """The oracle tells the two apart, so its PASS above is veraPDF's verdict."""
+    status, output = pdfa_3(PDFA)
+    assert (status, output.split()[:1]) == (1, ["FAIL"]), output
 
 
 @pytest.mark.parametrize(
