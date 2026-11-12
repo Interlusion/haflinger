@@ -14,6 +14,7 @@ COPY --from=configuration /configuration /opt/kosit/configuration
 ADD --checksum=sha256:799e64befca97d4080e03608c80b85dd5a5ecc5f4ae4f35d1116ec2855b9a7c9 --chmod=644 https://github.com/itplr-kosit/validator/releases/download/v1.6.3/validator-1.6.3-standalone.jar /opt/kosit/validator.jar
 # Three fifths of the container's memory for the heap, where Java takes a quarter by default, the
 # rest for Java itself: the validator keeps every report until it ends, so it needs more with each
-# document, about 600 MB for the conformance tests' 258. `timeout` ends it before the tests
-# give up waiting, which would stop only the docker client.
+# document: in the conformance tests, about 600 MB for the call with 258 and 750 MB for the one
+# with 524. `timeout` ends it before the tests give up waiting, which would stop only the docker
+# client.
 ENTRYPOINT ["timeout", "220", "java", "-XX:MaxRAMPercentage=60", "-jar", "/opt/kosit/validator.jar", "-s", "/opt/kosit/configuration/scenarios.xml", "-r", "/opt/kosit/configuration"]
