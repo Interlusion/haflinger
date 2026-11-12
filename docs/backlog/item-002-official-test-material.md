@@ -24,7 +24,7 @@ Vendor the official material beyond KoSIT's test suite that the specs' Definitio
 
 **CEN's unit tests** are in VEFA `testSet` format: each `<test>` holds an `<assert>` with the rule IDs expected to succeed (`<success>`) or fail (`<error>`, `<warning>`), and an invoice fragment. A test is met when every expected failure fires and no expected success does. On 2026-10-30, with CEN's stylesheet of the tests' own commit (`b17b269`, rules 1.3.17), all 1,131 were met; the tests of tag `validation-1.3.16` against the 1.3.16 rules bundled in KoSIT's configuration, all 1,131 too; the 1.3.17 tests against the 1.3.16 rules, 1,066 (the misses all in BR-IG and BR-IP, changed in 1.3.17). The tests must therefore come from the release of the rules in use. The runner is now `tests/conformance/test_validate_official.py`: it serialises each fragment with ElementTree and validates it; fragments are constructed test input, so the original-bytes rule ([REQ-002-PRS-F006](../specs/req-002-conformance.md#req-002-prs-f006-the-document-as-received)) doesn't apply to them.
 
-**The ZUGFeRD corpus** is 152 MB; only a selection is vendored. Since 2026-10-31, Mustang's own PDFs are in `tests/data/zugferd-corpus/`; the corpus's copies of FeRD's and FNFE-MPE's samples wait for their terms (open question below). The selection planned:
+**The ZUGFeRD corpus** is 152 MB; only a selection is vendored. Since 2026-10-31, Mustang's own PDFs are in `tests/data/zugferd-corpus/`. Since 2026-11-12, broken invoices of other producers that KoSIT's validator has rules for are there too ([REQ-002-PRS-F007](../specs/req-002-conformance.md#req-002-prs-f007-official-verdicts-reproduced)), FeRD's and FNFE-MPE's among them: they name no licence of their own, the corpus has passed them on under Apache-2.0 since 2019, and the maintainer takes them on that licence. The corpus's other copies of FeRD's and FNFE-MPE's samples can follow on the same footing. The selection planned:
 
 - one valid file per supported Factur-X profile (MINIMUM, BASIC WL, BASIC, EN 16931, EXTENDED, as XML and as PDF);
 - one file per alternative spelling of BT-24 the corpus has (`urn:zugferd.de:2p0:minimum`, the ZUGFeRD 2.0 BASIC and EXTENDED identifiers, the colon spellings of BASIC and EXTENDED), for REQ-002-PRS-F003;
@@ -40,7 +40,7 @@ The KoSIT suite's CII and UBL pairs aren't independent (made with phax's convert
 
 ## Open Questions
 
-- The licences of Peppol's test files and FeRD's samples. Until FeRD's samples may be vendored, their tests read the maintainer's copy of the package (`HAFLINGER_FERD_PACKAGE`, [development guide](../guides/development.md#tests)).
+- The licences of Peppol's test files and of the samples of FeRD's package, which the corpus doesn't hold. Until those may be vendored, their tests read the maintainer's copy of the package (`HAFLINGER_FERD_PACKAGE`, [development guide](../guides/development.md#tests)).
 - FeRD's package is downloaded through a form (name, e-mail, consent to the rights of use): the maintainer downloads it; the provenance README records the version and the archive's SHA-256.
 - Does the selection of the corpus need its own README per subfolder, or one with a table of the chosen files?
 
