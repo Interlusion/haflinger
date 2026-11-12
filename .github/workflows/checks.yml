@@ -35,10 +35,12 @@ jobs:
         run: scripts/check-links.sh
       - run: uv run basedpyright
       # The rules' worker process too, each process to a file of its own (ADR-010); veraPDF over
-      # the PDFs embed writes, from its image (REQ-004).
+      # the PDFs embed writes (REQ-004) and KoSIT's validator over the KoSIT suite and the
+      # invoices written from it (REQ-002), from their images.
       - name: Tests with branch coverage
         env:
           HAFLINGER_VERAPDF: ${{ github.workspace }}/scripts/verapdf.sh
+          HAFLINGER_KOSIT_VALIDATOR: ${{ github.workspace }}/scripts/kosit-validator.sh
         run: |
           uv run coverage run -m pytest -q
           uv run coverage combine -q
@@ -112,8 +114,8 @@ jobs:
 
   # The tests on Linux on ARM, for the native wheels of saxonche and lxml, and on macOS (Apple
   # Silicon), where the rules' worker process, its pipes and fork handlers differ too (ADR-010).
-  # veraPDF on Linux only, as macOS runners have no Docker. Not a required check until it has
-  # proven stable.
+  # veraPDF and KoSIT's validator on Linux only, as macOS runners have no Docker. Not a required
+  # check until it has proven stable.
   platforms:
     timeout-minutes: 30
     strategy:
@@ -133,6 +135,7 @@ jobs:
       - name: Tests
         env:
           HAFLINGER_VERAPDF: ${{ runner.os == 'Linux' && format('{0}/scripts/verapdf.sh', github.workspace) || '' }}
+          HAFLINGER_KOSIT_VALIDATOR: ${{ runner.os == 'Linux' && format('{0}/scripts/kosit-validator.sh', github.workspace) || '' }}
         run: uv run --no-sync pytest -q
 
   # The tests with the versions of shared dependencies that Frappe/ERPNext v16 pin, so that

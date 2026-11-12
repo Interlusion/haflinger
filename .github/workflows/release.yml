@@ -84,10 +84,11 @@ jobs:
       - run: uv build
       # The tests against the wheel, installed with the locked versions of its dependencies, the
       # extra pdf's and pytest, each checked against its hash in uv.lock; veraPDF over the PDFs
-      # the packaged embed writes.
+      # the packaged embed writes, and KoSIT's validator over the packaged rules' findings.
       - name: Tests against the wheel
         env:
           HAFLINGER_VERAPDF: ${{ github.workspace }}/scripts/verapdf.sh
+          HAFLINGER_KOSIT_VALIDATOR: ${{ github.workspace }}/scripts/kosit-validator.sh
         run: |
           uv export --locked --only-group test --no-emit-project --output-file "$RUNNER_TEMP/test.txt"
           uv venv --python 3.14 "$RUNNER_TEMP/wheel"

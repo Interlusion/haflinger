@@ -3,7 +3,7 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Accepted |
-| **Date** | 2026-11-01 |
+| **Date** | 2026-11-12 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Context
@@ -39,7 +39,7 @@ Written invoices also need their XML Schema checked; the rules assume a schema-v
 
 ### Alternative 1: KoSIT's validator (Java) at runtime
 
-**Rejected because**: a JVM next to the host application. It remains a candidate for an oracle in CI.
+**Rejected because**: a JVM next to the host application. It runs as an oracle in CI instead: with the same release of KoSIT's configuration, it gives the same findings as Haflinger over KoSIT's test suite and the invoices written from it (REQ-002).
 
 ### Alternative 2: The rules reimplemented in Python
 
