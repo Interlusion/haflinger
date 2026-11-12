@@ -282,6 +282,7 @@ class _InterruptedError(Exception):
     pass
 
 
+@pytest.mark.timeout(method="thread")  # its own SIGALRM
 def test_a_call_ended_by_a_signal_leaves_no_reply_behind() -> None:
     """As an RQ job timeout does, with SIGALRM: the next call gets its own findings."""
     expected = validate(CII.read_bytes())
@@ -291,6 +292,7 @@ def test_a_call_ended_by_a_signal_leaves_no_reply_behind() -> None:
     assert validate(CII.read_bytes()) == expected
 
 
+@pytest.mark.timeout(method="thread")  # its own SIGALRM
 def test_a_slow_call_ended_by_a_signal_doesnt_hold_up_the_next() -> None:
     """Its rules would run about 4 s more; the next call doesn't wait for them."""
     expected = validate(CII.read_bytes())

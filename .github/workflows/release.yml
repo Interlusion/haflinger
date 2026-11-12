@@ -21,6 +21,7 @@ concurrency:
 
 jobs:
   build:
+    timeout-minutes: 30
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -111,6 +112,7 @@ jobs:
   publish:
     needs: build
     if: github.event_name == 'push'
+    timeout-minutes: 15
     runs-on: ubuntu-24.04
     environment:
       name: pypi
@@ -132,6 +134,7 @@ jobs:
   github-release:
     needs: publish
     if: github.event_name == 'push'
+    timeout-minutes: 10
     runs-on: ubuntu-24.04
     permissions:
       contents: write # the release

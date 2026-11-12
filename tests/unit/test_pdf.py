@@ -296,9 +296,9 @@ def verapdf() -> str | None:
 
 def pdfa_3(pdf: bytes) -> tuple[int, str]:
     """veraPDF's exit status and verdict on `pdf`, given on its standard input, as PDF/A-3b;
-    bounded, as in CI it may first download its image."""
+    within the tests' time limit, which leaves room for a first download of its image."""
     command = [str(verapdf()), "--flavour", "3b", "--format", "text"]
-    result = subprocess.run(command, input=pdf, capture_output=True, check=False, timeout=600)  # noqa: S603
+    result = subprocess.run(command, input=pdf, capture_output=True, check=False, timeout=240)  # noqa: S603
     return result.returncode, (result.stdout + result.stderr).decode(errors="replace")
 
 
