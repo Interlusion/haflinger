@@ -3,7 +3,7 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Accepted |
-| **Date** | 2026-11-11 |
+| **Date** | 2026-11-12 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Context
@@ -18,7 +18,7 @@ Haflinger also ships files it didn't write, each under its own licence:
 | CEN's EN 16931 rules (inside KoSIT's configuration) and unit tests | EUPL-1.2 |
 | UN/CEFACT's CII XML Schemas | © UN/CEFACT; may be copied and distributed unchanged with the notice |
 | OASIS's UBL 2.1 XML Schemas of invoice and credit note (inside KoSIT's configuration) | No licence named. The twelve UBL modules: © OASIS Open 2013, with OASIS's copyright notice, which allows copying and distributing them unchanged with the notice. Among their imports: the XML Signature schema © The Internet Society and W3C (2001), under the W3C Software License; UN/CEFACT's CCTS module © UN/CEFACT (2006), with a notice like OASIS's; two XAdES schemas, copies of ETSI's, without any notice; ETSI publishes the current edition of these namespaces' schemas (EN 319 132-1 V1.3.1, on its forge) under BSD-3-Clause, © 2024 ETSI, but these copies are of earlier versions, which differ |
-| ZUGFeRD corpus (the Mustang project's PDFs) | Apache-2.0 |
+| ZUGFeRD corpus (tests only): the Mustang project's PDFs, and broken invoices of FeRD and FNFE-MPE it passes on | Apache-2.0, the corpus's; FeRD's and FNFE-MPE's files name no licence of their own |
 | SchXslt (runtime, compiles FeRD's Schematron) | MIT |
 | The PDF/A file of veraPDF's test corpus (tests only) | CC BY 4.0 |
 | FeRD's Factur-X XML Schemas and Schematron | Apache-2.0, by FeRD's rights of use; its XSLT and samples are not named there |
@@ -32,6 +32,7 @@ Frappe's trademark policy doesn't allow "ERPNext" or "Frappe" in the name of a t
 - **The library is Apache-2.0**: permissive, with a patent grant, usable by the app and by other software.
 - **The ERPNext app is GPL-3.0**, in its own repository, because it imports ERPNext. Code from GPL projects such as ALYF's goes only into the app, with attribution.
 - **Vendored files keep their own licence**, stated in their provenance README with the licence file next to them ([ADR-008](ADR-008-vendoring-official-files.md)), and listed among the package's licence files. Copyleft material (EUPL-1.2) is shipped only as unchanged files, with where its source code is: CEN's rules are XSLT that KoSIT compiled from CEN's Schematron, the form EUPL-1.2 calls source code, and `THIRD-PARTY-NOTICES` names its repository and tag, as the licence's article 5 asks.
+- **Test files that name no licence of their own**, passed on by a collection under its licence, are taken on that licence: the ZUGFeRD corpus has passed on FeRD's and FNFE-MPE's invoices under Apache-2.0 since 2019, and their makers publish such samples for testing; they stay out of the package, which holds no tests. A test file whose identifiers may be real, such as VAT identifiers or an IBAN passing their check digits, isn't vendored, scrambled names or not.
 - **New runtime dependencies** need a licence that allows distributing them with an Apache-2.0 library; copyleft beyond unchanged files needs an ADR.
 - **The package says what it ships**: `THIRD-PARTY-NOTICES` lists the vendored files of the wheel with their terms, a `Licence` line of SPDX identifiers per directory, and holds the notices of UN/CEFACT and OASIS and W3C's licence, which have no licence file of their own; `pyproject.toml`'s licence expression is Apache-2.0 and those lines together. The licence files and `THIRD-PARTY-NOTICES` are among the package's licence files (PEP 639). It isn't named `NOTICE`, which Apache-2.0 section 4(d) would have every redistributor reproduce. The wheel holds only the runtime artefacts; the test files and veraPDF's PDF are in the repository only.
 - **ETSI's XAdES schemas**, which OASIS's UBL 2.1 schemas import, carry no notice, in ETSI's originals or in OASIS's copies, and no licence of them is known. They are shipped as OASIS's UBL 2.1 and KoSIT's configuration ship them, and `THIRD-PARTY-NOTICES` says so. ETSI publishes the current edition of these namespaces' schemas under BSD-3-Clause; whether that covers the earlier versions OASIS copied was asked of ETSI on 2026-11-11 ([backlog](../../backlog/backlog.md)). Without them, the UBL schemas still load, but the XML Schema check would no longer be KoSIT's.

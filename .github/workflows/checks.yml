@@ -35,8 +35,8 @@ jobs:
         run: scripts/check-links.sh
       - run: uv run basedpyright
       # The rules' worker process too, each process to a file of its own (ADR-010); veraPDF over
-      # the PDFs embed writes (REQ-004) and KoSIT's validator over the KoSIT suite and the
-      # invoices written from it (REQ-002), from their images.
+      # the PDFs embed writes (REQ-004) and KoSIT's validator in two calls, over the KoSIT suite
+      # and the invoices written from it, and over invoices that fail (REQ-002), from their images.
       - name: Tests with branch coverage
         env:
           HAFLINGER_VERAPDF: ${{ github.workspace }}/scripts/verapdf.sh

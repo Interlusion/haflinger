@@ -24,7 +24,7 @@ def report(directory: Path, tmp_path: Path) -> tuple[str, dict[str, dict[str, st
 
 def test_corpus_report_on_the_vendored_pdfs(tmp_path: Path) -> None:
     summary, rows = report(ROOT / "tests/data/zugferd-corpus", tmp_path)
-    assert "8 files" in summary
+    assert "16 files" in summary
     assert "crashes: 0" in summary
     fail = "ZUGFeRDv2/fail/Mustangproject/"
     assert rows[f"{fail}wrongFilename.pdf"]["extract"].startswith("refused: the PDF holds no")
@@ -83,7 +83,7 @@ def test_term_report_lists_a_term_by_the_files_that_carry_it() -> None:
 
 def test_term_report_counts_a_column_per_directory() -> None:
     output = script("term_report.py", ROOT / "tests/data/zugferd-corpus")
-    assert "zugferd-corpus: 8 files, " in output
+    assert "zugferd-corpus: 16 files, " in output
     header = next(line for line in output.splitlines() if line.startswith("| Term"))
     assert header.split("|")[-3:-1] == [" kosit-testsuite ", " zugferd-corpus "]
 

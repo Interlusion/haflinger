@@ -6,7 +6,14 @@ from pathlib import Path
 
 import pytest
 
-from haflinger import Identifier, InvoiceReadError, _kosit, read_invoice
+from haflinger import (
+    DirectDebit,
+    Identifier,
+    InvoiceReadError,
+    PaymentInstructions,
+    _kosit,
+    read_invoice,
+)
 from haflinger.pdf import extract_xml
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -29,7 +36,7 @@ FILES = [*sorted(SUITE.rglob("*.xml")), CREDIT_NOTE, *PDFS]
 
 
 def test_the_files_are_there() -> None:
-    assert len(FILES) == 87 + 4
+    assert len(FILES) == 87 + 12
 
 
 @pytest.mark.parametrize("path", FILES, ids=lambda path: path.name)
@@ -107,6 +114,42 @@ def test_kosit_still_gives_a_cii_vat_point_date_code_as_written() -> None:
     assert (ours.vat_point_date_code, theirs.vat_point_date_code) == ("3", "5")
     expected, read = _kosit.comparable(ours, theirs)
     assert read == expected
+
+
+def test_kosit_still_loses_a_cii_payment_reference_without_payment_means() -> None:
+    """Once a new release gives BT-83 without a `ram:SpecifiedTradeSettlementPaymentMeans`,
+    `_kosit.comparable` stops evening it out (ITEM-006)."""
+    pdf = CORPUS / "ZUGFeRDv2/fail/FNFE-factur-x-examples/Avoir_FR_type380_EN16931.pdf"
+    ours = read_invoice(pdf.read_bytes()).invoice
+    theirs = _kosit.read_invoice(extract_xml(pdf.read_bytes())).invoice
+    assert ours.payment_instructions is not None
+    assert ours.payment_instructions.remittance_information == "AV-2017-0005"
+    assert theirs.payment_instructions is None
+    expected, read = _kosit.comparable(ours, theirs)
+    assert read == expected
+
+
+def test_comparable_still_compares_payment_instructions_with_a_payment_means() -> None:
+    """Only CII payment instructions without a payment means, which KoSIT's stylesheet loses, are
+    evened out, a direct debit's mandate and creditor among them: those with a payment means
+    term, those KoSIT gives and UBL's are compared."""
+    pdf = CORPUS / "ZUGFeRDv2/fail/FNFE-factur-x-examples/Avoir_FR_type380_EN16931.pdf"
+    ours = read_invoice(pdf.read_bytes()).invoice
+    theirs = _kosit.read_invoice(extract_xml(pdf.read_bytes())).invoice
+    payment = ours.payment_instructions
+    assert payment is not None
+
+    def evened(instructions: PaymentInstructions, kosits: PaymentInstructions | None) -> bool:
+        mine = replace(ours, payment_instructions=instructions)
+        return _kosit.comparable(mine, replace(theirs, payment_instructions=kosits))[0] != mine
+
+    mandate = DirectDebit(mandate_reference="M-1", creditor_id="C-1")
+    assert evened(replace(payment, direct_debit=mandate), None)
+    assert not evened(replace(payment, means_code="58"), None)
+    assert not evened(replace(payment, direct_debit=replace(mandate, debited_account_id="A")), None)
+    assert not evened(payment, PaymentInstructions(remittance_information="other"))
+    ubl = replace(ours, syntax="ubl")
+    assert _kosit.comparable(ubl, replace(theirs, syntax="ubl"))[0] == ubl
 
 
 def test_kosit_reads_a_cii_vat_point_date_code_repeated_in_each_vat_entry_once() -> None:
