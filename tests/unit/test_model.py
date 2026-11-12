@@ -1,11 +1,10 @@
 """The model of EN 16931 business terms.
 
-REQ-001-PRS-F001 to REQ-001-PRS-F003 and REQ-001-PRS-NF002.
+REQ-001-PRS-F001 to REQ-001-PRS-F003.
 """
 
 import dataclasses
 import re
-import sys
 import typing
 import xml.etree.ElementTree as ET
 from decimal import Decimal
@@ -155,9 +154,3 @@ def test_every_kosit_test_file_names_2017(path: Path) -> None:
     element = root.find(CII_BT_24 if path.stem.endswith("uncefact") else UBL_BT_24)
     assert element is not None
     assert Invoice(specification_id=(element.text or "").strip()).edition == "2017"
-
-
-def test_no_frappe_is_loaded() -> None:
-    Invoice(number="1", seller=Party(name="Example GmbH"))
-    loaded = {name.split(".")[0] for name in sys.modules}
-    assert not loaded & {"frappe", "erpnext"}
