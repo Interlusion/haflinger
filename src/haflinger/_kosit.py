@@ -4,12 +4,13 @@
 KoSIT's stylesheets turn a CII invoice, a UBL invoice or a UBL credit note into one semantic XML
 in which every element carries its business term ID (`xr:id="BT-1"`). This module reads the
 model from that XML by business term ID alone, apart from the root elements that pick the
-stylesheet and six limits of KoSIT's stylesheet: the UBL notes' subject codes, a CII
-invoiced or line object identifier's scheme and a CII VAT point date code, which `comparable`
-evens out between the two models; a CII account given in two forms and BT-17's and BT-18's
-additional documents given as supporting documents too, for which `_account` and
-`_supporting_documents` read the source path KoSIT's stylesheet records; and a CII VAT point
-date code given once for each VAT entry, which `_tax_point_code` reads once.
+stylesheet and seven limits of KoSIT's stylesheet: the UBL notes' subject codes, a CII
+invoiced or line object identifier's scheme, a CII VAT point date code and a CII invoice's
+payment instructions without payment means, which `comparable` evens out between the two
+models; a CII account given in two forms and BT-17's and BT-18's additional documents given as
+supporting documents too, for which `_account` and `_supporting_documents` read the source path
+KoSIT's stylesheet records; and a CII VAT point date code given once for each VAT entry, which
+`_tax_point_code` reads once.
 """
 
 import re
@@ -136,7 +137,11 @@ def _with_subject_codes(invoice: Invoice) -> Invoice:
 def comparable(ours: Invoice, theirs: Invoice) -> tuple[Invoice, Invoice]:
     """Haflinger's model and KoSIT's of one invoice, with the limits of KoSIT's stylesheet that
     the models show evened out: the UBL notes' subject codes, read as BT-21 in `theirs`; a CII
-    VAT point date code (BT-8), read as EN 16931's in `theirs`; and the scheme of a CII invoiced
+    VAT point date code (BT-8), read as EN 16931's in `theirs`; payment instructions (BG-16)
+    without a payment means, left out of `ours` where `theirs` holds none, as KoSIT's CII
+    stylesheet gives BG-16, with its remittance information (BT-83) and direct debit (BG-19),
+    only within a `ram:SpecifiedTradeSettlementPaymentMeans` (ITEM-006); and the scheme of a CII
+    invoiced
     object identifier (BT-18-1) and of a line object identifier
     (BT-128-1), left out of `ours` where `theirs` holds the identifier without one. KoSIT's CII
     stylesheet gives `ram:ReferenceTypeCode` as the scheme only where the `ram:IssuerAssignedID`
@@ -157,7 +162,25 @@ def comparable(ours: Invoice, theirs: Invoice) -> tuple[Invoice, Invoice]:
     code = theirs.vat_point_date_code
     if code is not None:
         theirs = replace(theirs, vat_point_date_code=_EN_TAX_POINT_CODES.get(code, code))
-    return replace(ours, invoiced_object_id=invoiced_object, lines=lines), theirs
+    payment = ours.payment_instructions
+    if theirs.payment_instructions is None and payment is not None and _no_means(payment):
+        payment = None
+    return replace(
+        ours, invoiced_object_id=invoiced_object, lines=lines, payment_instructions=payment
+    ), theirs
+
+
+def _no_means(payment: PaymentInstructions) -> bool:
+    """Whether none of the terms that a CII `ram:SpecifiedTradeSettlementPaymentMeans` gives is
+    there: BT-81, BT-82, BG-17, BG-18 and BT-91."""
+    debit = payment.direct_debit
+    return (
+        payment.means_code is None
+        and payment.means_text is None
+        and payment.credit_transfers == ()
+        and payment.card is None
+        and (debit is None or debit.debited_account_id is None)
+    )
 
 
 def _without_lost_scheme(ours: Identifier | None, theirs: Identifier | None) -> Identifier | None:
