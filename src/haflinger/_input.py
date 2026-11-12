@@ -48,12 +48,12 @@ def open_invoice(data: bytes, max_size: int, *, pdf: str) -> Opened:
     root = parse(data)
     match root.tag:
         case _cii.TAG:
-            reading = Reading(root, _cii.NAMESPACES, f"rsm:{_cii.ROOT}")
+            reading = Reading(root, _cii.NAMESPACES)
             document: Document = "cii"
             specification = _cii.specification(reading.root)
         case _ubl.INVOICE_TAG | _ubl.CREDIT_NOTE_TAG:
             name = local_name(root.tag)
-            reading = Reading(root, _ubl.NAMESPACES, name)
+            reading = Reading(root, _ubl.NAMESPACES)
             document = "ubl-credit-note" if name == "CreditNote" else "ubl-invoice"
             specification = _ubl.specification(reading.root)
         case _:

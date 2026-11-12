@@ -817,8 +817,17 @@ def write(invoice: Invoice) -> bytes:
         _put_text(included, "ram:SubjectCode", note.subject_code, "BT-21")
 
     transaction = SubElement(root, "rsm:SupplyChainTradeTransaction")
-    for line in _group(invoice.lines, InvoiceLine, "BG-25"):
-        _write_line(SubElement(transaction, "ram:IncludedSupplyChainTradeLineItem"), line)
+    for position, line in enumerate(_group(invoice.lines, InvoiceLine, "BG-25"), start=1):
+        try:
+            _write_line(SubElement(transaction, "ram:IncludedSupplyChainTradeLineItem"), line)
+        except InvoiceWriteError as error:
+            # REQ-001-PRS-F005: the line too, so that a caller with many needn't search them.
+            named = "without BT-126" if line.id is None else f"BT-126 {quoted(line.id)}"
+            raise InvoiceWriteError(
+                f"invoice line {position} ({named}): {error}",
+                findings=error.findings,
+                document=error.document,
+            ) from error
     agreement = SubElement(transaction, "ram:ApplicableHeaderTradeAgreement")
     _put_text(agreement, "ram:BuyerReference", invoice.buyer_reference, "BT-10")
     _write_party(agreement, "ram:SellerTradeParty", invoice.seller, SELLER)
@@ -1465,13 +1474,14 @@ def _group[T](values: object, kind: type[T], group: str, holds: str | None = Non
     if not isinstance(values, tuple):
         raise InvoiceWriteError(f"{group} is not a tuple of {kind.__name__}: {quoted(values)}")
     items: list[T] = []
-    for value in cast(tuple[object, ...], values):
+    for entry, value in enumerate(cast(tuple[object, ...], values), start=1):
         if not isinstance(value, kind):
             raise InvoiceWriteError(
-                f"{group} holds something other than {kind.__name__}: {quoted(value)}"
+                f"{group} holds something other than {kind.__name__} as its entry {entry}:"
+                f" {quoted(value)}"
             )
         if holds is not None and value == kind():
-            raise InvoiceWriteError(f"{group} holds {holds} without any term")
+            raise InvoiceWriteError(f"{group} holds {holds} without any term as its entry {entry}")
         items.append(value)
     return items
 
