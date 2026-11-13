@@ -3,7 +3,7 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Accepted |
-| **Date** | 2026-11-01 |
+| **Date** | 2026-11-13 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Context
@@ -35,6 +35,7 @@ The writer spike showed what the second reader is worth: a mistake made the same
 
 - **Haflinger's own mapping is the reader.** `read_invoice` reads CII and UBL into the model through Haflinger's bindings, at every size, with no Saxon in the reading path.
 - **KoSIT's stylesheet is the independent check.** In the tests, every official test file that is a whole invoice Haflinger reads, and every written invoice, is read by both; the two models must be equal. CEN's unit tests are fragments, not whole invoices, and files `read_invoice` refuses have no model to compare (REQ-003-PRS-F005). A difference is a defect in Haflinger, or a limit of KoSIT's stylesheet recorded in the test with its reason.
+- **phax's converter is a further check, in CI.** `en16931-cii2ubl` turns CII into UBL by a mapping of its own. Its UBL copies of the invoices written from the KoSIT suite and of the corpus's CII invoices must read to the same model as the CII invoice, except for the converter's limits, recorded in the test with their reason, and known limits of Haflinger's, recorded with their backlog item (REQ-003-PRS-F009). It checks Haflinger's UBL reading on invoices the suite doesn't hold, and the parsing of values the converter writes anew, such as dates; not the suite's own CII files, whose UBL counterparts KoSIT made with the same converter. It runs from an image, without network.
 - **KoSIT's coverage guides the mapping.** For a business term the model gains, KoSIT's semantic XML shows its element in both syntaxes, and its test files exercise it.
 - The stylesheets stay vendored unchanged ([ADR-008](ADR-008-vendoring-official-files.md)), for the tests now and for rendering invoices for people later.
 
@@ -52,7 +53,7 @@ The model read from KoSIT's semantic XML, all its terms without mapping work of 
 
 ### Alternative 3: A Java library (phax, Mustang) as the reader
 
-**Rejected because**: a JVM at runtime ([ADR-003](ADR-003-integrate-dont-implement.md), alternative 3). Both remain candidates for further oracles in CI.
+**Rejected because**: a JVM at runtime ([ADR-003](ADR-003-integrate-dont-implement.md), alternative 3). phax's converter checks the reading in CI instead (Decision); Mustang remains a candidate for a further check there.
 
 ## Consequences
 
@@ -67,6 +68,8 @@ The model read from KoSIT's semantic XML, all its terms without mapping work of 
 - Haflinger maintains its bindings: up to about 200 business terms and groups, in two syntaxes, in two editions.
 - The check covers only what KoSIT's stylesheet covers: the 2017 edition, XRechnung's view of CII and UBL.
 - A term KoSIT's stylesheet doesn't know has no second reader; its tests rely on the official files and the rules.
+- KoSIT's reader shares Haflinger's parsing of values (`_xml.Node`); phax's converter checks it only where it writes a value anew.
+- phax's converter is a jar outside Dependabot's view: its version and SHA-256 are updated by hand, and its limits recorded as they change.
 
 ## Reconsideration Triggers
 
@@ -77,10 +80,12 @@ The model read from KoSIT's semantic XML, all its terms without mapping work of 
 ## Compliance
 
 - Every official test file that is a whole invoice `read_invoice` reads SHALL be read by Haflinger's mapping and by KoSIT's stylesheet in the tests, and the models SHALL be equal, except for differences recorded with their reason.
-- KoSIT's stylesheet SHALL NOT be on the runtime reading path.
+- The UBL copy phax's converter makes of every invoice written from the KoSIT suite, and of the CII invoice of every corpus PDF that `read_invoice` reads and that passes the XML Schema, SHALL read to the same model as the CII invoice in CI, except for limits recorded with their reason.
+- Neither KoSIT's stylesheet nor phax's converter SHALL be on the runtime reading path.
 
 ## References
 
 - Affects: arc42 [§4](../README.md#4-solution-strategy), [§5](../README.md#5-building-block-view), [§10](../README.md#10-quality-requirements)
 - [ADR-003](ADR-003-integrate-dont-implement.md), [ADR-007](ADR-007-model-scope-and-editions.md)
 - [itplr-kosit/xrechnung-visualization](https://github.com/itplr-kosit/xrechnung-visualization)
+- [phax/en16931-cii2ubl](https://github.com/phax/en16931-cii2ubl)
