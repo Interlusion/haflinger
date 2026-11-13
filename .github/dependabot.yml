@@ -21,11 +21,18 @@ updates:
     groups:
       python:
         update-types: [minor, patch]
-  # The images of CI's tools (actionlint, gitleaks, lychee, veraPDF, KoSIT's validator), pinned by
-  # digest.
+  # The images of CI's tools (actionlint, gitleaks, lychee, veraPDF, KoSIT's validator, phax's
+  # converter), pinned by digest.
   - package-ecosystem: docker
     directories:
-      [/.github/actionlint, /.github/gitleaks, /.github/kosit-validator, /.github/lychee, /.github/verapdf]
+      [
+        /.github/actionlint,
+        /.github/cii2ubl,
+        /.github/gitleaks,
+        /.github/kosit-validator,
+        /.github/lychee,
+        /.github/verapdf,
+      ]
     schedule:
       interval: weekly
     cooldown:

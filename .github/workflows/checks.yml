@@ -35,12 +35,14 @@ jobs:
         run: scripts/check-links.sh
       - run: uv run basedpyright
       # The rules' worker process too, each process to a file of its own (ADR-010); veraPDF over
-      # the PDFs embed writes (REQ-004) and KoSIT's validator in two calls, over the KoSIT suite
-      # and the invoices written from it, and over invoices that fail (REQ-002), from their images.
+      # the PDFs embed writes (REQ-004), KoSIT's validator in two calls, over the KoSIT suite and
+      # the invoices written from it, and over invoices that fail (REQ-002), and phax's converter
+      # over those written invoices and the corpus's (REQ-003), from their images.
       - name: Tests with branch coverage
         env:
           HAFLINGER_VERAPDF: ${{ github.workspace }}/scripts/verapdf.sh
           HAFLINGER_KOSIT_VALIDATOR: ${{ github.workspace }}/scripts/kosit-validator.sh
+          HAFLINGER_CII2UBL: ${{ github.workspace }}/scripts/cii2ubl.sh
         run: |
           uv run coverage run -m pytest -q
           uv run coverage combine -q
@@ -114,8 +116,8 @@ jobs:
 
   # The tests on Linux on ARM, for the native wheels of saxonche and lxml, and on macOS (Apple
   # Silicon), where the rules' worker process, its pipes and fork handlers differ too (ADR-010).
-  # veraPDF and KoSIT's validator on Linux only, as macOS runners have no Docker. Not a required
-  # check until it has proven stable.
+  # veraPDF, KoSIT's validator and phax's converter on Linux only, as macOS runners have no
+  # Docker. Not a required check until it has proven stable.
   platforms:
     timeout-minutes: 30
     strategy:
@@ -136,6 +138,7 @@ jobs:
         env:
           HAFLINGER_VERAPDF: ${{ runner.os == 'Linux' && format('{0}/scripts/verapdf.sh', github.workspace) || '' }}
           HAFLINGER_KOSIT_VALIDATOR: ${{ runner.os == 'Linux' && format('{0}/scripts/kosit-validator.sh', github.workspace) || '' }}
+          HAFLINGER_CII2UBL: ${{ runner.os == 'Linux' && format('{0}/scripts/cii2ubl.sh', github.workspace) || '' }}
         run: uv run --no-sync pytest -q
 
   # The tests with the versions of shared dependencies that Frappe/ERPNext v16 pin, so that
