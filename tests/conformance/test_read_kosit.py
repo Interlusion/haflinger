@@ -200,15 +200,20 @@ def term(value: Any, path: str) -> Any:
     return value
 
 
+def zero_as_absent(invoice: Invoice) -> Invoice:
+    """`invoice` with each optional sum of ZERO_OR_ABSENT that is zero left out."""
+    if invoice.totals is None:
+        return invoice
+    zeros = {name: None for name in ZERO_OR_ABSENT if getattr(invoice.totals, name) == 0}
+    return replace(invoice, totals=replace(invoice.totals, **zeros))
+
+
 def comparable(invoice: Invoice, case: str) -> Invoice:
     for path in KNOWN_DIFFERENCES.get(case, {}):
         invoice = without(invoice, path)
     for path in ORDER_DIFFERENCES.get(case, {}):
         invoice = changed(invoice, path, in_any_order)
-    if invoice.totals is not None:
-        zeros = {name: None for name in ZERO_OR_ABSENT if getattr(invoice.totals, name) == 0}
-        invoice = replace(invoice, totals=replace(invoice.totals, **zeros))
-    return invoice
+    return zero_as_absent(invoice)
 
 
 def read(path: Path) -> Invoice:

@@ -243,7 +243,7 @@ Releases go to PyPI from a tag, built and tested in CI and uploaded through Trus
 
 - **Editions, profiles, versions:** BT-24 tells which EN 16931 edition, which profile and which version an invoice follows; reading and validation choose by it ([ADR-006](adr/ADR-006-validation-with-official-rules.md), [ADR-007](adr/ADR-007-model-scope-and-editions.md)).
 
-- **Testing:** unit tests per block; conformance tests over the official suites: CII and UBL agree, our reader and KoSIT's agree, written invoices read back unchanged and pass the XML Schema and the rules. Details per scenario in §10.
+- **Testing:** unit tests per block; conformance tests over the official suites: CII and UBL agree, our reader and KoSIT's agree, the UBL copy phax's converter makes of a written or a corpus invoice reads as the CII invoice, written invoices read back unchanged and pass the XML Schema and the rules. Details per scenario in §10.
 
 ## 9. Architecture decisions
 
@@ -257,7 +257,7 @@ The quality goals of section 1, made testable. The requirement column names the 
 
 | ID | Scenario | Response and measure | Requirement |
 | :- | :- | :- | :- |
-| QS-01 | The same invoice arrives in CII and in UBL | The same model, for every business case of the KoSIT suite; differences in the official files listed with their reason | [REQ-003-PRS-F004](../specs/req-003-incoming-invoices.md#req-003-prs-f004-cii-and-ubl-agree) |
+| QS-01 | The same invoice arrives in CII and in UBL | The same model, for every business case of the KoSIT suite, and for the invoices written from it and the corpus's CII invoices with their UBL copies by phax's converter; differences in the official files and the converter's limits listed with their reason | [REQ-003-PRS-F004](../specs/req-003-incoming-invoices.md#req-003-prs-f004-cii-and-ubl-agree), [REQ-003-PRS-F009](../specs/req-003-incoming-invoices.md#req-003-prs-f009-a-converted-copy-reads-the-same) |
 | QS-02 | An amount has more decimal places than its currency | Read and written back unchanged | [REQ-001-PRS-F004](../specs/req-001-core.md#req-001-prs-f004-exact-values) |
 | QS-03 | Haflinger writes an invoice read from an official file | Our reader and KoSIT's both read it back to the same model; valid against the XML Schemas; measured: 86 of 86 KoSIT files with both readers, the CII D16B XML Schema and Factur-X's EN 16931 XML Schema | [REQ-004-PRS-F006](../specs/req-004-outgoing-invoices.md#req-004-prs-f006-round-trip-over-the-kosit-suite) |
 | QS-04 | An invoice total is off by one cent | Validation reports `BR-CO-15` and `BR-CO-16` as fatal | [REQ-002-PRS-F002](../specs/req-002-conformance.md#req-002-prs-f002-findings) |

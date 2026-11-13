@@ -3,8 +3,8 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Baselined |
-| **Version** | 0.21 |
-| **Date** | 2026-11-12 |
+| **Version** | 0.22 |
+| **Date** | 2026-11-13 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Intended Use
@@ -190,6 +190,14 @@ The findings are those of [REQ-002-PRS-F010](req-002-conformance.md#req-002-prs-
 
 **Definition of Done**: a KoSIT file with BT-112 changed by one cent reads with that value and no findings, and `validate` reports `BR-CO-15` for it (test).
 
+#### REQ-003-PRS-F009: A converted copy reads the same
+
+**Description**: For every invoice the round trip writes from the KoSIT suite ([REQ-004-PRS-F006](req-004-outgoing-invoices.md#req-004-prs-f006-round-trip-over-the-kosit-suite)), and the CII invoice of every PDF of the ZUGFeRD corpus selection that `read_invoice` reads and that passes the CII D16B XML Schema, the UBL copy that phax's converter `en16931-cii2ubl` makes SHALL read to the same model as the CII invoice, except for the syntax, an optional sum one gives as zero and the other leaves out (as in REQ-003-PRS-F004), the converter's limits, and a limit of Haflinger's own that the backlog holds. Amounts are compared by value, as the converter writes them without trailing zeros (`1500.00` as `1500`); their digits as written are REQ-001-PRS-F004's, which Haflinger's own tests check. The converter maps CII to UBL by a mapping of its own, so this checks Haflinger's UBL reading against its CII reading on invoices the suite doesn't hold; it checks the parsing of a value only where the converter writes it anew, such as a CII date `20180413` as `2018-04-13`. The suite's own CII files aren't part of this: KoSIT made their UBL counterparts with the same converter, so REQ-003-PRS-F004 already compares them. The converter refuses CII that fails the XML Schema, and it is Java: it runs in CI, never at runtime ([ADR-005](../arc42/adr/ADR-005-own-mapping-kosit-as-check.md)).
+
+**Related URS**: REQ-003-URS-F003, REQ-003-URS-NF001
+
+**Definition of Done**: one test per invoice, skipped where the converter isn't named; each limit of the converter (for example, a price discount of zero it writes where CII gives none, and amounts without trailing zeros) is recorded with its reason, each limit of Haflinger's with its backlog item, and a test fails once the converter or Haflinger stops showing it.
+
 ## PRS — Non-Functional
 
 #### REQ-003-PRS-NF001: Embedded files within the limit
@@ -218,7 +226,7 @@ The findings are those of [REQ-002-PRS-F010](req-002-conformance.md#req-002-prs-
 
 ## Acceptance Criteria
 
-- Every KoSIT test file reads in both syntaxes to equal models, and KoSIT's stylesheet agrees for every term both cover.
+- Every KoSIT test file reads in both syntaxes to equal models, and KoSIT's stylesheet agrees for every term both cover; the UBL copy phax's converter makes of a written or a corpus invoice reads as the CII invoice.
 - ZUGFeRD PDFs read through their embedded XML, which is handed out byte for byte.
 - Incomplete invoices read with what they hold; the rules report the rest.
 - Every value of a term the model holds that reading leaves out or can't read is reported with a `HAFL-DROPPED` or `HAFL-VALUE` finding.
