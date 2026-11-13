@@ -2,14 +2,15 @@
 
 import re
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
-from xml.etree.ElementTree import tostring
+from xml.etree.ElementTree import Element, tostring
 
 import defusedxml.ElementTree
 import pytest
+from lxml import etree
 
 from haflinger import (
     Finding,
@@ -23,7 +24,7 @@ from haflinger import (
     read_invoice,
     validate,
 )
-from haflinger._xsd import check_cii
+from haflinger._xsd import Locations, check_cii
 from haflinger.pdf import extract_xml
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -37,6 +38,7 @@ EN16931 = "urn:cen.eu:en16931:2017"
 XRECHNUNG = f"{EN16931}#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0"
 EXTENSION = f"{XRECHNUNG}#conformant#urn:xeinkauf.de:kosit:extension:xrechnung_3.0"
 CVD = f"{XRECHNUNG}#compliant#urn:xeinkauf.de:kosit:xrechnung:cvd_0.9"
+# Prefixed, as `xpath` spells them in the form findings give.
 CII_BT_24 = "/rsm:CrossIndustryInvoice/rsm:ExchangedDocumentContext/ram:GuidelineSpecifiedDocumentContextParameter/ram:ID"  # noqa: E501
 
 # The edits, in each syntax of KoSIT case 01.01a.
@@ -408,7 +410,7 @@ def test_each_rule_set_is_kosits_scenario_for_its_document_and_bt_24() -> None:
             with_specification_id(
                 UBL, f"{EN16931}#compliant#urn:fdc:peppol.eu:2017:poacc:billing:3.0"
             ),
-            "/Invoice/cbc:CustomizationID",
+            "/ubl:Invoice/cbc:CustomizationID",
             "BT-24 'urn:cen.eu:en16931:2017#compliant#urn:fdc:peppol.eu:2017:poacc:billing:3.0'"
             " names no profile Haflinger has rules for in a UBL invoice",
         ),
@@ -422,13 +424,13 @@ def test_each_rule_set_is_kosits_scenario_for_its_document_and_bt_24() -> None:
         ),
         (
             with_specification_id(UBL, f"{EN16931}#compliant#urn:factur-x.eu:1p0:basic"),
-            "/Invoice/cbc:CustomizationID",
+            "/ubl:Invoice/cbc:CustomizationID",
             "BT-24 'urn:cen.eu:en16931:2017#compliant#urn:factur-x.eu:1p0:basic' names no"
             " profile Haflinger has rules for in a UBL invoice",
         ),
         (
             edited(CREDIT_NOTE, (f">{EN16931}<", f">{EXTENSION}<")),
-            "/CreditNote/cbc:CustomizationID",
+            "/cn:CreditNote/cbc:CustomizationID",
             f"BT-24 '{EXTENSION}' names no profile Haflinger has rules for in a UBL credit note",
         ),
         (
@@ -438,7 +440,7 @@ def test_each_rule_set_is_kosits_scenario_for_its_document_and_bt_24() -> None:
         ),
         (
             edited(UBL, NO_SPECIFICATION_ID[UBL]),
-            "/Invoice",
+            "/ubl:Invoice",
             "BT-24 is missing, so a UBL invoice names no profile",
         ),
     ],
@@ -452,18 +454,144 @@ def test_each_rule_set_is_kosits_scenario_for_its_document_and_bt_24() -> None:
     ],
 )
 def test_other_profiles_get_cens_rules_and_hafl_profile(
-    data: bytes, location: str, text: str
+    data: bytes, location: str, text: str, xpath: Callable[[str], str]
 ) -> None:
     findings = validate(data)
     assert profile_findings(findings) == [
         Finding(
             rule="HAFL-PROFILE",
             flag="warning",
-            location=location,
+            location=xpath(location),
             text=f"{text}; checked with CEN's EN 16931 rules only, not the profile's own rules",
         )
     ]
     assert xrechnung_rules(findings) == set()
+
+
+# REQ-002-PRS-F002: each location selects its element, with no prefixes declared; the location
+# prefixed, as `xpath` spells it.
+LOCATED = {
+    "cii-rule": (
+        edited(CII, WRONG_TOTAL[CII]),
+        "BR-CO-16",
+        "/rsm:CrossIndustryInvoice/rsm:SupplyChainTradeTransaction"
+        "/ram:ApplicableHeaderTradeSettlement/ram:SpecifiedTradeSettlementHeaderMonetarySummation",
+    ),
+    "ubl-rule": (
+        edited(UBL, WRONG_TOTAL[UBL]),
+        "BR-CO-16",
+        "/ubl:Invoice/cac:LegalMonetaryTotal",
+    ),
+    "cii-profile": (
+        with_specification_id(CII, f"{EN16931}#compliant#urn:fdc:peppol.eu:2017:poacc:billing:3.0"),
+        "HAFL-PROFILE",
+        CII_BT_24,
+    ),
+    "ubl-profile": (
+        with_specification_id(UBL, f"{EN16931}#compliant#urn:fdc:peppol.eu:2017:poacc:billing:3.0"),
+        "HAFL-PROFILE",
+        "/ubl:Invoice/cbc:CustomizationID",
+    ),
+    "ubl-no-profile": (edited(UBL, NO_SPECIFICATION_ID[UBL]), "HAFL-PROFILE", "/ubl:Invoice"),
+    "cii-schema": (
+        edited(CII, ("<ram:IssueDateTime>", "<ram:Unknown/><ram:IssueDateTime>")),
+        "HAFL-XSD",
+        "/rsm:CrossIndustryInvoice/rsm:ExchangedDocument/ram:Unknown",
+    ),
+    "ubl-schema": (
+        edited(UBL, ("<cbc:IssueDate>", "<cbc:Unknown/><cbc:IssueDate>")),
+        "HAFL-XSD",
+        "/ubl:Invoice/cbc:Unknown",
+    ),
+    # Its root's namespace is the default one, for which libxml2's path gives `*[n]`.
+    "credit-note-schema": (
+        edited(CREDIT_NOTE, ("<cbc:IssueDate>", "<Unknown/><Unknown/><cbc:IssueDate>")),
+        "HAFL-XSD",
+        "/cn:CreditNote/cn:Unknown",
+    ),
+    "cii-hafl-rules": (
+        edited(
+            CII,
+            (
+                "<ram:LineTotalAmount>314.86</ram:LineTotalAmount>",
+                "<ram:LineTotalAmount>314.86</ram:LineTotalAmount>" * 2,
+            ),
+        ),
+        "HAFL-RULES",
+        "/rsm:CrossIndustryInvoice",
+    ),
+    "ubl-reading": (
+        edited(
+            UBL,
+            (
+                "<cbc:ID>Porto + Versandkosten</cbc:ID>",
+                "<cbc:ID>Porto + Versandkosten</cbc:ID>"
+                "<cbc:Note>a</cbc:Note><cbc:Note>b</cbc:Note>",
+            ),
+        ),
+        "HAFL-DROPPED",
+        "/ubl:Invoice/cac:InvoiceLine[2]/cbc:Note[2]",
+    ),
+}
+
+
+@pytest.mark.parametrize("case", list(LOCATED), ids=list(LOCATED))
+def test_every_location_selects_its_element(
+    case: str, selects: Callable[[bytes, str], Element], xpath: Callable[[str], str]
+) -> None:
+    data, rule, location = LOCATED[case]
+    findings = [*validate(data), *read_invoice(data).findings]
+    for finding in findings:
+        selects(data, finding.location)
+    assert xpath(location) in {finding.location for finding in findings if finding.rule == rule}
+
+
+def test_a_path_that_names_no_element_has_no_location(xpath: Callable[[str], str]) -> None:
+    """The XML Schema check's finding then gives the line (REQ-002-PRS-F010)."""
+    locations = Locations(etree.fromstring(CII.read_bytes()))
+    assert locations.of("/rsm:CrossIndustryInvoice") == xpath("/rsm:CrossIndustryInvoice")
+    for path in (None, "", "rsm:CrossIndustryInvoice", "/rsm:Other", "/rsm:CrossIndustryInvoice/x"):
+        assert locations.of(path) is None, path
+
+
+LONG = "n" * 120  # a name longer than libxml2's paths keep, with its prefix
+
+
+@pytest.mark.parametrize(
+    ("name", "tag"),
+    [(LONG, f"{{urn:example}}{LONG}"), ("n" * 95 + "é" * 5, None)],
+    ids=["long-name", "cut-within-a-character"],
+)
+def test_the_schema_check_locates_a_long_name_libxml2_cuts(
+    name: str, tag: str | None, selects: Callable[[bytes, str], Element]
+) -> None:
+    """libxml2's path cuts a prefixed name to 98 bytes: the location is still the element's,
+    or, where the cut splits a character, the line (REQ-002-PRS-F010)."""
+    data = edited(
+        CII, ("<ram:IssueDateTime>", f'<x:{name} xmlns:x="urn:example"/><ram:IssueDateTime>')
+    )
+    (finding,) = [finding for finding in validate(data) if finding.rule == "HAFL-XSD"]
+    if tag is None:
+        assert re.fullmatch("line [0-9]+", finding.location), finding.location
+    else:
+        assert selects(data, finding.location).tag == tag
+
+
+def test_a_path_two_cut_names_share_has_no_location() -> None:
+    """Two siblings whose names libxml2 cuts to the same text share its path, which names
+    neither."""
+    data = edited(
+        CII,
+        (
+            "<ram:IssueDateTime>",
+            f'<x:{LONG}a xmlns:x="urn:example"/><x:{LONG}b xmlns:x="urn:example"/>'
+            "<ram:IssueDateTime>",
+        ),
+    )
+    locations = Locations(etree.fromstring(data))
+    cut = f"x:{LONG}"[:98]
+    assert locations.of(f"/rsm:CrossIndustryInvoice/rsm:ExchangedDocument/{cut}") is None
+    assert locations.of("/rsm:CrossIndustryInvoice/rsm:ExchangedDocument/ram:ID") is not None
 
 
 # REQ-002-PRS-F005
@@ -743,12 +871,14 @@ def test_validates_input_as_large_as_max_size() -> None:
     ids=["cii-bt-106-twice", "ubl-two-legal-entities"],
 )
 def test_rules_that_fail_on_a_schema_valid_invoice_are_hafl_rules(
-    path: Path, edit: tuple[str, str]
+    path: Path, edit: tuple[str, str], xpath: Callable[[str], str]
 ) -> None:
     """REQ-002-PRS-F010: as KoSIT's processing error, a fatal finding, not a refusal."""
     findings = validate(edited(path, edit))
     assert [(f.rule, f.flag) for f in findings] == [("HAFL-RULES", "fatal")]
-    assert findings[0].location == ("/rsm:CrossIndustryInvoice" if path == CII else "/Invoice")
+    assert findings[0].location == xpath(
+        "/rsm:CrossIndustryInvoice" if path == CII else "/ubl:Invoice"
+    )
     assert "EN16931 XRechnung" in findings[0].text
 
 

@@ -3,7 +3,7 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Baselined |
-| **Version** | 0.23 |
+| **Version** | 0.24 |
 | **Date** | 2026-11-12 |
 | **Author** | loxy (drafted with Claude) |
 
@@ -276,11 +276,11 @@ General vocabulary (CIUS, Leitweg-ID, Peppol …): the [E-Invoicing 101 glossary
 
 #### REQ-001-PRS-F005: Refusals and findings name their subject
 
-**Description**: A refusal's reason SHALL name the business term or group (`BT-n`, `BG-n`) it concerns, where there is one; a finding SHALL carry the ID of its rule.
+**Description**: A refusal's reason SHALL name the business term or group (`BT-n`, `BG-n`) it concerns, where there is one, and for a term or group within an invoice line (BG-25) also the line: its position among the lines and its identifier (BT-126), where it has one. A finding SHALL carry the ID of its rule, and a location that selects its element with no prefixes declared ([REQ-002-PRS-F002](req-002-conformance.md#req-002-prs-f002-findings)).
 
 **Related URS**: REQ-001-URS-NF002
 
-**Definition of Done**: a test reads an invoice with a malformed BT-9 and finds `BT-9` in the finding's text (REQ-003); a test writes a model with a float in BT-112 and finds `BT-112` in the refusal's reason (REQ-004); the findings tests of REQ-002 check the rule IDs.
+**Definition of Done**: a test reads an invoice with a malformed BT-9 and finds `BT-9` in the finding's text (REQ-003); a test writes a model with a float in BT-112 and finds `BT-112` in the refusal's reason, and one whose second line has BT-130 without BT-129 finds `BT-130`, the line's position and its BT-126 there, or the position alone for a line without BT-126 (REQ-004); the findings tests of REQ-002 check the rule IDs.
 
 #### REQ-001-PRS-F006: The public interface
 

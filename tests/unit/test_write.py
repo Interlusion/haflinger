@@ -50,6 +50,13 @@ assert INVOICE.seller is not None
 assert INVOICE.buyer is not None
 TOTALS, SELLER, BUYER, LINE = INVOICE.totals, INVOICE.seller, INVOICE.buyer, INVOICE.lines[0]
 PDF_ATTACHMENT = Attachment(content=b"%PDF-1.7\n", mime_code="application/pdf", filename="a-1.pdf")
+FIRST_LINE = f"invoice line 1 (BT-126 {LINE.id!r}): "
+
+
+def assert_names_the_line(invoice: Any, refusal: InvoiceWriteError) -> None:
+    """A refusal for a term within the first line names that line first (REQ-001-PRS-F005)."""
+    within = isinstance(invoice, Invoice) and invoice.lines[:1] != (LINE,)
+    assert str(refusal).startswith(FIRST_LINE) == within, refusal
 
 
 def written(invoice: Any) -> bytes:
@@ -234,6 +241,10 @@ def test_refuses_an_invalid_invoice_after_writing() -> None:
             "BT-49 is not an Identifier",
         ),
         ("<Invoice/>", "the invoice is not an Invoice"),
+        (
+            replace(INVOICE, lines=(LINE, "line 2")),
+            "BG-25 holds something other than InvoiceLine as its entry 2: 'line 2'",
+        ),
     ],
     ids=[
         "float",
@@ -274,12 +285,31 @@ def test_refuses_an_invalid_invoice_after_writing() -> None:
         "list-identifiers",
         "str-electronic-address",
         "not-an-invoice",
+        "str-line",
     ],
 )
 def test_refuses_before_writing(invoice: Any, reason: str) -> None:
     with pytest.raises(InvoiceWriteError, match=re.escape(reason)) as refusal:
         write_cii(invoice)
+    assert_names_the_line(invoice, refusal.value)
     assert refusal.value.findings == ()
+    assert refusal.value.document is None
+
+
+@pytest.mark.parametrize(
+    ("line_id", "named"),
+    [("L-2", "invoice line 2 (BT-126 'L-2')"), (None, "invoice line 2 (without BT-126)")],
+    ids=["with-bt-126", "without-bt-126"],
+)
+def test_a_refusal_within_a_line_names_the_line(line_id: str | None, named: str) -> None:
+    """REQ-001-PRS-F005: its position among the lines and its BT-126, so that a caller with many
+    lines needn't search them all."""
+    second = replace(INVOICE.lines[1], id=line_id, quantity=None)
+    with pytest.raises(InvoiceWriteError) as refusal:
+        write_cii(replace(INVOICE, lines=(INVOICE.lines[0], second)))
+    assert str(refusal.value) == (
+        f"{named}: BT-130 needs the invoiced quantity (BT-129), which is missing"
+    )
     assert refusal.value.document is None
 
 
@@ -509,6 +539,7 @@ def test_xrechnung_isnt_checked_against_factur_xs_schema(monkeypatch: pytest.Mon
 def test_refuses_what_cant_be_written_sensibly(invoice: Any, reason: str) -> None:
     with pytest.raises(InvoiceWriteError, match=re.escape(reason)) as refusal:
         write_cii(invoice)
+    assert_names_the_line(invoice, refusal.value)
     assert refusal.value.document is None
 
 
@@ -815,6 +846,7 @@ def test_refuses_what_cant_be_written_sensibly(invoice: Any, reason: str) -> Non
 def test_refuses_parties_that_cant_be_written(invoice: Any, reason: str) -> None:
     with pytest.raises(InvoiceWriteError, match=re.escape(reason)) as refusal:
         write_cii(invoice)
+    assert_names_the_line(invoice, refusal.value)
     assert refusal.value.document is None
 
 

@@ -23,6 +23,8 @@ MAX_SIZE = 100 * 1024 * 1024  # REQ-001-PRS-NF003
 # The lexical form of xs:decimal: REQ-001's term Value as written.
 _DECIMAL = re.compile(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)")
 XML_WHITESPACE = " \t\r\n"
+# A step of a reader's path that is a prefixed name alone.
+_NAME = re.compile(r"[\w.-]+:[\w.-]+")
 # A value a finding or a reason quotes, of at most about 200 characters: the start and the end of
 # a longer one, so that a file name, a text or a model holding a file stays readable.
 _QUOTED = reprlib.Repr(maxstring=200, maxother=200)
@@ -151,18 +153,36 @@ def local_name(tag: str) -> str:
     return tag.rpartition("}")[2]
 
 
+def step(tag: str, position: int) -> str:
+    """A location's step for an element of `tag`, ElementTree's `{namespace}name`: XPath 3.0's
+    `Q{namespace}name[position]`, which selects it with no prefixes declared (REQ-002-PRS-F002)."""
+    return f"/Q{tag if tag.startswith('{') else '{}' + tag}[{position}]"
+
+
 class Reading:
     """The state of reading one document: its prefixes and the findings so far."""
 
-    def __init__(self, root: Element, namespaces: dict[str, str], root_name: str) -> None:
-        self.root = Node(self, root, f"/{root_name}")
+    def __init__(self, root: Element, namespaces: dict[str, str]) -> None:
+        self.root = Node(self, root)
         self.namespaces = namespaces
         self._findings: list[tuple[Element, Finding]] = []
+        # By parent's `id`: each child's position among its children of its name, by its `id`.
+        self._positions: dict[int, dict[int, int]] = {}
 
     def report(self, node: Node, rule: str, flag: Flag, text: str) -> None:
         self._findings.append(
             (node.element, Finding(rule=rule, flag=flag, location=node.path, text=text))
         )
+
+    def position(self, parent: Element, child: Element) -> int:
+        """`child`'s position among `parent`'s children of its name."""
+        positions = self._positions.get(id(parent))
+        if positions is None:
+            counts: dict[str, int] = {}
+            positions = self._positions[id(parent)] = {}
+            for each in parent:
+                counts[each.tag] = positions[id(each)] = counts.get(each.tag, 0) + 1
+        return positions[id(child)]
 
     def findings(self) -> tuple[Finding, ...]:
         """The findings in document order."""
@@ -176,28 +196,50 @@ class Reading:
 class Node:
     """An element with its location, read by the paths of its syntax."""
 
-    def __init__(self, reading: Reading, element: Element, path: str) -> None:
+    def __init__(
+        self, reading: Reading, element: Element, above: Node | None = None, position: int = 1
+    ) -> None:
         self.reading = reading
         self.element = element
-        self.path = path
+        self._above = above
+        self._position = position
+        self._path: str | None = None
+
+    @property
+    def path(self) -> str:
+        """The element's location, of a `step` for each element from the root, built only when
+        a finding needs it."""
+        if self._path is None:
+            above = "" if self._above is None else self._above.path
+            self._path = above + step(self.element.tag, self._position)
+        return self._path
 
     def find(self, path: str) -> Node | None:
         nodes = self.findall(path)
         return nodes[0] if nodes else None
 
     def findall(self, path: str) -> list[Node]:
-        """The elements at `path`, in document order. A location indexes each step at which a
-        parent has more than one match, so that it is an XPath to that element."""
-        found = [(self.element, self.path)]
-        for step in path.split("/"):
-            following: list[tuple[Element, str]] = []
-            for parent, location in found:
-                children = parent.findall(step, self.reading.namespaces)
-                for index, child in enumerate(children, start=1):
-                    suffix = f"[{index}]" if len(children) > 1 else ""
-                    following.append((child, f"{location}/{step}{suffix}"))
-            found = following
-        return [Node(self.reading, element, location) for element, location in found]
+        """The elements at `path`, in document order, each with its location. Each step selects
+        children: the matches of a name are its children of that name, in order; those of another
+        step, as the second reader's `xr:*[@xr:id='BT-1']`, are counted among their parent's
+        children of their name."""
+        reading = self.reading
+        found: list[Node] = [self]
+        for part in path.split("/"):
+            named = _NAME.fullmatch(part) is not None
+            found = [
+                Node(
+                    reading,
+                    child,
+                    parent,
+                    index if named else reading.position(parent.element, child),
+                )
+                for parent in found
+                for index, child in enumerate(
+                    parent.element.findall(part, reading.namespaces), start=1
+                )
+            ]
+        return found
 
     def holds_value(self, *paths: str) -> bool:
         """Whether the element or one below it holds text; with `paths`, one at any of them."""

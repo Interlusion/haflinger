@@ -6,9 +6,15 @@ What changed in each release of Haflinger, for its callers. The format follows [
 
 ### Changed
 
+- A finding's `location` is written as the official rules write theirs, an XPath whose every step is `Q{namespace}name[position]`, for Haflinger's own findings and the XML Schema check's too: it selects its element with no prefixes declared. Before, those gave paths with prefixes that nothing declared, and a UBL root without one. Where the XML Schema check names no element, or one that can't be told from its siblings, its finding still gives the line, `line n`.
+- A refusal of `write_cii` for a term within an invoice line names the line: its position and its identifier (BT-126). A refusal for an entry of a group names its position among them.
 - Tested on Linux on ARM and on macOS on Apple Silicon too, besides Linux on x86; the package names macOS among its operating systems.
 - veraPDF, the reference PDF/A validator, checks in CI that the PDFs `haflinger.pdf.embed` writes are PDF/A-3.
 - KoSIT's validator, the official tool, checks in CI that it gives the same verdict and the same findings as `validate` over KoSIT's test suite and the invoices `write_cii` writes from it.
+
+### Fixed
+
+- `validate` no longer raises `UnicodeDecodeError` for an invoice with an element whose prefixed name is longer than 98 bytes and holds characters outside ASCII; the XML Schema check's finding gives its line.
 
 ## [0.1.0] - 2026-11-11
 

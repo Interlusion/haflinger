@@ -3,7 +3,7 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Baselined |
-| **Version** | 0.10 |
+| **Version** | 0.11 |
 | **Date** | 2026-11-12 |
 | **Author** | loxy (drafted with Claude) |
 
@@ -114,11 +114,11 @@ A value the rules find wrong is a finding, not a refusal, and so is a failure of
 
 #### REQ-002-PRS-F002: Findings
 
-**Description**: A `Finding` SHALL carry `rule` (the rule's ID, e.g. `BR-CO-15`; empty where the rule set gives none, as FeRD's reports of elements a profile doesn't use), `flag` (`fatal`, `error`, `warning` or `information`; `error` where the rule set gives none or another), `location` (where in the invoice) and `text` (the rule's text); `haflinger.Flag` SHALL be the type of `flag`. An invoice SHALL count as valid when no finding has the flag `fatal` or `error`, and `haflinger.is_valid(findings: Iterable[Finding]) -> bool` SHALL apply this rule to the findings of `validate`. It judges the rules that ran: a `HAFL-PROFILE` warning (REQ-002-PRS-F004) says the profile's own rules didn't, and the invoice counts as valid against CEN's EN 16931 rules alone. Reading's findings are no verdict (REQ-003-PRS-F008), and an `InvoiceWriteError` is a refusal whatever findings it holds (REQ-004-PRS-F001).
+**Description**: A `Finding` SHALL carry `rule` (the rule's ID, e.g. `BR-CO-15`; empty where the rule set gives none, as FeRD's reports of elements a profile doesn't use), `flag` (`fatal`, `error`, `warning` or `information`; `error` where the rule set gives none or another), `location` (where in the invoice: an XPath from the document's root that selects the element, each step written as XPath 3.0's `Q{namespace}name[position]`, as the official rules give it, so that it needs no prefixes declared; `line n` where the XML Schema check names no element, or one Haflinger can't tell from its siblings) and `text` (the rule's text); `haflinger.Flag` SHALL be the type of `flag`. An invoice SHALL count as valid when no finding has the flag `fatal` or `error`, and `haflinger.is_valid(findings: Iterable[Finding]) -> bool` SHALL apply this rule to the findings of `validate`. It judges the rules that ran: a `HAFL-PROFILE` warning (REQ-002-PRS-F004) says the profile's own rules didn't, and the invoice counts as valid against CEN's EN 16931 rules alone. Reading's findings are no verdict (REQ-003-PRS-F008), and an `InvoiceWriteError` is a refusal whatever findings it holds (REQ-004-PRS-F001).
 
 **Related URS**: REQ-002-URS-F003 | **Rationale**: Each caller would otherwise write the rule again ([ADR-012](../arc42/adr/ADR-012-public-api.md)).
 
-**Definition of Done**: a test changes BT-112 of KoSIT case 01.01a by one cent and gets findings `BR-CO-15` and `BR-CO-16` with flag `fatal`, a location and the rules' texts, which `is_valid` calls invalid; `is_valid` calls findings valid that hold only warnings and information, or none, and invalid that hold one `fatal` or `error`, given as a tuple, a list or a generator (tests).
+**Definition of Done**: a test changes BT-112 of KoSIT case 01.01a by one cent and gets findings `BR-CO-15` and `BR-CO-16` with flag `fatal`, a location and the rules' texts, which `is_valid` calls invalid; in a CII and a UBL invoice, the location of a rule's finding and of each of Haflinger's own (REQ-002-PRS-F010) selects the element it names, and only that one; `is_valid` calls findings valid that hold only warnings and information, or none, and invalid that hold one `fatal` or `error`, given as a tuple, a list or a generator (tests).
 
 #### REQ-002-PRS-F003: Rule sets
 
@@ -200,7 +200,7 @@ A value the rules find wrong is a finding, not a refusal, and so is a failure of
 | Rule | Flag | Reported by | When | Location and text |
 | :- | :- | :- | :- | :- |
 | `HAFL-PROFILE` | `warning` | `validate` | BT-24 names no profile for the invoice's syntax, or is missing (REQ-002-PRS-F004) | BT-24's element, or the root; the text names the BT-24 value and says that the profile's own rules weren't run |
-| `HAFL-XSD` | `fatal` | `validate`, `write_cii`, `haflinger.pdf.embed` | the document violates an XML Schema it must pass, or can't be parsed for the check (REQ-002-PRS-F011, REQ-004-PRS-F004) | as the schema check reports it, a text of more than 500 characters shortened to its start and its end; the text names the schema |
+| `HAFL-XSD` | `fatal` | `validate`, `write_cii`, `haflinger.pdf.embed` | the document violates an XML Schema it must pass, or can't be parsed for the check (REQ-002-PRS-F011, REQ-004-PRS-F004) | the element the schema check names, or the line where it names none or one Haflinger can't tell from its siblings; a text of more than 500 characters shortened to its start and its end; the text names the schema |
 | `HAFL-RULES` | `fatal` | `validate`, `write_cii`, `haflinger.pdf.embed` | the official rules fail on an invoice that passed the XML Schema, as when a value a stylesheet expects once occurs twice; KoSIT's validator reports this as a processing error and rejects the invoice (REQ-002-PRS-F001) | the root element; the text names the rule set and the processor's message |
 | `HAFL-VALUE` | `error` | `read_invoice` | a value isn't written as its business term requires, and is read as missing (REQ-003-PRS-F002) | the element; the text names the business term and the value |
 | `HAFL-DROPPED` | `warning` | `read_invoice` | a value the model has no place for: a repeat of a term the model holds once, a VAT total in a third currency (REQ-003-PRS-F002) | the element left out; the text names the business term |
@@ -215,7 +215,7 @@ A value the rules find wrong is a finding, not a refusal, and so is a failure of
 
 **Related URS**: REQ-002-URS-F001 | **Rationale**: The rules assume a schema-valid document: on one that isn't, a stylesheet can fail (an amount written `1,00`) or miss what the schema would report (an unknown element, a date that doesn't exist).
 
-**Definition of Done**: a CII and a UBL file of the KoSIT suite with an unknown element, and one with an amount written `1,00`, each get `HAFL-XSD` findings and no finding of a rule; a Factur-X copy that violates its profile's schema gets `HAFL-XSD`; a copy of a KoSIT file declaring an encoding that Python knows and libxml2 doesn't (`mac-roman`) gets no `HAFL-XSD`; a copy nested 50,000 elements deep gets `HAFL-XSD`, not a crash; a copy with an attached document of 400,000 characters the schema refuses gets a `HAFL-XSD` finding under 1,000 characters (tests).
+**Definition of Done**: a CII and a UBL file of the KoSIT suite with an unknown element, and one with an amount written `1,00`, each get `HAFL-XSD` findings and no finding of a rule; a Factur-X copy that violates its profile's schema gets `HAFL-XSD`; a copy of a KoSIT file declaring an encoding that Python knows and libxml2 doesn't (`mac-roman`) gets no `HAFL-XSD`; a copy nested 50,000 elements deep gets `HAFL-XSD`, not a crash; a copy with an unknown element whose prefixed name is longer than the 98 bytes libxml2's paths keep gets a `HAFL-XSD` finding located at it, or at its line where the cut splits a character, not a crash; a copy with an attached document of 400,000 characters the schema refuses gets a `HAFL-XSD` finding under 1,000 characters (tests).
 
 ## PRS — Non-Functional
 

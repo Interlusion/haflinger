@@ -11,6 +11,7 @@ from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
+from xml.etree.ElementTree import Element
 
 import pytest
 
@@ -123,9 +124,12 @@ def test_cii_vat_total_without_currency_is_bt_110() -> None:
     assert result.findings == ()
 
 
-def test_cii_vat_total_in_a_third_currency_is_dropped() -> None:
+def test_cii_vat_total_in_a_third_currency_is_dropped(
+    selects: Callable[[bytes, str], Element],
+) -> None:
     usd = b'<ram:TaxTotalAmount currencyID="USD">25.00</ram:TaxTotalAmount>'
-    result = read_invoice(edit(CII, TAX_TOTAL, TAX_TOTAL + usd))
+    data = edit(CII, TAX_TOTAL, TAX_TOTAL + usd)
+    result = read_invoice(data)
     assert result.invoice.totals is not None
     assert result.invoice.totals.vat_total == Decimal("22.04")
     assert result.invoice.totals.vat_total_in_tax_currency is None
@@ -133,7 +137,7 @@ def test_cii_vat_total_in_a_third_currency_is_dropped() -> None:
     assert (finding.rule, finding.flag) == ("HAFL-DROPPED", "warning")
     assert "BT-110" in finding.text
     assert "USD" in finding.text
-    assert finding.location.endswith("ram:TaxTotalAmount[2]")
+    assert selects(data, finding.location).get("currencyID") == "USD"
 
 
 def test_ubl_vat_total_in_a_third_currency_is_dropped() -> None:
@@ -190,7 +194,9 @@ def test_an_element_holding_only_whitespace_is_missing() -> None:
     assert result.findings == ()
 
 
-def test_a_number_in_exponent_notation_is_missing_with_a_finding() -> None:
+def test_a_number_in_exponent_notation_is_missing_with_a_finding(
+    selects: Callable[[bytes, str], Element],
+) -> None:
     data = edit(CII, GRAND_TOTAL, b"<ram:GrandTotalAmount>1E+2</ram:GrandTotalAmount>")
     result = read_invoice(data)
     assert result.invoice.totals is not None
@@ -199,7 +205,7 @@ def test_a_number_in_exponent_notation_is_missing_with_a_finding() -> None:
     assert (finding.rule, finding.flag) == ("HAFL-VALUE", "error")
     assert "BT-112" in finding.text
     assert "1E+2" in finding.text
-    assert finding.location.endswith("ram:GrandTotalAmount")
+    assert selects(data, finding.location).text == "1E+2"
 
 
 def test_a_cii_date_in_iso_form_is_missing_with_a_finding() -> None:
@@ -501,7 +507,9 @@ def test_a_group_is_read_from_the_first_element_holding_a_value() -> None:
         assert result.findings == ()
 
 
-def test_a_second_group_holding_values_is_dropped_with_a_finding() -> None:
+def test_a_second_group_holding_values_is_dropped_with_a_finding(
+    xpath: Callable[[str], str],
+) -> None:
     second = b"<ram:SellerTradeParty><ram:Name>Example GmbH</ram:Name></ram:SellerTradeParty>"
     data = edit(CII, b"<ram:BuyerTradeParty>", second + b"<ram:BuyerTradeParty>")
     data = edit(
@@ -516,8 +524,8 @@ def test_a_second_group_holding_values_is_dropped_with_a_finding() -> None:
     assert result.invoice.totals is not None
     assert result.invoice.totals.total_with_vat == Decimal(1)
     assert [(f.rule, f.text.split()[0], f.location.rsplit("/", 1)[1]) for f in result.findings] == [
-        ("HAFL-DROPPED", "BG-4", "ram:SellerTradeParty[2]"),
-        ("HAFL-DROPPED", "BG-22", "ram:SpecifiedTradeSettlementHeaderMonetarySummation[2]"),
+        ("HAFL-DROPPED", "BG-4", xpath("ram:SellerTradeParty[2]")),
+        ("HAFL-DROPPED", "BG-22", xpath("ram:SpecifiedTradeSettlementHeaderMonetarySummation[2]")),
     ]
 
 
@@ -531,7 +539,9 @@ def test_ubl_breakdown_without_a_vat_total() -> None:
     assert result.findings == ()
 
 
-def test_ubl_breakdown_of_another_tax_total_is_dropped_with_a_finding() -> None:
+def test_ubl_breakdown_of_another_tax_total_is_dropped_with_a_finding(
+    xpath: Callable[[str], str],
+) -> None:
     other = (
         b'<cac:TaxTotal><cbc:TaxAmount currencyID="GBP">1</cbc:TaxAmount><cac:TaxSubtotal>'
         b'<cbc:TaxableAmount currencyID="GBP">1</cbc:TaxableAmount>'
@@ -542,12 +552,14 @@ def test_ubl_breakdown_of_another_tax_total_is_dropped_with_a_finding() -> None:
     result = read_invoice(edit(UBL, b"</cac:TaxTotal>", b"</cac:TaxTotal>" + other))
     assert len(result.invoice.vat_breakdown) == 1
     assert [(f.rule, f.text.split()[0], f.location.rsplit("/", 1)[1]) for f in result.findings] == [
-        ("HAFL-DROPPED", "BT-110", "cbc:TaxAmount"),
-        ("HAFL-DROPPED", "BG-23", "cac:TaxSubtotal"),
+        ("HAFL-DROPPED", "BT-110", xpath("cbc:TaxAmount")),
+        ("HAFL-DROPPED", "BG-23", xpath("cac:TaxSubtotal")),
     ]
 
 
-def test_a_location_indexes_the_step_that_repeats() -> None:
+def test_a_location_indexes_the_step_that_repeats(
+    xpath: Callable[[str], str], selects: Callable[[bytes, str], Element]
+) -> None:
     registration = (
         b'<ram:SpecifiedTaxRegistration><ram:ID schemeID="VA">DE 987654321</ram:ID>'
         b"</ram:SpecifiedTaxRegistration>"
@@ -558,7 +570,10 @@ def test_a_location_indexes_the_step_that_repeats() -> None:
         b"</ram:SpecifiedTaxRegistration>" + registration + b"</ram:SellerTradeParty>",
     )
     [finding] = read_invoice(data).findings
-    assert finding.location.endswith("ram:SellerTradeParty/ram:SpecifiedTaxRegistration[2]/ram:ID")
+    assert finding.location.endswith(
+        xpath("ram:SellerTradeParty/ram:SpecifiedTaxRegistration[2]/ram:ID")
+    )
+    assert selects(data, finding.location).text == "DE 987654321"
 
 
 def test_pdf_header_in_xml_text_is_not_a_pdf() -> None:
@@ -807,14 +822,17 @@ def test_ubl_reads_the_first_tax_amount_holding_a_value() -> None:
     assert result.findings == ()
 
 
-def test_ubl_drops_a_second_tax_amount_of_one_tax_total() -> None:
+def test_ubl_drops_a_second_tax_amount_of_one_tax_total(
+    selects: Callable[[bytes, str], Element],
+) -> None:
     second = b'<cbc:TaxAmount currencyID="EUR">99.99</cbc:TaxAmount>'
-    result = read_invoice(UBL.replace(UBL_TAX_AMOUNT, UBL_TAX_AMOUNT + second, 1))
+    data = UBL.replace(UBL_TAX_AMOUNT, UBL_TAX_AMOUNT + second, 1)
+    result = read_invoice(data)
     assert result.invoice.totals is not None
     assert result.invoice.totals.vat_total == Decimal("22.04")
-    assert [(f.rule, f.location.rsplit("/", 1)[1]) for f in result.findings] == [
-        ("HAFL-DROPPED", "cbc:TaxAmount[2]")
-    ]
+    [finding] = result.findings
+    assert finding.rule == "HAFL-DROPPED"
+    assert selects(data, finding.location).text == "99.99"
 
 
 @pytest.mark.parametrize(

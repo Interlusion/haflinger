@@ -86,7 +86,7 @@ def read_invoice(data: bytes) -> ReadResult:
     """Like `haflinger.read_invoice` for XML, through KoSIT's stylesheets. The findings are
     those of reading the semantic XML, with its locations."""
     semantic, syntax = semantic_xml(data)
-    reading = Reading(parse(semantic), {"xr": XR}, "xr:invoice")
+    reading = Reading(parse(semantic), {"xr": XR})
     return ReadResult(invoice=_invoice(reading.root, syntax), findings=reading.findings())
 
 
