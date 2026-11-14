@@ -15,6 +15,8 @@ What changed in each release of Haflinger, for its callers. The format follows [
 
 ### Fixed
 
+- `read_invoice` reports a CII seller's or buyer's tax registration it leaves out, one with another `schemeID` than `VA` or, for the seller, `FC`, or none, with a `HAFL-DROPPED` finding; before, it left it out without one. Among them is `schemeID` `VAT`, which some producers write for `VA`; the official rules don't count it as a VAT identifier either. A CII tax representative's registration without `schemeID` is no longer read as its VAT identifier (BT-63), as CEN's `BR-56` counts only `VA`; it is left out with a finding too.
+- `read_invoice` reads a UBL party's tax scheme `VAT` in any case, as CEN's rules do: a seller's `vat` gives its VAT identifier (BT-31), not its tax registration identifier (BT-32), a buyer's its VAT identifier (BT-48), which was left out, and a tax representative's its VAT identifier (BT-63), which was left out too.
 - `validate` no longer raises `UnicodeDecodeError` for an invoice with an element whose prefixed name is longer than 98 bytes and holds characters outside ASCII; the XML Schema check's finding gives its line.
 
 ## [0.1.0] - 2026-11-11

@@ -3,7 +3,7 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Accepted |
-| **Date** | 2026-11-13 |
+| **Date** | 2026-11-14 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Context
@@ -35,7 +35,7 @@ The writer spike showed what the second reader is worth: a mistake made the same
 
 - **Haflinger's own mapping is the reader.** `read_invoice` reads CII and UBL into the model through Haflinger's bindings, at every size, with no Saxon in the reading path.
 - **KoSIT's stylesheet is the independent check.** In the tests, every official test file that is a whole invoice Haflinger reads, and every written invoice, is read by both; the two models must be equal. CEN's unit tests are fragments, not whole invoices, and files `read_invoice` refuses have no model to compare (REQ-003-PRS-F005). A difference is a defect in Haflinger, or a limit of KoSIT's stylesheet recorded in the test with its reason.
-- **phax's converter is a further check, in CI.** `en16931-cii2ubl` turns CII into UBL by a mapping of its own. Its UBL copies of the invoices written from the KoSIT suite and of the corpus's CII invoices must read to the same model as the CII invoice, except for the converter's limits, recorded in the test with their reason, and known limits of Haflinger's, recorded with their backlog item (REQ-003-PRS-F009). It checks Haflinger's UBL reading on invoices the suite doesn't hold, and the parsing of values the converter writes anew, such as dates; not the suite's own CII files, whose UBL counterparts KoSIT made with the same converter. It runs from an image, without network.
+- **phax's converter is a further check, in CI.** `en16931-cii2ubl` turns CII into UBL by a mapping of its own. Its UBL copies of the invoices written from the KoSIT suite and of the corpus's CII invoices must read to the same model as the CII invoice, except for the converter's limits, recorded in the test with their reason, and Haflinger's own differences, recorded with the requirement or backlog item behind them (REQ-003-PRS-F009). It checks Haflinger's UBL reading on invoices the suite doesn't hold, and the parsing of values the converter writes anew, such as dates; not the suite's own CII files, whose UBL counterparts KoSIT made with the same converter. It runs from an image, without network.
 - **KoSIT's coverage guides the mapping.** For a business term the model gains, KoSIT's semantic XML shows its element in both syntaxes, and its test files exercise it.
 - The stylesheets stay vendored unchanged ([ADR-008](ADR-008-vendoring-official-files.md)), for the tests now and for rendering invoices for people later.
 

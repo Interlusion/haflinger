@@ -33,8 +33,9 @@ FAILS_THE_SCHEMA = {
 INVOICES = [name for name in SOURCES if name not in FAILS_THE_SCHEMA]
 
 # REQ-003-PRS-F009: where the UBL copy reads differently from the CII invoice, by invoice and model
-# path: the business term, the difference, and why: a limit of the converter's, or a known one of
-# Haflinger's with its backlog item. The comparison leaves out only these terms.
+# path: the business term, the difference, and why: a limit of the converter's, or where Haflinger
+# reads differently, with the requirement or backlog item behind it. The comparison leaves out only
+# these terms.
 PURCHASE_ORDER = {
     "purchase_order_reference": (
         "BT-13",
@@ -113,7 +114,7 @@ KNOWN_DIFFERENCES: dict[str, dict[str, tuple[str, str, str]]] = {
             "BT-31",
             "absent as Haflinger reads CII, DE12345618938 in UBL",
             "Haflinger's: it leaves out a CII seller's tax registration with the scheme VAT, not"
-            " VA, without a finding (the backlog's item on ram:SpecifiedTaxRegistration); the"
+            " VA, with a finding, as the official rules count only VA (REQ-003-PRS-F002); the"
             " converter takes it",
         ),
     },

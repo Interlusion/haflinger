@@ -309,7 +309,10 @@ def _party(party: Node | None, terms: PartyTerms) -> Party | None:
     )
     address = party.group("ram:PostalTradeAddress", terms.address.group)
     contact_element = party.group("ram:DefinedTradeContact", terms.contact, *_CONTACT)
-    registrations = party.findall("ram:SpecifiedTaxRegistration/ram:ID")
+    if terms.tax_registration is None:
+        registrations = _registrations(party, {"VA": terms.vat_id}, ignored="FC")
+    else:
+        registrations = _registrations(party, {"VA": terms.vat_id, "FC": terms.tax_registration})
     return Party(
         name=party.text("ram:Name", terms.name),
         trading_name=_text(organization, "ram:TradingBusinessName", terms.trading_name),
@@ -319,12 +322,8 @@ def _party(party: Node | None, terms: PartyTerms) -> Party | None:
             one=terms.one_identifier,
         ),
         legal_registration_id=_legal_registration(organization, terms.legal_registration_id),
-        vat_id=_registration(registrations, "VA", terms.vat_id),
-        tax_registration_id=(
-            None
-            if terms.tax_registration is None
-            else _registration(registrations, "FC", terms.tax_registration)
-        ),
+        vat_id=registrations["VA"],
+        tax_registration_id=registrations.get("FC"),
         additional_legal_information=None
         if terms.additional_legal_information is None
         else party.text("ram:Description", terms.additional_legal_information),
@@ -358,7 +357,7 @@ def _tax_representative(party: Node | None) -> TaxRepresentative | None:
     return none_if_empty(
         TaxRepresentative(
             name=party.text("ram:Name", "BT-62"),
-            vat_id=_representative_vat_id(party),
+            vat_id=_registrations(party, {"VA": "BT-63"})["VA"],
             **_address(address, TAX_REPRESENTATIVE_ADDRESS),
         )
     )
@@ -368,21 +367,6 @@ def _legal_registration(organization: Node | None, term: str) -> Identifier | No
     """The legal registration identifier (BT-30, BT-47, BT-61) of a ram:SpecifiedLegalOrganization,
     with its scheme."""
     return None if organization is None else identifier(organization.first("ram:ID", term))
-
-
-def _representative_vat_id(party: Node) -> str | None:
-    """BT-63: the tax registration with scheme `VA` or, since the tax representative has no other
-    tax term, without one; one with another scheme is left out with a finding
-    (REQ-003-PRS-F002)."""
-    nodes: list[Node] = []
-    for node in party.holding("BT-63", "ram:SpecifiedTaxRegistration/ram:ID"):
-        scheme = node.attribute("schemeID")
-        if scheme in (None, "VA"):
-            nodes.append(node)
-        else:
-            node.drop(f"BT-63 with schemeID {scheme!r}, not VA, is left out: {node.value!r}")
-    node = first_of(nodes, "BT-63")
-    return None if node is None else node.value
 
 
 def _identifier_nodes(party: Node, term: str) -> list[Node]:
@@ -460,15 +444,34 @@ _CONTACT = (
 )
 
 
-def _registration(registrations: list[Node], scheme: str, term: str) -> str | None:
-    """The tax registration with `scheme`: `VA` for the VAT identifier, `FC` for BT-32."""
-    nodes = [
-        node
-        for node in registrations
-        if node.attribute("schemeID") == scheme and node.plain(term) is not None
-    ]
-    node = first_of(nodes, term)
-    return None if node is None else node.value
+def _registrations(
+    party: Node, terms: dict[str, str], *, ignored: str | None = None
+) -> dict[str, str | None]:
+    """The first value of each tax registration scheme of `terms`, `VA` for the VAT identifier
+    and, for the seller, `FC` for BT-32, as EN 16931-3-3 binds them; each further one is left
+    out with a finding. One with another scheme or none is left out with a finding too, as the
+    official rules count no other; among them is `VAT`, a tax type code some producers write for
+    `VA`. One with the scheme `ignored`, the buyer's `FC`, is left out without one: EN 16931 has
+    no tax registration identifier for the buyer (REQ-003-PRS-F002)."""
+    label = " or ".join(terms.values())
+    schemes = "not VA" if len(terms) == 1 else "neither VA nor FC"
+    found: dict[str, list[Node]] = {scheme: [] for scheme in terms}
+    for node in party.findall("ram:SpecifiedTaxRegistration/ram:ID"):
+        scheme = node.attribute("schemeID")
+        if scheme is not None and scheme in terms:
+            if node.plain(terms[scheme]) is not None:
+                found[scheme].append(node)
+        elif (scheme is None or scheme != ignored) and (content := node.content) is not None:
+            how = (
+                "without schemeID"
+                if scheme is None
+                else f"with schemeID {quoted(scheme)}, {schemes},"
+            )
+            node.drop(
+                f"{label} in a ram:SpecifiedTaxRegistration {how} is left out: {quoted(content)}"
+            )
+    first = {scheme: first_of(nodes, terms[scheme]) for scheme, nodes in found.items()}
+    return {scheme: None if node is None else node.value for scheme, node in first.items()}
 
 
 def _contact(element: Node, terms: PartyTerms) -> Contact | None:
