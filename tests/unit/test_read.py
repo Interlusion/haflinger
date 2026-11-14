@@ -1272,6 +1272,137 @@ def test_seller_tax_registration_identifier() -> None:
         assert result.findings == ()
 
 
+CII_SELLER_REGISTRATION = (
+    b"<ram:SpecifiedTaxRegistration>\r\n                    "
+    + CII_SELLER_VAT_ID
+    + b"\r\n                </ram:SpecifiedTaxRegistration>"
+)
+CII_WITHOUT_SELLER_VAT_ID = edit(CII, CII_SELLER_REGISTRATION, b"")
+
+
+def cii_registrations(party: str, *schemes: bytes | None) -> bytes:
+    """01.01a with a tax registration for each of `schemes` (None: without schemeID) at the end of
+    the seller, beside its `VA` one or, `seller alone`, instead of it, or of the buyer, each
+    holding `DE 9` and its position."""
+    registrations = b"".join(
+        b"<ram:SpecifiedTaxRegistration><ram:ID"
+        + (b"" if scheme is None else b' schemeID="' + scheme + b'"')
+        + b">DE 9%d</ram:ID></ram:SpecifiedTaxRegistration>" % n
+        for n, scheme in enumerate(schemes, 1)
+    )
+    end = b"</ram:BuyerTradeParty>" if party == "buyer" else b"</ram:SellerTradeParty>"
+    base = CII_WITHOUT_SELLER_VAT_ID if party == "seller alone" else CII
+    return edit(base, end, registrations + end)
+
+
+NOT_VA_OR_FC = "neither VA nor FC,"
+
+
+# `seller alone` with `VAT` is FeRD's ZUGFeRD 2.0 sample; the rules then report `BR-S-02`.
+@pytest.mark.parametrize(
+    ("party", "schemes", "vat_id", "left_out"),
+    [
+        ("seller", (b"VAT",), "DE 123456789", [(1, f"with schemeID 'VAT', {NOT_VA_OR_FC}")]),
+        (
+            "seller",
+            (None, b"XY"),
+            "DE 123456789",
+            [(1, "without schemeID"), (2, f"with schemeID 'XY', {NOT_VA_OR_FC}")],
+        ),
+        ("seller alone", (b"VAT",), None, [(1, f"with schemeID 'VAT', {NOT_VA_OR_FC}")]),
+        (
+            "seller alone",
+            (None, b"XY"),
+            None,
+            [(1, "without schemeID"), (2, f"with schemeID 'XY', {NOT_VA_OR_FC}")],
+        ),
+        ("buyer", (b"VAT",), None, [(1, "with schemeID 'VAT', not VA,")]),
+        ("buyer", (b"VAT", b"VA"), "DE 92", [(1, "with schemeID 'VAT', not VA,")]),
+        ("buyer", (b"XY",), None, [(1, "with schemeID 'XY', not VA,")]),
+        ("buyer", (None, b"FC"), None, [(1, "without schemeID")]),
+    ],
+)
+def test_a_cii_tax_registration_of_another_scheme_is_left_out_with_a_finding(
+    party: str,
+    schemes: tuple[bytes | None, ...],
+    vat_id: str | None,
+    left_out: list[tuple[int, str]],
+    selects: Callable[[bytes, str], Element],
+) -> None:
+    """The official rules count only `VA` and `FC`, so neither does reading; `VAT` is a tax type
+    code some producers write for `VA` (REQ-003-PRS-F002). EN 16931 has no buyer's `FC`."""
+    data = cii_registrations(party, *schemes)
+    result = read_invoice(data)
+    read = result.invoice.buyer if party == "buyer" else result.invoice.seller
+    assert read is not None
+    assert read.vat_id == vat_id
+    terms = "BT-48" if party == "buyer" else "BT-31 or BT-32"
+    assert [(f.rule, f.text) for f in result.findings] == [
+        ("HAFL-DROPPED", f"{terms} in a ram:SpecifiedTaxRegistration {why} is left out: 'DE 9{n}'")
+        for n, why in left_out
+    ]
+    for finding, (n, _) in zip(result.findings, left_out, strict=True):
+        assert selects(data, finding.location).text == f"DE 9{n}"
+
+
+def test_a_left_out_tax_registration_is_quoted_with_its_elements_text_and_shortened() -> None:
+    """Without a `HAFL-VALUE` finding for BT-31, which is read; a long value by its start and its
+    end."""
+    long = b"DE" + b"9" * 1000
+    end = b"</ram:SellerTradeParty>"
+    data = edit(
+        CII,
+        end,
+        b'<ram:SpecifiedTaxRegistration><ram:ID schemeID="XY">DE<x>1</x></ram:ID>'
+        b'</ram:SpecifiedTaxRegistration><ram:SpecifiedTaxRegistration><ram:ID schemeID="XY">'
+        + long
+        + b"</ram:ID></ram:SpecifiedTaxRegistration>"
+        + end,
+    )
+    result = read_invoice(data)
+    assert result.invoice.seller is not None
+    assert result.invoice.seller.vat_id == "DE 123456789"
+    first, second = result.findings
+    assert (first.rule, first.text) == (
+        "HAFL-DROPPED",
+        f"BT-31 or BT-32 in a ram:SpecifiedTaxRegistration with schemeID 'XY', {NOT_VA_OR_FC}"
+        " is left out: 'DE1'",
+    )
+    assert second.rule == "HAFL-DROPPED"
+    assert len(second.text) < 400
+    assert second.text.endswith("999'")
+
+
+@pytest.mark.parametrize(
+    ("party", "kind", "read"),
+    [
+        ("seller", b"vat", ("DE 9", None)),
+        ("buyer", b"vat", ("DE 9", None)),
+        ("buyer", b"FC", (None, None)),
+    ],
+)
+def test_a_ubl_party_tax_scheme_vat_in_any_case_gives_the_vat_identifier(
+    party: str, kind: bytes, read: tuple[str | None, None]
+) -> None:
+    """As CEN's rules compare it, not BT-32; a buyer's other tax scheme is left out without a
+    finding, as EN 16931 has no tax registration identifier for the buyer (REQ-003-PRS-F002)."""
+    scheme = (
+        b"<cac:PartyTaxScheme><cbc:CompanyID>DE 9</cbc:CompanyID><cac:TaxScheme><cbc:ID>"
+        + kind
+        + b"</cbc:ID></cac:TaxScheme></cac:PartyTaxScheme>"
+    )
+    if party == "seller":
+        start, end = b"<cac:PartyTaxScheme>", b"</cac:PartyTaxScheme>"
+        data = edit(UBL, UBL[UBL.index(start) : UBL.index(end) + len(end)], scheme)
+    else:
+        end = b"</cac:Party>\r\n    </cac:AccountingCustomerParty>"
+        data = edit(UBL, end, scheme + end)
+    result = read_invoice(data)
+    found = getattr(result.invoice, party)
+    assert (found.vat_id, found.tax_registration_id) == read
+    assert result.findings == ()
+
+
 def test_address_lines_and_subdivision() -> None:
     cii = edit(
         CII,
@@ -4011,20 +4142,35 @@ def test_a_payees_second_legal_organization_is_dropped(data: bytes) -> None:
 
 
 @pytest.mark.parametrize(
-    ("scheme", "vat_id", "drops"),
-    [(b"", "DE123456789", []), (b' schemeID="FC"', None, ["BT-63"])],
+    ("scheme", "how"),
+    [(b"", "without schemeID"), (b' schemeID="FC"', "with schemeID 'FC', not VA,")],
     ids=["without-scheme", "other-scheme"],
 )
-def test_a_cii_tax_representatives_vat_identifier_is_one_with_scheme_va_or_none(
-    scheme: bytes, vat_id: str | None, drops: list[str]
+def test_a_cii_tax_representatives_vat_identifier_is_one_with_scheme_va(
+    scheme: bytes, how: str
 ) -> None:
-    """The tax representative has no other tax term, so an identifier without a scheme is its
-    VAT identifier; one with another scheme is left out."""
+    """As CEN's `BR-56` counts only `VA`, one without a scheme or with another is left out with a
+    finding (REQ-003-PRS-F002)."""
     representative = edit(
         CII_TAX_REPRESENTATIVE,
         CII_TAX_REPRESENTATIVE_VAT_ID,
         b"<ram:ID%s>DE123456789</ram:ID>" % scheme,
     )
     result = read_invoice(edit(CII, CII_BUYER_END, CII_BUYER_END + representative))
-    assert result.invoice.tax_representative == replace(TAX_REPRESENTATIVE, vat_id=vat_id)
-    assert dropped(result) == drops
+    assert result.invoice.tax_representative == replace(TAX_REPRESENTATIVE, vat_id=None)
+    assert [(f.rule, f.text) for f in result.findings] == [
+        (
+            "HAFL-DROPPED",
+            f"BT-63 in a ram:SpecifiedTaxRegistration {how} is left out: 'DE123456789'",
+        )
+    ]
+
+
+def test_a_ubl_tax_representatives_tax_scheme_vat_in_any_case_gives_its_vat_identifier() -> None:
+    """As CEN's rules compare it (REQ-003-PRS-F002)."""
+    representative = UBL_TAX_REPRESENTATIVE.replace(
+        b"<cbc:ID>VAT</cbc:ID>", b"<cbc:ID>vat</cbc:ID>"
+    )
+    result = read_invoice(edit(UBL, UBL_CUSTOMER_END, UBL_CUSTOMER_END + representative))
+    assert result.invoice.tax_representative == TAX_REPRESENTATIVE
+    assert result.findings == ()
