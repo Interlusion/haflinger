@@ -59,6 +59,7 @@ from haflinger._xml import (
     first_of,
     first_reference,
     identifier_only,
+    is_vat,
     none_if_empty,
     of_code,
     one_value,
@@ -322,14 +323,14 @@ def _legal_registration(entity: Node | None, term: str) -> Identifier | None:
 def _tax_identifiers(
     party: Node, vat_term: str, tax_term: str | None
 ) -> tuple[str | None, str | None]:
-    """The party's VAT identifier, of tax scheme `VAT`, and, where `tax_term` names one, its tax
-    registration identifier, of another tax scheme."""
+    """The party's VAT identifier, of tax scheme `VAT` in any case, as CEN's rules compare it, and,
+    where `tax_term` names one, its tax registration identifier, of another tax scheme."""
     taxes = ", ".join(term for term in (vat_term, tax_term) if term)
     vat_ids: list[Node] = []
     tax_ids: list[Node] = []
     for scheme in party.findall("cac:PartyTaxScheme"):
         kind = scheme.text(_TAX_SCHEME, f"{taxes} (cac:TaxScheme)")
-        if kind == "VAT":
+        if is_vat(kind):
             vat_ids += scheme.holding(vat_term, "cbc:CompanyID")
         elif kind is not None and tax_term is not None:
             tax_ids += scheme.holding(tax_term, "cbc:CompanyID")

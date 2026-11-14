@@ -265,12 +265,16 @@ class Node:
         value with `plain`, which checks that the element holds only text."""
         return _stripped(self.element.text)
 
+    @property
+    def content(self) -> str | None:
+        """All the text within the element, its elements' too, without surrounding whitespace."""
+        return _stripped("".join(self.element.itertext()))
+
     def plain(self, term: str) -> str | None:
         """The value of `term`; missing, with a finding, when the element holds elements
         (REQ-003-PRS-F002)."""
         if len(self.element):
-            text = "".join(self.element.itertext()).strip(XML_WHITESPACE)
-            self.malformed(term, "text alone, without elements", text)
+            self.malformed(term, "text alone, without elements", self.content or "")
             return None
         return self.value
 
@@ -357,6 +361,11 @@ def first_group(nodes: list[Node], group: str) -> Node | None:
     return nodes[0] if nodes else None
 
 
+def is_vat(code: str | None) -> bool:
+    """Whether a tax type or tax scheme code is `VAT`, in any case, as CEN's rules compare it."""
+    return code is not None and code.upper() == "VAT"
+
+
 def vat_only(nodes: list[Node], kind: str, group: str) -> list[Node]:
     """Those of `nodes` holding a value that are VAT: whose first element at `kind` holding a
     value holds `VAT` in any case, as CEN's rules compare it, or that have none. Another tax,
@@ -366,7 +375,7 @@ def vat_only(nodes: list[Node], kind: str, group: str) -> list[Node]:
         if not node.holds_value():
             continue
         value = node.text(kind, f"{group} ({kind})")
-        if value is None or value.upper() == "VAT":
+        if value is None or is_vat(value):
             taxes.append(node)
         else:
             node.drop(f"{group} of a tax other than VAT ({value}) is left out")
