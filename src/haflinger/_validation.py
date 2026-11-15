@@ -11,11 +11,12 @@ from dataclasses import dataclass
 from functools import cache
 from xml.etree.ElementTree import Element
 
-from haflinger import _saxon, _xsd
+from haflinger import _cii, _saxon, _ubl, _xsd
 from haflinger._errors import InvoiceReadError
 from haflinger._findings import Finding, Flag
 from haflinger._input import Document, Opened, open_invoice
-from haflinger._xml import MAX_SIZE, XML_WHITESPACE, decode, parse
+from haflinger._xml import MAX_SIZE, XML_WHITESPACE, decode, parse, quoted
+from haflinger._xsd import _Element  # pyright: ignore[reportPrivateUsage]
 
 _CONFIGURATION = "kosit-validator-xrechnung"
 _SCENARIOS_NAMESPACE = "{http://www.xoev.de/de/validator/framework/1/scenarios}"
@@ -91,11 +92,23 @@ _RULE_SETS.update(
         for specification_id in spellings
     }
 )
+# REQ-002-PRS-F003: the rows whose scenario compares BT-24's whole text, XPath's string value;
+# the others' compare each of its text nodes, and so are the Factur-X rows compared, where no
+# row of KoSIT's matches.
+_BY_WHOLE_TEXT = frozenset(
+    {("ubl-invoice", _XRECHNUNG), ("ubl-invoice", _EXTENSION), ("ubl-invoice", _CVD)}
+)
+_SPECIFICATIONS: dict[Document, str] = {
+    "cii": _cii.SPECIFICATION,
+    "ubl-invoice": _ubl.SPECIFICATION,
+    "ubl-credit-note": _ubl.SPECIFICATION,
+}
 # The limits of an invoice that is validated (REQ-002-PRS-F001): empty elements, the digits of a
 # number, the characters of a telephone number.
 _MAX_EMPTY = 1000
 _MAX_DIGITS = 1000
 _MAX_TELEPHONE = 100
+_MAX_PIECES = 5  # the values of each list in a `HAFL-PROFILE` text
 _NUMBER = re.compile(r"[+-]?[0-9]*\.?[0-9]*")
 _TELEPHONES = frozenset(
     {
@@ -138,9 +151,12 @@ def validate(
         pdf="the input is a PDF; validate the XML that haflinger.pdf.extract_xml gives",
     )
     _refuse_costly(opened)
-    name, no_profile = rule_set(opened)
+    text = decode(data)
+    tree = _xsd.tree(text)
+    name, no_profile = rule_set(opened, tree)
     findings = [] if no_profile is None else [no_profile]
-    schema = _xsd.check(decode(data), _scenarios()[name].schema)
+    schema = _xsd.check(text if tree is None else tree, _scenarios()[name].schema)
+    del text, tree  # freed before the rules, which may run for a minute
     if schema:
         return (*findings, *schema)
     return (*findings, *_rules(data, name, opened, limit, time.monotonic()))
@@ -185,7 +201,7 @@ def check_rules(data: bytes, *also: str, timeout: float | None = None) -> tuple[
     limit = _saxon.time_limit(timeout)
     started = time.monotonic()
     opened = open_invoice(data, MAX_SIZE, pdf="the input is a PDF")
-    name, no_profile = rule_set(opened)
+    name, no_profile = rule_set(opened, _xsd.tree(decode(data)))
     findings = [] if no_profile is None else [no_profile]
     for each in (name, *also):
         findings.extend(_rules(data, each, opened, limit, started))
@@ -214,37 +230,87 @@ def _rules(data: bytes, name: str, opened: Opened, timeout: float, started: floa
     return findings
 
 
-def rule_set(opened: Opened) -> tuple[str, Finding | None]:
-    """The name of KoSIT's scenario for the invoice (REQ-002-PRS-F003) and, where its profile has
-    none, CEN's rules with the `HAFL-PROFILE` finding (REQ-002-PRS-F004)."""
-    name = _RULE_SETS.get((opened.document, _as_written(opened)))
-    if name is None:
-        return _RULE_SETS[opened.document, _EN16931], _no_profile(opened)
-    return name, None
+def rule_set(opened: Opened, tree: _Element | None) -> tuple[str, Finding | None]:
+    """The name of KoSIT's scenario for the invoice, as KoSIT's validator chooses it
+    (REQ-002-PRS-F003), and, where its BT-24 names no profile or more than one, CEN's rules with
+    the `HAFL-PROFILE` finding (REQ-002-PRS-F004). `tree` is the invoice's from `_xsd.tree`."""
+    pieces, wholes = _as_written(opened, tree)
+    names = list(
+        dict.fromkeys(
+            name
+            for (document, identifier), name in _RULE_SETS.items()
+            if document == opened.document
+            and identifier in (wholes if (document, identifier) in _BY_WHOLE_TEXT else pieces)
+        )
+    )
+    names = [name for name in names if name not in _FACTUR_X] or names
+    if len(names) == 1:
+        return names[0], None
+    return _RULE_SETS[opened.document, _EN16931], _no_profile(opened, pieces, wholes, names)
 
 
-def _as_written(opened: Opened) -> str:
-    """BT-24 exactly as written, as KoSIT's scenarios match it (REQ-002-PRS-F003)."""
-    return "" if opened.specification is None else opened.specification.element.text or ""
+def _as_written(opened: Opened, tree: _Element | None) -> tuple[list[str], list[str]]:
+    """The text nodes of every BT-24 element, exactly as written, in order, and the whole text of
+    each, as KoSIT's scenarios compare them (REQ-002-PRS-F003). lxml's tree keeps the comments and
+    processing instructions that split a text node; ElementTree's, which serves where libxml2
+    can't parse the invoice, leaves them out."""
+    root = opened.reading.root.element if tree is None else tree
+    elements = root.findall(_SPECIFICATIONS[opened.document], opened.reading.namespaces)
+    pieces = [
+        text
+        for element in elements
+        for text in (element.text, *(child.tail for child in element))
+        if text
+    ]
+    return pieces, ["".join(element.itertext()) for element in elements]
 
 
-def _no_profile(opened: Opened) -> Finding:
-    """`HAFL-PROFILE` (REQ-002-PRS-F004, REQ-002-PRS-F010)."""
+def _no_profile(opened: Opened, pieces: list[str], wholes: list[str], names: list[str]) -> Finding:
+    """`HAFL-PROFILE` (REQ-002-PRS-F004, REQ-002-PRS-F010): BT-24's whole text, of each element,
+    and its pieces where they differ, and the rule sets it names where it names more than one.
+    Located at the BT-24 that reading takes, or else at the first, which reading leaves out where
+    it holds an element."""
     document = _DOCUMENTS[opened.document]
-    if opened.specification is None:
+    if not "".join(wholes).strip(XML_WHITESPACE):
         location = opened.reading.root.path
         text = f"BT-24 is missing, so {document} names no profile"
     else:
-        location = opened.specification.path
-        text = (
-            f"BT-24 {_as_written(opened)!r} names no profile Haflinger has rules for in {document}"
+        first = (
+            opened.specification or opened.reading.root.findall(_SPECIFICATIONS[opened.document])[0]
         )
+        location = first.path
+        if len(wholes) == 1:
+            written = f"BT-24 {quoted(wholes[0])}"
+        else:
+            written = f"BT-24, given {len(wholes):,} times, as {_listed(wholes)}"
+        if not pieces:
+            written += ", all of it inside an element,"
+        elif pieces != wholes:
+            written += f", in pieces {_listed(pieces)},"
+        elif len(wholes) > 1:
+            written += ","
+        if names:
+            text = (
+                f"{written} names more than one profile Haflinger has rules for in {document},"
+                f" with the rule sets {_listed(names)}"
+            )
+        else:
+            text = f"{written} names no profile Haflinger has rules for in {document}"
     return Finding(
         rule="HAFL-PROFILE",
         flag="warning",
         location=location,
         text=f"{text}; checked with CEN's EN 16931 rules only, not the profile's own rules",
     )
+
+
+def _listed(values: list[str]) -> str:
+    """`'a'`, `'a' and 'b'`, `'a', 'b' and 'c'`, each shortened as `quoted` does, and of more
+    than `_MAX_PIECES`, the first and how many more."""
+    shown = [quoted(value) for value in values[:_MAX_PIECES]]
+    if len(values) > _MAX_PIECES:
+        shown.append(f"{len(values) - _MAX_PIECES:,} more")
+    return " and ".join([", ".join(shown[:-1]), shown[-1]] if len(shown) > 1 else shown)
 
 
 def _findings(report: Element, levels: dict[str, Flag]) -> list[Finding]:

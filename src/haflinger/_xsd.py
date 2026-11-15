@@ -65,26 +65,43 @@ def _schema(path: str) -> etree.XMLSchema:
     return schema
 
 
-def check(document: bytes | str, *schemas: str) -> list[Finding]:
-    """`HAFL-XSD` findings for each violation of each schema, by its path below `artefacts/`, or
-    for a document the check can't parse. A written invoice comes as bytes, which libxml2 decodes
-    as a recipient's parser would; an incoming one as the text Saxon gets (REQ-002-PRS-F011).
-    libxml2 stops at a depth of its own (2,048 elements), also with `huge_tree`: a deeper
-    document is a finding, not a crash."""
+def tree(document: str) -> _Element | None:
+    """lxml's tree of an incoming invoice, from the text Saxon gets, with its comments and
+    processing instructions, which ElementTree leaves out; `None` where libxml2 can't parse it,
+    which `check` then reports."""
+    try:
+        return _parse(document)
+    except etree.XMLSyntaxError:
+        return None
+
+
+def _parse(document: bytes | str) -> _Element:
     if isinstance(document, str):
         document = (
             _DECLARATION.sub("", document, count=1) if document.startswith("<?xml") else document
         )
-    try:
-        tree = etree.fromstring(document, _PARSER)
-    except etree.XMLSyntaxError as error:
-        location, text = f"line {error.lineno}", f"the document can't be parsed: {error}"
-        return [_finding(SCHEMAS[schemas[0]], location, text)]
+    return etree.fromstring(document, _PARSER)
+
+
+def check(document: bytes | str | _Element, *schemas: str) -> list[Finding]:
+    """`HAFL-XSD` findings for each violation of each schema, by its path below `artefacts/`, or
+    for a document the check can't parse. A written invoice comes as bytes, which libxml2 decodes
+    as a recipient's parser would; an incoming one as the text Saxon gets (REQ-002-PRS-F011), or
+    as its `tree`. libxml2 stops at a depth of its own (2,048 elements), also with `huge_tree`: a
+    deeper document is a finding, not a crash."""
+    if isinstance(document, _Element):
+        root = document
+    else:
+        try:
+            root = _parse(document)
+        except etree.XMLSyntaxError as error:
+            location, text = f"line {error.lineno}", f"the document can't be parsed: {error}"
+            return [_finding(SCHEMAS[schemas[0]], location, text)]
     findings: list[Finding] = []
-    locations = Locations(tree)
+    locations = Locations(root)
     for path in schemas:
         schema = _schema(path)
-        errors = [] if schema.validate(tree) else list(schema.error_log)
+        errors = [] if schema.validate(root) else list(schema.error_log)
         findings.extend(
             _finding(
                 SCHEMAS[path], locations.of(_path(error)) or f"line {error.line}", error.message
