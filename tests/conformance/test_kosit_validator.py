@@ -2,12 +2,14 @@
 writes from it, as XRechnung and as EN 16931, and over invoices that fail: copies of the suite's
 files with one error each, and the ZUGFeRD corpus's broken invoices. It gives the same verdict and
 the same findings as `validate`, and accepts every invoice `write_cii` hands out
-(REQ-002-PRS-F007, REQ-004-PRS-F005). It is Java, so it runs where HAFLINGER_KOSIT_VALIDATOR
-names it, as in CI (`scripts/kosit-validator.sh`)."""
+(REQ-002-PRS-F007, REQ-004-PRS-F005). Over copies whose BT-24 is split or given twice, it
+chooses the scenario `validate` chooses (REQ-002-PRS-F003). It is Java, so it runs where
+HAFLINGER_KOSIT_VALIDATOR names it, as in CI (`scripts/kosit-validator.sh`)."""
 
 import os
 import re
 import subprocess
+from functools import cache
 from pathlib import Path
 from xml.etree.ElementTree import Element
 
@@ -16,12 +18,15 @@ from defusedxml.ElementTree import parse
 from test_write_kosit import EN16931, FILES, ROOT, XRECHNUNG, write
 
 from haflinger import InvoiceReadError, is_valid, read_invoice, validate
+from haflinger._input import open_invoice
+from haflinger._xml import MAX_SIZE, decode
 from haflinger.pdf import extract_xml
 
 VALIDATOR = os.environ.get("HAFLINGER_KOSIT_VALIDATOR")
 REPORT = "{http://www.xoev.de/de/validator/varl/1}"
 SCENARIOS = "{http://www.xoev.de/de/validator/framework/1/scenarios}"
 FAIL = ROOT / "tests/data/zugferd-corpus/ZUGFeRDv2/fail"
+CREDIT_NOTE = ROOT / "tests/data/cen-en16931/ubl/examples/ubl-tc434-creditnote1.xml"
 
 type Findings = list[tuple[str, str, str]]
 
@@ -75,6 +80,47 @@ def kosit_has_rules_for(path: Path) -> bool:
 # The broken invoices of the corpus selection that KoSIT's validator has rules for.
 BROKEN = [path for path in sorted(FAIL.rglob("*.pdf")) if kosit_has_rules_for(path)]
 
+# BT-24 written with a comment, a processing instruction or CDATA, in the copies of SPLIT_FROM
+# (REQ-002-PRS-F003); in each syntax, also with an element inside and a second BT-24.
+REST = XRECHNUNG.removeprefix(EN16931)
+SPLITS = {
+    "comment-at-the-start": f"<!--x-->{XRECHNUNG}",
+    "comment-at-the-end": f"{XRECHNUNG}<!--x-->",
+    "comment-in-the-middle": f"{EN16931}<!--x-->{REST}",
+    "instruction-in-the-middle": f"{EN16931}<?x y?>{REST}",
+    "cdata": f"{EN16931}<![CDATA[{REST}]]>",
+    "two-profiles": f"{EN16931}<!--x-->{XRECHNUNG}",
+    "no-profile": "urn:cen.eu:<!--x-->en16931:2017",
+}
+CII_SECOND = (
+    "</ram:ID></ram:GuidelineSpecifiedDocumentContextParameter>"
+    "<ram:GuidelineSpecifiedDocumentContextParameter><ram:ID>"
+)
+UBL_SECOND = "</cbc:CustomizationID><cbc:CustomizationID>"
+UBL_OWN = {
+    "element-in-the-middle": f"{EN16931}<cbc:X/>{REST}",
+    "second-bt-24": f"{XRECHNUNG}{UBL_SECOND}{EN16931}",
+}
+SPLIT_FROM: dict[str, tuple[Path, str, dict[str, str]]] = {
+    "cii": (
+        ROOT / "tests/data/kosit-testsuite/instances/standard/01.01a-INVOICE_uncefact.xml",
+        XRECHNUNG,
+        {
+            "element-in-the-middle": f"{EN16931}<ram:X/>{REST}",
+            "second-bt-24-of-a-profile": f"urn:example{CII_SECOND}{EN16931}",
+            "second-bt-24-of-another-profile": f"{XRECHNUNG}{CII_SECOND}{EN16931}",
+            "second-bt-24-of-the-same-profile": f"{XRECHNUNG}{CII_SECOND}{XRECHNUNG}",
+            "xrechnung-and-factur-x": f"{XRECHNUNG}<!--x-->urn:factur-x.eu:1p0:minimum",
+        },
+    ),
+    "ubl": (
+        ROOT / "tests/data/kosit-testsuite/instances/standard/01.01a-INVOICE_ubl.xml",
+        XRECHNUNG,
+        UBL_OWN,
+    ),
+    "credit-note": (CREDIT_NOTE, EN16931, UBL_OWN),
+}
+
 
 def documents(path: Path) -> dict[str, bytes]:
     """The suite's file as received and the documents the round trip writes from it."""
@@ -92,6 +138,20 @@ def broken(path: Path) -> dict[str, bytes]:
         copy, count = re.subn(pattern, replacement, data, count=1, flags=re.DOTALL)
         assert count == 1, (name, path.name)
         copies[f"{path.stem}-{name}.xml"] = copy
+    return copies
+
+
+@cache
+def split() -> dict[str, bytes]:
+    """The copies of SPLIT_FROM with each BT-24 of SPLITS and of their own."""
+    copies = dict[str, bytes]()
+    for syntax, (path, written, own) in SPLIT_FROM.items():
+        data = path.read_bytes()
+        assert data.count(f">{written}<".encode()) == 1, path
+        for name, new in (SPLITS | own).items():
+            copies[f"{syntax}-{name}.xml"] = data.replace(
+                f">{written}<".encode(), f">{new}<".encode()
+            )
     return copies
 
 
@@ -144,6 +204,12 @@ def failing(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Element]:
     return run(tmp_path_factory.mktemp("kosit-failing"), every)
 
 
+@pytest.fixture(scope="module")
+def splitting(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Element]:
+    needs_validator()
+    return run(tmp_path_factory.mktemp("kosit-split"), split())
+
+
 def root(path: Path) -> Element:
     element = parse(path).getroot()
     assert element is not None, path
@@ -166,6 +232,21 @@ def kosit(report: Element) -> Findings:
         for message in report.iter(f"{REPORT}message")
         if (code := message.get("code", ""))
     )
+
+
+def scenario(report: Element) -> str | None:
+    """The name of the scenario KoSIT's validator chose, `None` where it chose none."""
+    return report.findtext(f"{REPORT}scenarioMatched/{SCENARIOS}scenario/{SCENARIOS}name")
+
+
+def chosen(document: bytes) -> str | None:
+    """The rule set `validate` chooses, `None` where it names no profile (`HAFL-PROFILE`)."""
+    from haflinger._validation import rule_set
+    from haflinger._xsd import tree
+
+    opened = open_invoice(document, MAX_SIZE, pdf="the input is a PDF")
+    name, no_profile = rule_set(opened, tree(decode(document)))
+    return None if no_profile else name
 
 
 def accepted(report: Element) -> bool:
@@ -243,3 +324,16 @@ def test_kosit_finds_what_validate_finds_in_the_corpuss_broken_invoices(
     for name, document in received(path).items():
         assert_same(name, document, failing[name])
         assert not accepted(failing[name]), name
+
+
+def test_the_split_copies_are_there() -> None:
+    assert len(split()) == 3 * len(SPLITS) + 9
+
+
+@pytest.mark.parametrize("name", sorted(split()))
+def test_kosit_chooses_the_scenario_validate_chooses_for_bt_24_in_pieces(
+    splitting: dict[str, Element], name: str
+) -> None:
+    """Some match a scenario, some none, some more than one, which KoSIT's validator counts as
+    none (REQ-002-PRS-F003, REQ-002-PRS-F004); KoSIT's has no Factur-X scenario."""
+    assert scenario(splitting[name]) == chosen(split()[name])

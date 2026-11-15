@@ -24,7 +24,10 @@ from haflinger import (
     read_invoice,
     validate,
 )
-from haflinger._xsd import Locations, check_cii
+from haflinger._input import open_invoice
+from haflinger._validation import rule_set
+from haflinger._xml import MAX_SIZE, decode
+from haflinger._xsd import Locations, check_cii, tree
 from haflinger.pdf import extract_xml
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -78,6 +81,9 @@ def rules(findings: Sequence[Finding]) -> set[tuple[str, str]]:
 
 def invalid(findings: Sequence[Finding]) -> list[Finding]:
     return [finding for finding in findings if finding.flag in ("fatal", "error")]
+
+
+PROFILE_END = "; checked with CEN's EN 16931 rules only, not the profile's own rules"
 
 
 def profile_findings(findings: Sequence[Finding]) -> list[Finding]:
@@ -320,6 +326,20 @@ def test_factur_x_runs_ferds_rules_for_its_profile(specification_id: str, rule: 
     assert xrechnung_rules(findings) == set()
 
 
+def test_a_factur_x_bt_24_is_compared_by_each_piece() -> None:
+    """As KoSIT's scenarios compare CII's (REQ-002-PRS-F003): a comment beside the identifier
+    leaves it naming its profile, one inside it names none."""
+    minimum = "urn:factur-x.eu:1p0:minimum"
+    beside = validate(factur_x(minimum, WRONG_TYPE_CODE, (f">{minimum}<", f">{minimum}<!--x--><")))
+    assert ("FX-SCH-A-000023", "error") in rules(beside)
+    assert profile_findings(beside) == []
+    inside = validate(factur_x(minimum, (f">{minimum}<", ">urn:factur-x.eu:<!--x-->1p0:minimum<")))
+    assert [finding.text.removesuffix(PROFILE_END) for finding in profile_findings(inside)] == [
+        "BT-24 'urn:factur-x.eu:1p0:minimum', in pieces 'urn:factur-x.eu:' and '1p0:minimum',"
+        " names no profile Haflinger has rules for in a CII invoice"
+    ]
+
+
 @pytest.mark.parametrize(
     ("specification_id", "rule"),
     [
@@ -375,19 +395,24 @@ def test_the_factur_x_spellings_are_those_of_the_spec() -> None:
     assert in_spec == in_code
 
 
+def scenario_matches() -> dict[str | None, str]:
+    """KoSIT's match expression of each scenario, by the scenario's name."""
+    namespace = "{http://www.xoev.de/de/validator/framework/1/scenarios}"
+    return {
+        scenario.findtext(f"{namespace}name"): scenario.findtext(f"{namespace}match") or ""
+        for scenario in defusedxml.ElementTree.fromstring(SCENARIOS.read_bytes()).iter(
+            f"{namespace}scenario"
+        )
+    }
+
+
 def test_each_rule_set_is_kosits_scenario_for_its_document_and_bt_24() -> None:
     """The rule sets of REQ-002-PRS-F003 other than Factur-X's, by syntax and BT-24, are the
     scenarios whose match expressions name the same root element and BT-24; every scenario is
     used."""
     from haflinger._validation import _FACTUR_X, _RULE_SETS  # pyright: ignore[reportPrivateUsage]
 
-    namespace = "{http://www.xoev.de/de/validator/framework/1/scenarios}"
-    matches = {
-        scenario.findtext(f"{namespace}name"): scenario.findtext(f"{namespace}match") or ""
-        for scenario in defusedxml.ElementTree.fromstring(SCENARIOS.read_bytes()).iter(
-            f"{namespace}scenario"
-        )
-    }
+    matches = scenario_matches()
     roots = {
         "cii": "/rsm:CrossIndustryInvoice",
         "ubl-invoice": "/invoice:Invoice",
@@ -398,6 +423,27 @@ def test_each_rule_set_is_kosits_scenario_for_its_document_and_bt_24() -> None:
         assert roots[document] in matches[name], name
         assert re.findall(r"'([^']*)'", matches[name]) == [specification_id], name
     assert set(kosit.values()) == set(matches)
+
+
+def test_each_row_is_compared_as_its_scenario_compares_bt_24() -> None:
+    """By BT-24's string value, `.`, or by each of its text nodes, `text()` (REQ-002-PRS-F003)."""
+    from haflinger._validation import (
+        _BY_WHOLE_TEXT,  # pyright: ignore[reportPrivateUsage]
+        _FACTUR_X,  # pyright: ignore[reportPrivateUsage]
+        _RULE_SETS,  # pyright: ignore[reportPrivateUsage]
+    )
+
+    matches = scenario_matches()
+    whole = set[tuple[str, str]]()
+    for key, name in _RULE_SETS.items():
+        if name in _FACTUR_X:
+            continue
+        by_value = re.search(r"\[\s*\.\s*=", matches[name]) is not None
+        assert by_value != ("/text() =" in matches[name]), name
+        if by_value:
+            whole.add(key)
+    assert whole == _BY_WHOLE_TEXT
+    assert len(whole) == 3
 
 
 # REQ-002-PRS-F004, REQ-002-PRS-F010
@@ -629,6 +675,209 @@ def test_bt_24_with_whitespace_names_no_profile() -> None:
     assert xrechnung_rules(findings) == set()
 
 
+# REQ-002-PRS-F003: BT-24 split by a comment, a processing instruction or an element, or given
+# twice. The rule set is the one KoSIT's validator chooses for the same copy, or none, with
+# `HAFL-PROFILE` (tests/conformance/test_kosit_validator.py).
+
+XRECHNUNG_REST = "#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0"
+SECOND_BT_24 = {
+    CII: "</ram:ID></ram:GuidelineSpecifiedDocumentContextParameter>"
+    "<ram:GuidelineSpecifiedDocumentContextParameter><ram:ID>",
+    UBL: "</cbc:CustomizationID><cbc:CustomizationID>",
+}
+BT_24_LOCATIONS = {
+    CII: CII_BT_24,
+    UBL: "/ubl:Invoice/cbc:CustomizationID",
+    CREDIT_NOTE: "/cn:CreditNote/cbc:CustomizationID",
+}
+SYNTAXES = {CII: "a CII invoice", UBL: "a UBL invoice", CREDIT_NOTE: "a UBL credit note"}
+NAMES = {CII: "CII", UBL: "UBL Invoice", CREDIT_NOTE: "UBL CreditNote"}
+
+
+def with_bt_24(path: Path, written: str) -> bytes:
+    """A copy whose BT-24 is `written`, markup included, and, but for the credit note, without
+    its buyer reference, so that XRechnung's rules fail (BR-DE-15) where they run."""
+    if path == CREDIT_NOTE:
+        return edited(path, (f">{EN16931}<", f">{written}<"))
+    return with_specification_id(path, written, NO_BUYER_REFERENCE[path])
+
+
+def in_pieces(*pieces: str) -> str:
+    """One BT-24 split into `pieces`, as `HAFL-PROFILE` names it."""
+    listed = " and ".join(repr(piece) for piece in pieces)
+    return f"BT-24 {''.join(pieces)!r}, in pieces {listed},"
+
+
+def twice(first: str, second: str) -> str:
+    """Two BT-24, as `HAFL-PROFILE` names them."""
+    return f"BT-24, given 2 times, as {first!r} and {second!r},"
+
+
+def several(path: Path) -> str:
+    """The rule sets of EN 16931 and XRechnung 3.0, as `HAFL-PROFILE` names them."""
+    return (
+        f"names more than one profile Haflinger has rules for in {SYNTAXES[path]}, with the rule"
+        f" sets 'EN16931 ({NAMES[path]})' and 'EN16931 XRechnung ({NAMES[path]})'"
+    )
+
+
+def no_profile(path: Path) -> str:
+    return f"names no profile Haflinger has rules for in {SYNTAXES[path]}"
+
+
+@pytest.mark.parametrize(
+    ("path", "written", "xrechnung", "profile"),
+    [
+        (CII, f"<!--x-->{XRECHNUNG}", True, None),
+        (CII, f"{XRECHNUNG}<!--x-->", True, None),
+        (CII, f"{EN16931}<!--x-->{XRECHNUNG_REST}", False, None),
+        (CII, f"{EN16931}<?x y?>{XRECHNUNG_REST}", False, None),
+        (CII, f"{EN16931}<ram:X/>{XRECHNUNG_REST}", False, None),
+        (
+            CII,
+            f"{EN16931}<!--x-->{XRECHNUNG}",
+            False,
+            f"{in_pieces(EN16931, XRECHNUNG)} {several(CII)}",
+        ),
+        (
+            CII,
+            "urn:cen.eu:<!--x-->en16931:2017",
+            False,
+            f"{in_pieces('urn:cen.eu:', 'en16931:2017')} {no_profile(CII)}",
+        ),
+        (CII, f"urn:example{SECOND_BT_24[CII]}{EN16931}", False, None),
+        (CII, f"{XRECHNUNG}<!--x-->urn:factur-x.eu:1p0:minimum", True, None),
+        (
+            CII,
+            f"{XRECHNUNG}{SECOND_BT_24[CII]}{EN16931}",
+            False,
+            f"{twice(XRECHNUNG, EN16931)} {several(CII)}",
+        ),
+        (UBL, f"<!--x-->{XRECHNUNG}", True, None),
+        (UBL, f"{XRECHNUNG}<!--x-->", True, None),
+        (
+            UBL,
+            f"{EN16931}<!--x-->{XRECHNUNG_REST}",
+            False,
+            f"{in_pieces(EN16931, XRECHNUNG_REST)} {several(UBL)}",
+        ),
+        (
+            UBL,
+            f"{EN16931}<?x y?>{XRECHNUNG_REST}",
+            False,
+            f"{in_pieces(EN16931, XRECHNUNG_REST)} {several(UBL)}",
+        ),
+        (
+            UBL,
+            f"{EN16931}<cbc:X/>{XRECHNUNG_REST}",
+            False,
+            f"{in_pieces(EN16931, XRECHNUNG_REST)} {several(UBL)}",
+        ),
+        (UBL, f"{EN16931}<!--x-->{XRECHNUNG}", False, None),
+        (
+            UBL,
+            "urn:cen.eu:<!--x-->en16931:2017",
+            False,
+            f"{in_pieces('urn:cen.eu:', 'en16931:2017')} {no_profile(UBL)}",
+        ),
+        (
+            UBL,
+            f"{XRECHNUNG}{SECOND_BT_24[UBL]}{EN16931}",
+            False,
+            f"{twice(XRECHNUNG, EN16931)} {several(UBL)}",
+        ),
+        (CREDIT_NOTE, f"<!--x-->{XRECHNUNG}", True, None),
+        (CREDIT_NOTE, f"{XRECHNUNG}<!--x-->", True, None),
+        (CREDIT_NOTE, f"{EN16931}<!--x-->{XRECHNUNG_REST}", False, None),
+        (CREDIT_NOTE, f"{EN16931}<?x y?>{XRECHNUNG_REST}", False, None),
+        (CREDIT_NOTE, f"{EN16931}<cbc:X/>{XRECHNUNG_REST}", False, None),
+        (
+            CREDIT_NOTE,
+            f"{EN16931}<!--x-->{XRECHNUNG}",
+            False,
+            f"{in_pieces(EN16931, XRECHNUNG)} {several(CREDIT_NOTE)}",
+        ),
+        (
+            CREDIT_NOTE,
+            f"{XRECHNUNG}{SECOND_BT_24[UBL]}{EN16931}",
+            False,
+            f"{twice(XRECHNUNG, EN16931)} {several(CREDIT_NOTE)}",
+        ),
+    ],
+    ids=[
+        "cii-comment-at-the-start",
+        "cii-comment-at-the-end",
+        "cii-comment-in-the-middle",
+        "cii-instruction-in-the-middle",
+        "cii-element-in-the-middle",
+        "cii-two-profiles",
+        "cii-no-profile",
+        "cii-second-bt-24-of-a-profile",
+        "cii-second-bt-24-of-another-profile",
+        "cii-xrechnung-and-factur-x",
+        "ubl-comment-at-the-start",
+        "ubl-comment-at-the-end",
+        "ubl-comment-in-the-middle",
+        "ubl-instruction-in-the-middle",
+        "ubl-element-in-the-middle",
+        "ubl-two-profiles",
+        "ubl-no-profile",
+        "ubl-second-bt-24",
+        "credit-note-comment-at-the-start",
+        "credit-note-comment-at-the-end",
+        "credit-note-comment-in-the-middle",
+        "credit-note-instruction-in-the-middle",
+        "credit-note-element-in-the-middle",
+        "credit-note-two-profiles",
+        "credit-note-second-bt-24",
+    ],
+)
+def test_bt_24_in_pieces_is_compared_as_kosits_scenarios_compare_it(
+    path: Path, written: str, xrechnung: bool, profile: str | None, xpath: Callable[[str], str]
+) -> None:
+    """By the whole text for XRechnung in a UBL invoice, by each piece otherwise, every BT-24
+    element counted; matching more than one row names no profile (REQ-002-PRS-F003,
+    REQ-002-PRS-F004, REQ-002-PRS-F010); a row of KoSIT's before Factur-X's. An element inside
+    BT-24, and a second one in UBL, fail the XML Schema, so that no rules run, and the rule set is
+    checked as chosen; two in CII make CEN's rules fail (`HAFL-RULES`)."""
+    data = with_bt_24(path, written)
+    name, _ = rule_set(open_invoice(data, MAX_SIZE, pdf="a PDF"), tree(decode(data)))
+    assert name == f"EN16931{' XRechnung' if xrechnung else ''} ({NAMES[path]})"
+    findings = validate(data)
+    assert bool(xrechnung_rules(findings)) == xrechnung
+    expected = [] if profile is None else [profile]
+    assert [finding.text.removesuffix(PROFILE_END) for finding in profile_findings(findings)] == (
+        expected
+    )
+    assert [finding.location for finding in profile_findings(findings)] == [
+        xpath(BT_24_LOCATIONS[path]) for _ in expected
+    ]
+
+
+def test_bt_24_inside_an_element_is_named_not_missing(xpath: Callable[[str], str]) -> None:
+    """Its text, all inside a child element, is no text node of BT-24's own (REQ-002-PRS-F003);
+    `HAFL-PROFILE` names it (REQ-002-PRS-F010)."""
+    findings = validate(with_bt_24(UBL, f"<cbc:X>{EN16931}</cbc:X>"))
+    assert [finding.text.removesuffix(PROFILE_END) for finding in profile_findings(findings)] == [
+        f"BT-24 {EN16931!r}, all of it inside an element, {no_profile(UBL)}"
+    ]
+    assert [finding.location for finding in profile_findings(findings)] == [
+        xpath(BT_24_LOCATIONS[UBL])
+    ]
+
+
+def test_hafl_profile_names_the_first_pieces_of_many() -> None:
+    """Split into 1,000 pieces, BT-24 is named shortened, and the first five pieces and how many
+    more (REQ-002-PRS-F010)."""
+    findings = validate(with_bt_24(CII, "<!--x-->".join(["urn:example"] * 1000)))
+    (finding,) = profile_findings(findings)
+    assert "'urn:example', 'urn:example', 'urn:example', 'urn:example', 'urn:example' and" in (
+        finding.text
+    )
+    assert " and 995 more, names no profile" in finding.text
+    assert len(finding.text) < 800
+
+
 # Validation and writing from several threads at once
 
 
@@ -663,8 +912,9 @@ def test_schema_checks_from_several_threads() -> None:
     [
         (UBL, f"{EN16931}#compliant#urn:fdc:peppol.eu:2017:poacc:billing:3.0"),
         (CII, f"{EN16931}#compliant#urn:xoev-de:kosit:standard:xrechnung_2.1"),
+        (UBL, f"{EN16931}<!--x-->{XRECHNUNG_REST}"),
     ],
-    ids=["peppol", "xrechnung-2.1"],
+    ids=["peppol", "xrechnung-2.1", "ubl-en16931-and-xrechnung"],
 )
 def test_other_profiles_run_cens_rules(path: Path, specification_id: str) -> None:
     findings = validate(with_specification_id(path, specification_id, WRONG_TOTAL[path]))
