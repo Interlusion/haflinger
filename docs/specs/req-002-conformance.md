@@ -3,8 +3,8 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Baselined |
-| **Version** | 0.11 |
-| **Date** | 2026-11-12 |
+| **Version** | 0.12 |
+| **Date** | 2026-11-15 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Intended Use
@@ -135,17 +135,19 @@ A value the rules find wrong is a finding, not a refusal, and so is a failure of
 | Factur-X / ZUGFeRD BASIC | `urn:cen.eu:en16931:2017#compliant#urn:factur-x.eu:1p0:basic` | `urn:cen.eu:en16931:2017#compliant#urn:zugferd.de:2p0:basic`, `urn:cen.eu:en16931:2017:compliant:factur-x.eu:1p0:basic` | CII | The Factur-X rules of the profile |
 | Factur-X / ZUGFeRD EXTENDED | `urn:cen.eu:en16931:2017#conformant#urn:factur-x.eu:1p0:extended` | `urn:cen.eu:en16931:2017#conformant#urn:zugferd.de:2p0:extended`, `urn:cen.eu:en16931:2017:compliant:factur-x.eu:1p0:extended` | CII | The Factur-X rules of the profile |
 
-**Related URS**: REQ-002-URS-F002 | **Rationale**: ZUGFeRD 2.0's spellings get today's Factur-X rules, because Factur-X 1.0 continues the same profiles. The Factur-X rules are FeRD's, from its ZUGFeRD package, which is technically identical to FNFE-MPE's Factur-X package.
+A comment or a processing instruction inside BT-24, or an element, splits its text into pieces, and KoSIT's scenarios compare it in one of two ways; the identifiers of each row SHALL be compared as its scenario compares them. For XRechnung 3.0, its extension and CVD in a UBL invoice, the scenarios compare BT-24's whole text, comments and processing instructions left out (XPath's string value); for every other row, they compare each piece on its own (each text node), so that `urn:cen.eu:en16931:2017<!-- a comment -->` in a CII invoice names EN 16931, and `urn:cen.eu:<!-- a comment -->en16931:2017` names no profile. KoSIT's scenarios have no Factur-X rows: theirs are compared as KoSIT compares the other CII rows, and count only where no other row matches, so that a BT-24 naming XRechnung 3.0 and a Factur-X profile gets XRechnung's rules, as in KoSIT's validator. Every BT-24 element of the invoice counts, a second one too. A BT-24 whose pieces or whole text match the identifiers of no row, or of more than one, names no profile (REQ-002-PRS-F004), as KoSIT's validator then chooses no scenario.
 
-**Definition of Done**: a test per row checks that its rule set ran (by the rule IDs in its findings, or by a deliberately broken copy failing a rule of that set), with an official test file of that profile where one is vendored, otherwise with a copy of a KoSIT file with BT-24 changed; a test per alternative spelling, with a test file that uses it where the vendored files have one, otherwise with such a copy.
+**Related URS**: REQ-002-URS-F002 | **Rationale**: ZUGFeRD 2.0's spellings get today's Factur-X rules, because Factur-X 1.0 continues the same profiles. The Factur-X rules are FeRD's, from its ZUGFeRD package, which is technically identical to FNFE-MPE's Factur-X package. A comment inside BT-24 is rare, but compared any other way, it can make Haflinger run another profile's rules than KoSIT's validator does, which can turn its verdict.
+
+**Definition of Done**: a test per row checks that its rule set ran (by the rule IDs in its findings, or by a deliberately broken copy failing a rule of that set), with an official test file of that profile where one is vendored, otherwise with a copy of a KoSIT file with BT-24 changed; a test per alternative spelling, with a test file that uses it where the vendored files have one, otherwise with such a copy; a test checks that each row other than Factur-X's is compared as its scenario's match expression compares it (tests). Copies of KoSIT case 01.01a in CII and UBL and of CEN's UBL credit note, with a comment or a processing instruction at the start, in the middle or at the end of BT-24, with an element inside it, and with two BT-24 elements, and a copy of the CII case with the identifiers of XRechnung 3.0 and Factur-X MINIMUM, get the rule set this rule names, or a `HAFL-PROFILE` finding, with the text of REQ-002-PRS-F010, which names BT-24 with all its text inside an element, and a BT-24 of 1,000 pieces by its first five (tests); KoSIT's validator chooses the same scenario for each, and none where Haflinger gives `HAFL-PROFILE` (conformance test, where `HAFLINGER_KOSIT_VALIDATOR` names it).
 
 #### REQ-002-PRS-F004: Profiles not supported
 
-**Description**: An invoice whose BT-24 names no profile of REQ-002-PRS-F003 for its syntax, or that has no BT-24, SHALL be validated with CEN's EN 16931 rules for its syntax, and SHALL get one `HAFL-PROFILE` finding (REQ-002-PRS-F010).
+**Description**: An invoice whose BT-24 names no profile of REQ-002-PRS-F003 for its syntax, or more than one, or that has no BT-24, SHALL be validated with CEN's EN 16931 rules for its syntax, and SHALL get one `HAFL-PROFILE` finding (REQ-002-PRS-F010).
 
 **Related URS**: REQ-002-URS-F002, REQ-002-URS-F003 | **Rationale**: Rule sets of outdated versions (XRechnung before 3.0) aren't kept: they would have to be vendored and tested next to the current ones for a shrinking number of invoices, and such an invoice is still read and validated. The same holds for code lists: a code that has since left its list shows as a finding, and the invoice date shows that it was valid then. Peppol BIS rules come with sending through Peppol; the sending access point checks them for incoming Peppol invoices.
 
-**Definition of Done**: tests with a Peppol BIS invoice, an XRechnung 2.1 invoice, a UBL invoice that claims Factur-X BASIC and an invoice without BT-24 get the EN 16931 findings and one `HAFL-PROFILE` finding each.
+**Definition of Done**: tests with a Peppol BIS invoice, an XRechnung 2.1 invoice, a UBL invoice that claims Factur-X BASIC, a UBL invoice whose BT-24 a comment splits into the identifiers of EN 16931 and XRechnung 3.0, and an invoice without BT-24 get the EN 16931 findings and one `HAFL-PROFILE` finding each.
 
 #### REQ-002-PRS-F005: KoSIT's rule levels
 
@@ -199,7 +201,7 @@ A value the rules find wrong is a finding, not a refusal, and so is a failure of
 
 | Rule | Flag | Reported by | When | Location and text |
 | :- | :- | :- | :- | :- |
-| `HAFL-PROFILE` | `warning` | `validate` | BT-24 names no profile for the invoice's syntax, or is missing (REQ-002-PRS-F004) | BT-24's element, or the root; the text names the BT-24 value and says that the profile's own rules weren't run |
+| `HAFL-PROFILE` | `warning` | `validate` | BT-24 names no profile for the invoice's syntax, or more than one, or is missing (REQ-002-PRS-F004) | BT-24's element, or the root; the text names BT-24's text, of each BT-24 element, and its pieces where a comment, a processing instruction or an element splits it (REQ-002-PRS-F003), each shortened to its start and its end and at most five, with how many more, and the rule sets it names where it names more than one, and says that the profile's own rules weren't run |
 | `HAFL-XSD` | `fatal` | `validate`, `write_cii`, `haflinger.pdf.embed` | the document violates an XML Schema it must pass, or can't be parsed for the check (REQ-002-PRS-F011, REQ-004-PRS-F004) | the element the schema check names, or the line where it names none or one Haflinger can't tell from its siblings; a text of more than 500 characters shortened to its start and its end; the text names the schema |
 | `HAFL-RULES` | `fatal` | `validate`, `write_cii`, `haflinger.pdf.embed` | the official rules fail on an invoice that passed the XML Schema, as when a value a stylesheet expects once occurs twice; KoSIT's validator reports this as a processing error and rejects the invoice (REQ-002-PRS-F001) | the root element; the text names the rule set and the processor's message |
 | `HAFL-VALUE` | `error` | `read_invoice` | a value isn't written as its business term requires, and is read as missing (REQ-003-PRS-F002) | the element; the text names the business term and the value |
@@ -263,7 +265,7 @@ A value the rules find wrong is a finding, not a refusal, and so is a failure of
 
 - Every KoSIT test file is valid; a one-cent error fails `BR-CO-15` and `BR-CO-16`.
 - Every expectation of CEN's unit tests from the rules' release is met.
-- Each profile of the rule-set table runs its own rules, under each of its spellings; other profiles get the EN 16931 rules and a `HAFL-PROFILE` warning.
+- Each profile of the rule-set table runs its own rules, under each of its spellings; other profiles get the EN 16931 rules and a `HAFL-PROFILE` warning. BT-24 is compared as KoSIT's scenarios compare it, a comment inside it too.
 - KoSIT's rule levels apply; the rules judge the document as received.
 - Only EN 16931-1:2017 is handled; other editions are refused.
 - Haflinger's own findings are the five of REQ-002-PRS-F010.

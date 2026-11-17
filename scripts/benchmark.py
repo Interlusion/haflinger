@@ -23,8 +23,8 @@ from haflinger import Party, Totals, _cii, read_invoice, validate
 from haflinger._input import open_invoice
 from haflinger._validation import _RULE_SETS as RULE_SETS  # pyright: ignore[reportPrivateUsage]
 from haflinger._validation import _scenarios, rule_set  # pyright: ignore[reportPrivateUsage]
-from haflinger._xml import MAX_SIZE
-from haflinger._xsd import check
+from haflinger._xml import MAX_SIZE, decode
+from haflinger._xsd import check, tree
 
 ROOT = Path(__file__).resolve().parents[1]
 SUITE = sorted((ROOT / "tests/data/kosit-testsuite/instances").rglob("*.xml"))
@@ -111,7 +111,8 @@ def rule_set_samples(directory: Path) -> dict[str, Path]:
     and reduced to what MINIMUM and BASIC WL hold."""
     samples: dict[str, Path] = {}
     for path in [*SUITE, CREDIT_NOTE]:
-        name, _ = rule_set(open_invoice(path.read_bytes(), MAX_SIZE, pdf="a PDF"))
+        data = path.read_bytes()
+        name, _ = rule_set(open_invoice(data, MAX_SIZE, pdf="a PDF"), tree(decode(data)))
         samples.setdefault(name, path)
     bases = {
         "cii": SUITE_CII.read_bytes(),

@@ -101,9 +101,12 @@ _NET_PRICE = "ram:NetPriceProductTradePrice"
 _DELIVERY = f"{_TRANSACTION}/ram:ApplicableHeaderTradeDelivery"
 
 
+SPECIFICATION = f"{_CONTEXT}/ram:GuidelineSpecifiedDocumentContextParameter/ram:ID"  # BT-24
+
+
 def specification(root: Node) -> Node | None:
     """BT-24's element."""
-    return root.first(f"{_CONTEXT}/ram:GuidelineSpecifiedDocumentContextParameter/ram:ID", "BT-24")
+    return root.first(SPECIFICATION, "BT-24")
 
 
 def read(root: Node, specification_id: str | None) -> Invoice:

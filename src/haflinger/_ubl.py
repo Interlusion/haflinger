@@ -82,9 +82,12 @@ _SUBJECT_CODE = re.compile(r"#([A-Z]{3})#(.*)", re.DOTALL)
 _TAX_SCHEME = "cac:TaxScheme/cbc:ID"
 
 
+SPECIFICATION = "cbc:CustomizationID"  # BT-24
+
+
 def specification(root: Node) -> Node | None:
     """BT-24's element."""
-    return root.first("cbc:CustomizationID", "BT-24")
+    return root.first(SPECIFICATION, "BT-24")
 
 
 def read(root: Node, specification_id: str | None, *, credit_note: bool) -> Invoice:
