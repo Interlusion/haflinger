@@ -103,9 +103,10 @@ _SPECIFICATIONS: dict[Document, str] = {
     "ubl-invoice": _ubl.SPECIFICATION,
     "ubl-credit-note": _ubl.SPECIFICATION,
 }
-# The limits of an invoice that is validated (REQ-002-PRS-F001): empty elements, the digits of a
-# number, the characters of a telephone number.
+# The limits of an invoice that is validated (REQ-002-PRS-F001): empty elements and the characters
+# of their locations, the digits of a number, the characters of a telephone number.
 _MAX_EMPTY = 1000
+_MAX_LOCATIONS = 10_000_000
 _MAX_DIGITS = 1000
 _MAX_TELEPHONE = 100
 _MAX_PIECES = 5  # the values of each list in a `HAFL-PROFILE` text
@@ -163,16 +164,22 @@ def validate(
 
 
 def _refuse_costly(opened: Opened) -> None:
-    """Refuse the shapes on which the rules would take minutes (REQ-002-PRS-F001): more than
-    `_MAX_EMPTY` empty elements, each failing PEPPOL-EN16931-R008 and located by counting its
-    preceding siblings; a number of more than `_MAX_DIGITS` digits, whose arithmetic grows with the
-    square of its length; a telephone number of more than `_MAX_TELEPHONE` characters, which
-    XRechnung's BR-DE-27 checks with a pattern growing with the square of the length."""
-    empty = 0
-    for element in opened.reading.root.element.iter():
+    """Refuse the shapes on which the rules would take minutes or gigabytes (REQ-002-PRS-F001):
+    more than `_MAX_EMPTY` empty elements, each failing PEPPOL-EN16931-R008 and located by counting
+    its preceding siblings, or fewer whose locations, each step `Q{namespace}name[position]`, total
+    more than `_MAX_LOCATIONS` characters; a number of more than `_MAX_DIGITS` digits, whose
+    arithmetic grows with the square of its length; a telephone number of more than
+    `_MAX_TELEPHONE` characters, which XRechnung's BR-DE-27 checks with a pattern growing with the
+    square of the length."""
+    empty = locations = 0
+    root = opened.reading.root.element
+    located = {root: _step(root.tag, 1)}  # each element's location's length, until it is reached
+    for element in root.iter():
+        location = located.pop(element)
         text = (element.text or "").strip(XML_WHITESPACE)
         if len(element) == 0 and not text:
             empty += 1
+            locations += location
         elif element.tag in _TELEPHONES and len(text) > _MAX_TELEPHONE:
             raise InvoiceReadError(
                 f"the invoice holds a telephone number of {len(text):,} characters, more than"
@@ -186,11 +193,27 @@ def _refuse_costly(opened: Opened) -> None:
                     f"the invoice holds a number of {digits:,} digits, more than {_MAX_DIGITS:,};"
                     " Haflinger doesn't run the official rules on it, which would take minutes"
                 )
+        if len(element):
+            positions = dict[str, int]()
+            for child in element:
+                positions[child.tag] = position = positions.get(child.tag, 0) + 1
+                located[child] = location + _step(child.tag, position)
     if empty > _MAX_EMPTY:
         raise InvoiceReadError(
             f"the invoice holds {empty:,} empty elements, more than {_MAX_EMPTY:,}; Haflinger"
             " doesn't run the official rules on it, which would take minutes"
         )
+    if locations > _MAX_LOCATIONS:
+        raise InvoiceReadError(
+            f"the locations of the invoice's empty elements total {locations:,} characters, more"
+            f" than {_MAX_LOCATIONS:,}; Haflinger doesn't run the official rules on it, whose"
+            " findings would take gigabytes"
+        )
+
+
+def _step(tag: str, position: int) -> int:
+    """The length of a location's step `/Q{namespace}name[position]` for an element's tag."""
+    return len(tag) + len(str(position)) + (4 if tag.startswith("{") else 6)
 
 
 def check_rules(data: bytes, *also: str, timeout: float | None = None) -> tuple[Finding, ...]:

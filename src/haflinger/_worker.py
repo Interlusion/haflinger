@@ -14,6 +14,7 @@ import sys
 from functools import cache
 from pathlib import Path
 from typing import TYPE_CHECKING
+from urllib.parse import quote
 
 from haflinger._frames import frames, read_frame
 
@@ -22,6 +23,12 @@ if TYPE_CHECKING:
 
 # SchXslt's steps from a Schematron schema to a stylesheet that reports in SVRL.
 _SCHXSLT = ("schxslt/2.0/include.xsl", "schxslt/2.0/expand.xsl", "schxslt/2.0/compile-for-svrl.xsl")
+# A property of the JDK's XML parser, set through Saxon, and the limits set so.
+_PARSER_PROPERTY = "http://saxon.sf.net/feature/parserProperty?uri="
+_PARSER_LIMITS = {
+    "http://www.oracle.com/xml/jaxp/properties/maxElementDepth": "2048",
+    "http://www.oracle.com/xml/jaxp/properties/elementAttributeLimit": "10000",
+}
 
 
 class _Saxon:
@@ -37,6 +44,12 @@ class _Saxon:
         self.processor.set_configuration_property(
             "http://saxon.sf.net/feature/allowedProtocols", "file"
         )
+        # SaxonC parses with the JDK's strict limits, 100 levels and 200 attributes an element,
+        # where KoSIT's validator has Java's defaults: no depth limit, 10,000 attributes. Depth
+        # is bounded at the XML Schema check's 2,048 levels, libxml2's, as Saxon builds a wrong
+        # tree beyond 32,767 (REQ-002-PRS-F011).
+        for name, value in _PARSER_LIMITS.items():
+            self.processor.set_configuration_property(_PARSER_PROPERTY + quote(name, ""), value)
         self.executable = cache(self._compile)
 
     def _compile(self, stylesheet: str) -> PyXsltExecutable:
