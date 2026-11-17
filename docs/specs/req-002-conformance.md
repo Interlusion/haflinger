@@ -3,8 +3,8 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Baselined |
-| **Version** | 0.12 |
-| **Date** | 2026-11-15 |
+| **Version** | 0.13 |
+| **Date** | 2026-11-17 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Intended Use
@@ -103,6 +103,7 @@ The personas are [REQ-001's](req-001-core.md#personas).
 - follows an edition other than 2017 (REQ-002-PRS-F009);
 - is larger than `max_size` (REQ-001-PRS-NF003);
 - holds more than 1,000 empty elements (no child element, no text but whitespace): every one fails `PEPPOL-EN16931-R008`, and the rules would take minutes over thousands of them (see the assumptions); real invoices hold none or a few;
+- holds empty elements whose locations (REQ-002-PRS-F002) total more than 10,000,000 characters: each step of a location names its element's namespace, so that a few hundred empty elements nested deep in a long namespace give findings that take gigabytes in the worker and the caller (229 million characters of locations, 1.7 GB in the worker, for an invoice of 35 kB, measured on 2026-11-17); the locations of a real invoice's empty elements total a few thousand characters at most;
 - holds a number of more than 1,000 digits, whose arithmetic in the rules grows with the square of its length (minutes for one of a megabyte); real amounts have fewer than 20;
 - holds a telephone number (`ram:CompleteNumber`, `cbc:Telephone`) of more than 100 characters: XRechnung's `BR-DE-27` checks it with a pattern whose time grows with the square of the length (36 s for 8,000 characters); real numbers have fewer than 40.
 
@@ -110,7 +111,7 @@ A value the rules find wrong is a finding, not a refusal, and so is a failure of
 
 **Related URS**: REQ-002-URS-F001
 
-**Definition of Done**: a test validates a CII and a UBL file of the KoSIT suite; one test per refusal (a `str` and a `memoryview` for the type, a UTF-8 byte order mark with `encoding="ISO-8859-1"`), those for empty elements, digits and telephone numbers also showing that the limit itself is validated and that far beyond it is refused within a second; the rest is covered by REQ-002-PRS-F006.
+**Definition of Done**: a test validates a CII and a UBL file of the KoSIT suite; one test per refusal (a `str` and a `memoryview` for the type, a UTF-8 byte order mark with `encoding="ISO-8859-1"`), those for empty elements, their locations, digits and telephone numbers also showing that the limit itself is validated and that far beyond it is refused within a second; the rest is covered by REQ-002-PRS-F006.
 
 #### REQ-002-PRS-F002: Findings
 
@@ -213,11 +214,11 @@ A comment or a processing instruction inside BT-24, or an element, splits its te
 
 #### REQ-002-PRS-F011: XML Schema first
 
-**Description**: `validate` SHALL check the invoice against the XML Schema of its rule set before the rules, as KoSIT's validator does: for KoSIT's scenarios the schema the scenario names (CII D16B, UBL 2.1 Invoice or CreditNote), for a Factur-X profile FeRD's XML Schema of the profile. The check SHALL read the text Saxon gets, decoded once by the byte order mark or the declared encoding, so that the schema, the rules and the reader see the same characters. Each violation SHALL be a `HAFL-XSD` finding (REQ-002-PRS-F010), its text shortened where the schema check quotes a long value, such as an attached document's Base64, and the rules SHALL run only on an invoice that passes the schema.
+**Description**: `validate` SHALL check the invoice against the XML Schema of its rule set before the rules, as KoSIT's validator does: for KoSIT's scenarios the schema the scenario names (CII D16B, UBL 2.1 Invoice or CreditNote), for a Factur-X profile FeRD's XML Schema of the profile. The check SHALL read the text Saxon gets, decoded once by the byte order mark or the declared encoding, so that the schema, the rules and the reader see the same characters. Each violation SHALL be a `HAFL-XSD` finding (REQ-002-PRS-F010), its text shortened where the schema check quotes a long value, such as an attached document's Base64, and the rules SHALL run only on an invoice that passes the schema. Saxon SHALL parse such an invoice as KoSIT's validator does, within the limits of the check: SaxonC parses with the JDK's strict limits, 100 levels (`jdk.xml.maxElementDepth`) and 200 attributes an element, namespace declarations counted (`jdk.xml.elementAttributeLimit`), which a UBL invoice can pass the schema beyond, since UBL's extensions (`ext:ExtensionContent`) take any foreign elements; KoSIT's validator has Java's defaults, no depth limit and 10,000 attributes. Haflinger SHALL set 2,048 levels, where the check itself stops: it runs with libxml2, which parses no deeper, so that a deeper invoice is a `HAFL-XSD` finding, where KoSIT's validator checks it. It SHALL set 10,000 attributes, beyond which both reject the invoice, Haflinger with `HAFL-RULES`, KoSIT's validator with a processing error.
 
-**Related URS**: REQ-002-URS-F001 | **Rationale**: The rules assume a schema-valid document: on one that isn't, a stylesheet can fail (an amount written `1,00`) or miss what the schema would report (an unknown element, a date that doesn't exist).
+**Related URS**: REQ-002-URS-F001 | **Rationale**: The rules assume a schema-valid document: on one that isn't, a stylesheet can fail (an amount written `1,00`) or miss what the schema would report (an unknown element, a date that doesn't exist). SaxonC's limits made a schema-valid invoice with an extension 97 levels deep, or with an element of 201 attributes, a `HAFL-RULES` finding, rejected where KoSIT's validator accepts it. Saxon keeps a depth limit, as the rules also run without the check, on the invoices Haflinger writes and on CEN's unit tests: beyond 32,767 levels Saxon builds a wrong tree without an error, and a copy of 01.01a 50,000 levels deep failed CEN's `BR-CO-10`, in KoSIT's validator too (measured on 2026-11-17). libxml2's limit, which lxml can't raise, leaves the same difference beyond 2,048 levels, far beyond real content: a XAdES signature in an extension, as UBL's schemas define it, reaches 15.
 
-**Definition of Done**: a CII and a UBL file of the KoSIT suite with an unknown element, and one with an amount written `1,00`, each get `HAFL-XSD` findings and no finding of a rule; a Factur-X copy that violates its profile's schema gets `HAFL-XSD`; a copy of a KoSIT file declaring an encoding that Python knows and libxml2 doesn't (`mac-roman`) gets no `HAFL-XSD`; a copy nested 50,000 elements deep gets `HAFL-XSD`, not a crash; a copy with an unknown element whose prefixed name is longer than the 98 bytes libxml2's paths keep gets a `HAFL-XSD` finding located at it, or at its line where the cut splits a character, not a crash; a copy with an attached document of 400,000 characters the schema refuses gets a `HAFL-XSD` finding under 1,000 characters (tests).
+**Definition of Done**: a CII and a UBL file of the KoSIT suite with an unknown element, and one with an amount written `1,00`, each get `HAFL-XSD` findings and no finding of a rule; a Factur-X copy that violates its profile's schema gets `HAFL-XSD`; a copy of a KoSIT file declaring an encoding that Python knows and libxml2 doesn't (`mac-roman`) gets no `HAFL-XSD`; a copy nested 50,000 elements deep gets `HAFL-XSD`, not a crash; a copy of KoSIT's 01.01a UBL file with an extension whose deepest element lies at level 2,048 gets the rules' findings and no `HAFL-` finding, and one at level 2,049 gets `HAFL-XSD`, and `HAFL-RULES` from the rules without the check; one with an element of 10,000 attributes in its extension gets the rules' findings and no `HAFL-` finding, and one of 10,001 gets `HAFL-RULES` (tests); KoSIT's validator gives the same findings as `validate` for the copies at level 2,048 and of 10,000 attributes, accepts the copy at level 2,049 and rejects the one of 10,001 attributes with a processing error (conformance test, where `HAFLINGER_KOSIT_VALIDATOR` names it); a copy with an unknown element whose prefixed name is longer than the 98 bytes libxml2's paths keep gets a `HAFL-XSD` finding located at it, or at its line where the cut splits a character, not a crash; a copy with an attached document of 400,000 characters the schema refuses gets a `HAFL-XSD` finding under 1,000 characters (tests).
 
 ## PRS — Non-Functional
 
