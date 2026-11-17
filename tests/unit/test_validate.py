@@ -25,7 +25,7 @@ from haflinger import (
     validate,
 )
 from haflinger._input import open_invoice
-from haflinger._validation import rule_set
+from haflinger._validation import check_rules, rule_set
 from haflinger._xml import MAX_SIZE, decode
 from haflinger._xsd import Locations, check_cii, tree
 from haflinger.pdf import extract_xml
@@ -1016,6 +1016,22 @@ def test_a_thousand_empty_elements_are_validated() -> None:
         validate(with_empty_notes(1_001))
 
 
+def test_empty_elements_whose_locations_take_ten_million_characters_are_validated(
+    extended: Callable[..., bytes],
+) -> None:
+    """Each step of a location names the namespace, so the locations of a few hundred elements
+    nested 2,048 levels deep take millions of characters."""
+    findings = validate(extended(levels=2048, empty="<x:b/>" * 255))
+    empty = [finding for finding in findings if finding.rule == "PEPPOL-EN16931-R008"]
+    assert sum(len(finding.location) for finding in empty) == 9_991_812
+    with pytest.raises(InvoiceReadError, match=r"total 10,030,996 characters"):
+        validate(extended(levels=2048, empty="<x:b/>" * 256))
+    start = time.monotonic()
+    with pytest.raises(InvoiceReadError, match=r"more than 10,000,000"):
+        validate(extended(levels=2048, empty="<x:b/>" * 1_000))
+    assert time.monotonic() - start < 1
+
+
 # REQ-002-PRS-F001: numbers and telephone numbers too long for the rules
 
 TELEPHONE = {
@@ -1156,6 +1172,49 @@ def test_deeply_nested_xml_is_a_schema_finding() -> None:
     data = edited(CII, ("<ram:ID>123456XX</ram:ID>", "<ram:ID>123456XX</ram:ID>" + nested))
     findings = validate(data)
     assert {f.rule for f in findings} == {"HAFL-XSD"}
+
+
+@pytest.mark.parametrize("levels", [100, 101, 2048])
+def test_an_extension_as_deep_as_the_schema_check_parses_gets_the_rules(
+    extended: Callable[..., bytes], levels: int
+) -> None:
+    """REQ-002-PRS-F011: Saxon parses it, beyond SaxonC's limit of 100 levels, as KoSIT's
+    validator does; CEN's `UBL-CR-001` reports the extension."""
+    findings = validate(extended(levels=levels))
+    assert [finding for finding in findings if finding.rule.startswith("HAFL-")] == []
+    assert "UBL-CR-001" in {finding.rule for finding in findings}
+    assert invalid(findings) == []
+
+
+def test_an_extension_deeper_than_the_schema_check_parses_is_a_schema_finding(
+    extended: Callable[..., bytes],
+) -> None:
+    """REQ-002-PRS-F011: libxml2 parses no deeper than 2,048 levels, and Saxon no deeper either,
+    where the rules run without the XML Schema check."""
+    (finding,) = validate(extended(levels=2049))
+    assert finding.rule == "HAFL-XSD"
+    assert "depth" in finding.text
+    assert [finding.rule for finding in check_rules(extended(levels=2049))] == ["HAFL-RULES"]
+
+
+@pytest.mark.parametrize("attributes", [201, 10_000])
+def test_an_element_of_ten_thousand_attributes_gets_the_rules(
+    extended: Callable[..., bytes], attributes: int
+) -> None:
+    """REQ-002-PRS-F011: Saxon parses it, beyond SaxonC's limit of 200, as KoSIT's validator
+    does."""
+    findings = validate(extended(attributes=attributes))
+    assert [finding for finding in findings if finding.rule.startswith("HAFL-")] == []
+    assert invalid(findings) == []
+
+
+def test_an_element_of_more_than_ten_thousand_attributes_fails_the_rules(
+    extended: Callable[..., bytes],
+) -> None:
+    """REQ-002-PRS-F011: KoSIT's validator rejects it with a processing error."""
+    (finding,) = validate(extended(attributes=10_001))
+    assert (finding.rule, finding.flag) == ("HAFL-RULES", "fatal")
+    assert "10,000" in finding.text
 
 
 def test_a_text_over_ten_megabytes_passes_the_schema() -> None:

@@ -4,11 +4,15 @@ files with one error each, and the ZUGFeRD corpus's broken invoices. It gives th
 the same findings as `validate`, and accepts every invoice `write_cii` hands out
 (REQ-002-PRS-F007, REQ-004-PRS-F005). Over copies whose BT-24 is split or given twice, it
 chooses the scenario `validate` chooses (REQ-002-PRS-F003). It is Java, so it runs where
-HAFLINGER_KOSIT_VALIDATOR names it, as in CI (`scripts/kosit-validator.sh`)."""
+HAFLINGER_KOSIT_VALIDATOR names it, as in CI (`scripts/kosit-validator.sh`). Over UBL copies
+with an extension at Saxon's limits in `validate`, it finds what `validate` finds within them,
+rejects the copy beyond the limit of attributes, as `validate` does, and accepts the copy beyond
+the XML Schema check's depth, which `validate` stops at (REQ-002-PRS-F011)."""
 
 import os
 import re
 import subprocess
+from collections.abc import Callable
 from functools import cache
 from pathlib import Path
 from xml.etree.ElementTree import Element
@@ -121,6 +125,11 @@ SPLIT_FROM: dict[str, tuple[Path, str, dict[str, str]]] = {
     "credit-note": (CREDIT_NOTE, EN16931, UBL_OWN),
 }
 
+# The extensions at Saxon's limits in `validate` (REQ-002-PRS-F011): the deepest level libxml2
+# parses, and so the XML Schema check, and Java's limit of attributes; and one beyond each.
+AT_THE_LIMITS = {"nested-2048": {"levels": 2048}, "attributes-10000": {"attributes": 10_000}}
+BEYOND = {"nested-2049": {"levels": 2049}, "attributes-10001": {"attributes": 10_001}}
+
 
 def documents(path: Path) -> dict[str, bytes]:
     """The suite's file as received and the documents the round trip writes from it."""
@@ -205,9 +214,18 @@ def failing(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Element]:
 
 
 @pytest.fixture(scope="module")
-def splitting(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Element]:
+def extensions(extended: Callable[..., bytes]) -> dict[str, bytes]:
+    """KoSIT's 01.01a UBL file with each extension of AT_THE_LIMITS and BEYOND."""
+    return {f"{name}.xml": extended(**shape) for name, shape in (AT_THE_LIMITS | BEYOND).items()}
+
+
+@pytest.fixture(scope="module")
+def copies(
+    tmp_path_factory: pytest.TempPathFactory, extensions: dict[str, bytes]
+) -> dict[str, Element]:
+    """The split copies and the extensions, in one call: Java starts once."""
     needs_validator()
-    return run(tmp_path_factory.mktemp("kosit-split"), split())
+    return run(tmp_path_factory.mktemp("kosit-copies"), split() | extensions)
 
 
 def root(path: Path) -> Element:
@@ -332,8 +350,36 @@ def test_the_split_copies_are_there() -> None:
 
 @pytest.mark.parametrize("name", sorted(split()))
 def test_kosit_chooses_the_scenario_validate_chooses_for_bt_24_in_pieces(
-    splitting: dict[str, Element], name: str
+    copies: dict[str, Element], name: str
 ) -> None:
     """Some match a scenario, some none, some more than one, which KoSIT's validator counts as
     none (REQ-002-PRS-F003, REQ-002-PRS-F004); KoSIT's has no Factur-X scenario."""
-    assert scenario(splitting[name]) == chosen(split()[name])
+    assert scenario(copies[name]) == chosen(split()[name])
+
+
+@pytest.mark.parametrize("name", AT_THE_LIMITS)
+def test_kosit_finds_what_validate_finds_in_extensions_at_saxons_limits(
+    copies: dict[str, Element], extensions: dict[str, bytes], name: str
+) -> None:
+    """Beyond SaxonC's own limits, 100 levels and 200 attributes (REQ-002-PRS-F011)."""
+    assert_same(name, extensions[f"{name}.xml"], copies[f"{name}.xml"])
+
+
+def test_kosit_rejects_what_validate_rejects_beyond_the_limit_of_attributes(
+    copies: dict[str, Element], extensions: dict[str, bytes]
+) -> None:
+    """Both parsers stop: `validate` with `HAFL-RULES`, KoSIT's validator with a processing
+    error, before any scenario."""
+    findings = validate(extensions["attributes-10001.xml"])
+    assert [finding.rule for finding in findings] == ["HAFL-RULES"]
+    report = copies["attributes-10001.xml"]
+    assert (steps(report), scenario(report), accepted(report)) == ({"val-xml": False}, None, False)
+
+
+def test_kosit_accepts_what_validate_stops_at_the_xml_schema_beyond_its_depth(
+    copies: dict[str, Element], extensions: dict[str, bytes]
+) -> None:
+    """The known difference: libxml2 parses no deeper than 2,048 levels, KoSIT's parser does."""
+    findings = validate(extensions["nested-2049.xml"])
+    assert [finding.rule for finding in findings] == ["HAFL-XSD"]
+    assert accepted(copies["nested-2049.xml"])
