@@ -45,6 +45,8 @@ ROOT = Path(__file__).resolve().parents[2]
 STANDARD = ROOT / "tests/data/kosit-testsuite/instances/standard"
 CII = (STANDARD / "01.01a-INVOICE_uncefact.xml").read_bytes()
 UBL = (STANDARD / "01.01a-INVOICE_ubl.xml").read_bytes()
+XRECHNUNG_ID = b"urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0"
+OTHER_EDITION = b"urn:cen.eu:en16931:2026"
 
 GRAND_TOTAL = b"<ram:GrandTotalAmount>336.9</ram:GrandTotalAmount>"
 TAX_TOTAL = b'<ram:TaxTotalAmount currencyID="EUR">22.04</ram:TaxTotalAmount>'
@@ -369,13 +371,50 @@ def test_refuses_other_root_elements(data: bytes) -> None:
 
 @pytest.mark.parametrize("data", [CII, UBL], ids=["cii", "ubl"])
 def test_refuses_another_edition(data: bytes) -> None:
-    old = b"urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0"
-    assert "2026" in refusal(edit(data, old, b"urn:cen.eu:en16931:2026"))
+    assert "2026" in refusal(edit(data, XRECHNUNG_ID, OTHER_EDITION))
+
+
+@pytest.mark.parametrize(
+    ("data", "written"),
+    [
+        (
+            CII,
+            XRECHNUNG_ID + b"</ram:ID></ram:GuidelineSpecifiedDocumentContextParameter>"
+            b"<ram:GuidelineSpecifiedDocumentContextParameter><ram:ID>" + OTHER_EDITION,
+        ),
+        (UBL, XRECHNUNG_ID + b"</cbc:CustomizationID><cbc:CustomizationID>" + OTHER_EDITION),
+        (CII, OTHER_EDITION + b"<ram:X/>"),
+        (UBL, OTHER_EDITION + b"<cbc:X/>"),
+        (CII, b"urn:cen.eu:en16931:<ram:X>2026</ram:X>"),
+        (CII, XRECHNUNG_ID + b"<!--x-->" + OTHER_EDITION),
+        (UBL, XRECHNUNG_ID + b"<!--x-->" + OTHER_EDITION),
+    ],
+    ids=[
+        "cii-second",
+        "ubl-second",
+        "cii-before-an-element",
+        "ubl-before-an-element",
+        "cii-within-an-element",
+        "cii-after-a-comment",
+        "ubl-after-a-comment",
+    ],
+)
+def test_refuses_another_edition_in_any_bt_24_anywhere(data: bytes, written: bytes) -> None:
+    """REQ-002-PRS-F009: also where reading leaves the BT-24 out, a second one dropped, one that
+    holds an element malformed, and after another identifier, which a comment splits off."""
+    reason = refusal(edit(data, XRECHNUNG_ID, written))
+    assert "the invoice follows EN 16931-1:2026 (BT-24 'urn:cen.eu:en16931:" in reason
+
+
+def test_a_refusal_for_another_edition_quotes_bt_24_shortened() -> None:
+    """REQ-002-PRS-F009: BT-24's whole text can be megabytes long."""
+    reason = refusal(edit(CII, XRECHNUNG_ID, OTHER_EDITION + b"<ram:X/>" + b"a" * 2_000_000))
+    assert "EN 16931-1:2026 (BT-24 'urn:cen.eu:en16931:2026" in reason
+    assert len(reason) < 1000
 
 
 def test_reads_an_invoice_that_names_no_edition_as_2017() -> None:
-    old = b"urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0"
-    result = read_invoice(edit(CII, old, b"urn:example:other"))
+    result = read_invoice(edit(CII, XRECHNUNG_ID, b"urn:example:other"))
     assert result.invoice.specification_id == "urn:example:other"
     assert result.invoice.edition is None
 
@@ -662,8 +701,7 @@ def test_a_value_holding_elements_is_malformed() -> None:
 
 @pytest.mark.parametrize("data", [CII, UBL], ids=["cii", "ubl"])
 def test_any_year_after_the_prefix_is_an_edition(data: bytes) -> None:
-    xrechnung = b"urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0"
-    reason = refusal(data.replace(xrechnung, b"urn:cen.eu:en16931:2026-01#compliant#x", 1))
+    reason = refusal(data.replace(XRECHNUNG_ID, b"urn:cen.eu:en16931:2026-01#compliant#x", 1))
     assert "2026" in reason
 
 

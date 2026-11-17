@@ -41,6 +41,13 @@ EN16931 = "urn:cen.eu:en16931:2017"
 XRECHNUNG = f"{EN16931}#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0"
 EXTENSION = f"{XRECHNUNG}#conformant#urn:xeinkauf.de:kosit:extension:xrechnung_3.0"
 CVD = f"{XRECHNUNG}#compliant#urn:xeinkauf.de:kosit:xrechnung:cvd_0.9"
+OTHER_EDITION = "urn:cen.eu:en16931:2026"
+# What closes BT-24 and opens a second one.
+SECOND_BT_24 = {
+    CII: "</ram:ID></ram:GuidelineSpecifiedDocumentContextParameter>"
+    "<ram:GuidelineSpecifiedDocumentContextParameter><ram:ID>",
+    UBL: "</cbc:CustomizationID><cbc:CustomizationID>",
+}
 # Prefixed, as `xpath` spells them in the form findings give.
 CII_BT_24 = "/rsm:CrossIndustryInvoice/rsm:ExchangedDocumentContext/ram:GuidelineSpecifiedDocumentContextParameter/ram:ID"  # noqa: E501
 
@@ -112,13 +119,35 @@ def test_validates_cii_and_ubl(path: Path) -> None:
         (b"%PDF-1.7\n", "validate the XML that haflinger.pdf.extract_xml gives"),
         (b'<!DOCTYPE x [<!ENTITY a "b">]><x>&a;</x>', "document type declaration"),
         (b"<Order/>", "neither a CII invoice nor a UBL invoice"),
-        (with_specification_id(CII, "urn:cen.eu:en16931:2026"), "EN 16931-1:2026"),
-        (with_specification_id(UBL, "urn:cen.eu:en16931:2026"), "EN 16931-1:2026"),
+        (with_specification_id(CII, OTHER_EDITION), "EN 16931-1:2026"),
+        (with_specification_id(UBL, OTHER_EDITION), "EN 16931-1:2026"),
+        (with_specification_id(CII, f"{XRECHNUNG}{SECOND_BT_24[CII]}{OTHER_EDITION}"), "2026"),
+        (with_specification_id(UBL, f"{XRECHNUNG}{SECOND_BT_24[UBL]}{OTHER_EDITION}"), "2026"),
+        (with_specification_id(CII, f"{OTHER_EDITION}<ram:X/>"), "2026"),
+        (with_specification_id(UBL, f"{OTHER_EDITION}<cbc:X/>"), "2026"),
+        (with_specification_id(CII, "urn:cen.eu:en16931:<ram:X>2026</ram:X>"), "2026"),
+        (with_specification_id(CII, f"{XRECHNUNG}<!--x-->{OTHER_EDITION}"), "2026"),
+        (with_specification_id(UBL, f"{XRECHNUNG}<!--x-->{OTHER_EDITION}"), "2026"),
     ],
-    ids=["not-xml", "pdf", "dtd", "other-root", "2026-cii", "2026-ubl"],
+    ids=[
+        "not-xml",
+        "pdf",
+        "dtd",
+        "other-root",
+        "2026-cii",
+        "2026-ubl",
+        "2026-second-cii",
+        "2026-second-ubl",
+        "2026-before-an-element-cii",
+        "2026-before-an-element-ubl",
+        "2026-within-an-element-cii",
+        "2026-after-a-comment-cii",
+        "2026-after-a-comment-ubl",
+    ],
 )
 def test_refusals(data: bytes, reason: str) -> None:
-    """REQ-002-PRS-F001 and, for 2026, REQ-002-PRS-F009."""
+    """REQ-002-PRS-F001 and, for 2026, REQ-002-PRS-F009: in any BT-24, anywhere in its whole
+    text, also where reading leaves it out."""
     with pytest.raises(InvoiceReadError, match=re.escape(reason)):
         validate(data)
 
@@ -680,11 +709,6 @@ def test_bt_24_with_whitespace_names_no_profile() -> None:
 # `HAFL-PROFILE` (tests/conformance/test_kosit_validator.py).
 
 XRECHNUNG_REST = "#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0"
-SECOND_BT_24 = {
-    CII: "</ram:ID></ram:GuidelineSpecifiedDocumentContextParameter>"
-    "<ram:GuidelineSpecifiedDocumentContextParameter><ram:ID>",
-    UBL: "</cbc:CustomizationID><cbc:CustomizationID>",
-}
 BT_24_LOCATIONS = {
     CII: CII_BT_24,
     UBL: "/ubl:Invoice/cbc:CustomizationID",
