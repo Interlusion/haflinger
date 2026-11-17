@@ -352,3 +352,9 @@ class Invoice:
             return "2017"
         match = _EN16931.match(self.specification_id)
         return match.group(1) if match else None
+
+
+def editions(text: str) -> list[str]:
+    """Every edition `text` names, wherever in it, in order: `Invoice.edition` reads only the
+    start of BT-24, the edition check every BT-24's whole text (REQ-002-PRS-F009)."""
+    return [match.group(1) for match in _EN16931.finditer(text)]
