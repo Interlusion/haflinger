@@ -4,6 +4,10 @@ What changed in each release of Haflinger, for its callers. The format follows [
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-18
+
+An alpha. A finding's `location` is written anew, so code that reads it may need to change.
+
 ### Changed
 
 - A finding's `location` is written as the official rules write theirs, an XPath whose every step is `Q{namespace}name[position]`, for Haflinger's own findings and the XML Schema check's too: it selects its element with no prefixes declared. Before, those gave paths with prefixes that nothing declared, and a UBL root without one. Where the XML Schema check names no element, or one that can't be told from its siblings, its finding still gives the line, `line n`.
@@ -37,4 +41,5 @@ The first release, an alpha; the README lists its known limits.
 - The official files: KoSIT's validator configuration for XRechnung 3.0.2 (`v2026-08-31`, with CEN's rules 1.3.16), KoSIT's visualisation (`v2026-10-13`), FeRD's ZUGFeRD 2.5.2 (Factur-X 1.09.2) and SchXslt 1.10.1.
 
 [0.1.0]: https://github.com/Interlusion/haflinger/tree/v0.1.0
-[unreleased]: https://github.com/Interlusion/haflinger/compare/v0.1.0...HEAD
+[0.2.0]: https://github.com/Interlusion/haflinger/compare/v0.1.0...v0.2.0
+[unreleased]: https://github.com/Interlusion/haflinger/compare/v0.2.0...HEAD
