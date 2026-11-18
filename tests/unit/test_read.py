@@ -804,6 +804,135 @@ def test_a_tax_other_than_vat_gives_no_vat_breakdown() -> None:
     assert [(f.rule, f.text.split()[0]) for f in result.findings] == [("HAFL-DROPPED", "BG-23")]
 
 
+# A UBL invoice's taxes other than VAT, which CEN's rules reject (REQ-003-PRS-F002).
+UBL_SUBTOTAL = UBL[
+    UBL.index(b"<cac:TaxSubtotal>") : UBL.index(b"</cac:TaxSubtotal>") + len(b"</cac:TaxSubtotal>")
+]
+UBL_LINE_TAX = UBL[
+    UBL.index(b"<cac:ClassifiedTaxCategory>") : UBL.index(b"</cac:ClassifiedTaxCategory>")
+    + len(b"</cac:ClassifiedTaxCategory>")
+]
+GST_CATEGORY = (
+    b"<cbc:ID>S</cbc:ID><cbc:Percent>10</cbc:Percent>"
+    b"<cac:TaxScheme><cbc:ID>GST</cbc:ID></cac:TaxScheme>"
+)
+GST_SUBTOTAL = (
+    b'<cac:TaxSubtotal><cbc:TaxableAmount currencyID="EUR">314.86</cbc:TaxableAmount>'
+    b'<cbc:TaxAmount currencyID="EUR">31.49</cbc:TaxAmount>'
+    b"<cac:TaxCategory>" + GST_CATEGORY + b"</cac:TaxCategory></cac:TaxSubtotal>"
+)
+GST_LINE_TAX = b"<cac:ClassifiedTaxCategory>" + GST_CATEGORY + b"</cac:ClassifiedTaxCategory>"
+GST_TAX_TOTAL = (
+    b'<cac:TaxTotal><cbc:TaxAmount currencyID="EUR">31.49</cbc:TaxAmount>'
+    + GST_SUBTOTAL
+    + b"</cac:TaxTotal>"
+)
+
+
+MIXED_TAX_AMOUNT = b'<cbc:TaxAmount currencyID="EUR">53.53</cbc:TaxAmount>'
+MAY_INCLUDE = "; BT-110, its cac:TaxTotal's cbc:TaxAmount, may include it"
+
+
+@pytest.mark.parametrize(
+    ("subtotals", "position"),
+    [(UBL_SUBTOTAL + GST_SUBTOTAL, 2), (GST_SUBTOTAL + UBL_SUBTOTAL, 1)],
+    ids=["after", "before"],
+)
+def test_a_ubl_vat_breakdown_entry_of_another_tax_is_left_out(
+    subtotals: bytes, position: int, xpath: Callable[[str], str]
+) -> None:
+    """The `cac:TaxTotal`'s amount, which includes the other tax, is BT-110 as it is."""
+    # The total's TaxAmount comes first; its subtotal repeats it.
+    data = edit(UBL, UBL_SUBTOTAL, subtotals).replace(UBL_TAX_AMOUNT, MIXED_TAX_AMOUNT, 1)
+    result = read_invoice(data)
+    assert result.invoice.totals is not None
+    assert result.invoice.totals.vat_total == Decimal("53.53")
+    assert [(vat.category_code, vat.rate) for vat in result.invoice.vat_breakdown] == [
+        ("S", Decimal(7))
+    ]
+    assert [(f.rule, f.text, f.location) for f in result.findings] == [
+        (
+            "HAFL-DROPPED",
+            f"BG-23 of a tax other than VAT (GST) is left out{MAY_INCLUDE}",
+            xpath(f"/ubl:Invoice/cac:TaxTotal/cac:TaxSubtotal[{position}]"),
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    ("categories", "expected"),
+    [(GST_LINE_TAX + UBL_LINE_TAX, ("S", Decimal(7))), (GST_LINE_TAX, (None, None))],
+    ids=["before-vat", "alone"],
+)
+def test_a_ubl_lines_vat_category_of_another_tax_is_left_out(
+    categories: bytes, expected: tuple[str | None, Decimal | None]
+) -> None:
+    result = read_invoice(UBL.replace(UBL_LINE_TAX, categories, 1))
+    line = result.invoice.lines[0]
+    assert (line.vat_category_code, line.vat_rate) == expected
+    assert [(f.rule, f.text) for f in result.findings] == [
+        ("HAFL-DROPPED", "BG-30 of a tax other than VAT (GST) is left out")
+    ]
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "position"),
+    [
+        (UBL_TAX_TOTAL_START, GST_TAX_TOTAL + UBL_TAX_TOTAL_START, 1),
+        (b"</cac:TaxTotal>", b"</cac:TaxTotal>" + GST_TAX_TOTAL, 2),
+    ],
+    ids=["before", "after"],
+)
+def test_a_ubl_tax_total_of_another_tax_gives_no_vat_total(
+    old: bytes, new: bytes, position: int, xpath: Callable[[str], str]
+) -> None:
+    """The `cac:TaxTotal` of VAT gives BT-110 and the VAT breakdown, wherever the other is."""
+    result = read_invoice(edit(UBL, old, new))
+    assert result.invoice.totals is not None
+    assert result.invoice.totals.vat_total == Decimal("22.04")
+    assert [(vat.category_code, vat.rate) for vat in result.invoice.vat_breakdown] == [
+        ("S", Decimal(7))
+    ]
+    assert [(f.rule, f.text, f.location) for f in result.findings] == [
+        (
+            "HAFL-DROPPED",
+            "cac:TaxTotal of a tax other than VAT (GST) is left out",
+            xpath(f"/ubl:Invoice/cac:TaxTotal[{position}]"),
+        )
+    ]
+
+
+def test_a_ubl_tax_total_of_another_tax_alone_gives_none() -> None:
+    result = read_invoice(edit(UBL, UBL_SUBTOTAL, GST_SUBTOTAL))
+    assert result.invoice.totals is not None
+    assert result.invoice.totals.vat_total is None
+    assert result.invoice.vat_breakdown == ()
+    assert [(f.rule, f.text.split()[0]) for f in result.findings] == [
+        ("HAFL-DROPPED", "cac:TaxTotal")
+    ]
+
+
+def test_a_ubl_tax_total_holding_subtotals_gives_bt_110_before_one_holding_none(
+    xpath: Callable[[str], str],
+) -> None:
+    """The VAT breakdown is BT-110's (PEPPOL-EN16931-R053), so a total without subtotals before
+    it doesn't take BT-110 and leave the breakdown out."""
+    without = b'<cac:TaxTotal><cbc:TaxAmount currencyID="EUR">31.49</cbc:TaxAmount></cac:TaxTotal>'
+    result = read_invoice(edit(UBL, UBL_TAX_TOTAL_START, without + UBL_TAX_TOTAL_START))
+    assert result.invoice.totals is not None
+    assert result.invoice.totals.vat_total == Decimal("22.04")
+    assert [(vat.category_code, vat.rate) for vat in result.invoice.vat_breakdown] == [
+        ("S", Decimal(7))
+    ]
+    assert [(f.rule, f.text, f.location) for f in result.findings] == [
+        (
+            "HAFL-DROPPED",
+            "BT-110 appears more than once; this one is left out: '31.49'",
+            xpath("/ubl:Invoice/cac:TaxTotal[1]/cbc:TaxAmount"),
+        )
+    ]
+
+
 @pytest.mark.parametrize(
     ("data", "old", "new", "term"),
     [
@@ -2280,6 +2409,8 @@ def test_a_tax_vat_counts_in_any_case() -> None:
     `vat` is VAT; the tax scheme is the first one holding a value."""
     data = CII.replace(b"<ram:TypeCode>VAT</ram:TypeCode>", b"<ram:TypeCode>vat</ram:TypeCode>")
     assert read_invoice(data) == read_invoice(CII)
+    lower = UBL_SUBTOTAL.replace(b"<cbc:ID>VAT</cbc:ID>", b"<cbc:ID> vat </cbc:ID>")
+    assert read_invoice(edit(UBL, UBL_SUBTOTAL, lower)) == read_invoice(UBL)
     cii, ubl = with_allowances_and_charges(
         [
             cii_allowance_charge(
