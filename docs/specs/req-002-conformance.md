@@ -3,7 +3,7 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Baselined |
-| **Version** | 0.13 |
+| **Version** | 0.14 |
 | **Date** | 2026-11-17 |
 | **Author** | loxy (drafted with Claude) |
 
@@ -190,11 +190,11 @@ A comment or a processing instruction inside BT-24, or an element, splits its te
 
 #### REQ-002-PRS-F009: Editions supported
 
-**Description**: Haflinger SHALL support EN 16931-1:2017 only. An invoice that follows another edition (REQ-001-PRS-F003) SHALL be refused by validation (REQ-002-PRS-F001), reading (REQ-003-PRS-F006) and writing (REQ-004-PRS-F002), with a reason naming the edition. An invoice that names no edition SHALL be handled as 2017.
+**Description**: Haflinger SHALL support EN 16931-1:2017 only. An invoice that follows another edition (REQ-001-PRS-F003) SHALL be refused by validation (REQ-002-PRS-F001), reading (REQ-003-PRS-F006) and writing (REQ-004-PRS-F002), with a reason naming the edition. An invoice read from XML SHALL count as following another edition where the whole text of any of its BT-24 elements, the text of elements within it included, holds another edition's identifier (`urn:cen.eu:en16931:` and a year other than 2017) anywhere: at its start, as the term Edition reads it, and also after another identifier, which a comment, a processing instruction or an element may split off; also in a BT-24 that reading leaves out, a second one (`HAFL-DROPPED`) or one that holds an element (`HAFL-VALUE`, REQ-003-PRS-F002). The reason SHALL quote that text shortened, as findings quote values. An invoice that names no edition SHALL be handled as 2017.
 
-**Related URS**: REQ-002-URS-F004
+**Related URS**: REQ-002-URS-F004 | **Rationale**: Reading takes the first BT-24 that holds a value, and the choice of the rule set counts every BT-24 (REQ-002-PRS-F003); checked on the first alone, a CII invoice whose second BT-24 names 2026 was read as 2017, with a `HAFL-DROPPED` warning. Haflinger can't check an invoice of another edition, so a BT-24 that names one anywhere is refused, not read as 2017. KoSIT's validator, which has no edition check, accepts one of these invoices: a CII BT-24 whose XRechnung identifier a comment splits from `urn:cen.eu:en16931:2026`, as XRechnung, the scenario its first piece matches; there Haflinger is stricter. It accepts none of the others: a second BT-24 makes CEN's CII rules fail, and a second one in UBL, an element within BT-24, or in UBL the same comment fails the XML Schema or matches no scenario (measured on 2026-11-17).
 
-**Definition of Done**: a CII and a UBL file with BT-24 `urn:cen.eu:en16931:2026` are refused by `validate`, naming 2026; the refusals of reading and writing are tested in REQ-003 and REQ-004.
+**Definition of Done**: a CII and a UBL file with BT-24 `urn:cen.eu:en16931:2026` are refused by `validate`, naming 2026; so are a CII and a UBL file with a second BT-24 `urn:cen.eu:en16931:2026` after their own, with a BT-24 that holds `urn:cen.eu:en16931:2026` and an element, with a BT-24 `urn:cen.eu:en16931:` whose year `2026` lies within an element, and with a BT-24 that names XRechnung 3.0, a comment, and `urn:cen.eu:en16931:2026`, by `validate` and `read_invoice`; the reason for a BT-24 of 2 MB is under 1,000 characters (tests); the refusals of reading and writing are tested in REQ-003 and REQ-004.
 
 #### REQ-002-PRS-F010: Haflinger's own findings
 
