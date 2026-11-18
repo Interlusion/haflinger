@@ -69,7 +69,7 @@ What Haflinger doesn't do yet ([backlog](https://github.com/Interlusion/haflinge
 - **ZUGFeRD PDFs**: `embed` writes the profile EN 16931 only, from a PDF that already is PDF/A.
 - **Peppol**: the Peppol BIS rules don't run; a Peppol invoice gets CEN's EN 16931 rules and a `HAFL-PROFILE` warning.
 - **The 2017 edition only**: the model holds the terms of EN 16931-1:2017, and reading, validation and writing refuse an invoice of another edition, such as 2026, naming it; extensions, such as XRechnung's, stay in the original invoice.
-- **Nesting**: Saxon, which runs the official rules, refuses a document nested deeper than 100 elements, which reading accepts.
+- **Nesting**: `validate` gives `HAFL-XSD` for a document nested deeper than 2,048 elements, where the XML Schema check stops, though KoSIT's validator checks it; and it refuses an invoice whose empty elements' locations total more than 10,000,000 characters, as their findings would take gigabytes.
 - **Platforms**: tested with Python 3.14 on Linux on x86 and ARM and on macOS on Apple Silicon, not on Intel Macs; the official rules run in a worker process that needs a POSIX system, so not Windows, and `saxonche` has no wheel for musl (Alpine).
 - **Large outside input**: reading a hostile file near the default `max_size` takes a lot of memory; pass a smaller `max_size` for invoices from outside.
 
