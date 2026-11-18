@@ -125,6 +125,46 @@ SPLIT_FROM: dict[str, tuple[Path, str, dict[str, str]]] = {
     "credit-note": (CREDIT_NOTE, EN16931, UBL_OWN),
 }
 
+# Taxes other than VAT, in copies of KoSIT's 01.01a: the first match of each pattern replaced
+# (REQ-003-PRS-F002). CEN's rules reject each.
+STANDARD = ROOT / "tests/data/kosit-testsuite/instances/standard"
+GST_SUBTOTAL = (
+    rb'<cac:TaxSubtotal><cbc:TaxableAmount currencyID="EUR">314.86</cbc:TaxableAmount>'
+    rb'<cbc:TaxAmount currencyID="EUR">31.49</cbc:TaxAmount><cac:TaxCategory><cbc:ID>S</cbc:ID>'
+    rb"<cbc:Percent>10</cbc:Percent><cac:TaxScheme><cbc:ID>GST</cbc:ID></cac:TaxScheme>"
+    rb"</cac:TaxCategory></cac:TaxSubtotal>"
+)
+OTHER_TAXES: dict[str, tuple[str, bytes, bytes]] = {
+    "ubl-gst-subtotal": ("ubl", rb"</cac:TaxSubtotal>", rb"</cac:TaxSubtotal>" + GST_SUBTOTAL),
+    "ubl-gst-subtotal-alone": (
+        "ubl",
+        rb"(<cac:TaxSubtotal>.*?<cac:TaxScheme>\s*<cbc:ID>)VAT",
+        rb"\g<1>GST",
+    ),
+    "ubl-gst-line": (
+        "ubl",
+        rb"(<cac:ClassifiedTaxCategory>.*?<cac:TaxScheme>\s*<cbc:ID>)VAT",
+        rb"\g<1>GST",
+    ),
+    "ubl-gst-tax-total-first": (
+        "ubl",
+        rb"<cac:TaxTotal>",
+        rb'<cac:TaxTotal><cbc:TaxAmount currencyID="EUR">31.49</cbc:TaxAmount>'
+        + GST_SUBTOTAL
+        + rb"</cac:TaxTotal><cac:TaxTotal>",
+    ),
+    "cii-gst-breakdown": (
+        "uncefact",
+        rb"(<ram:ApplicableHeaderTradeSettlement>.*?<ram:ApplicableTradeTax>.*?<ram:TypeCode>)VAT",
+        rb"\g<1>GST",
+    ),
+    "cii-gst-line": (
+        "uncefact",
+        rb"(<ram:SpecifiedLineTradeSettlement>.*?<ram:TypeCode>)VAT",
+        rb"\g<1>GST",
+    ),
+}
+
 # The extensions at Saxon's limits in `validate` (REQ-002-PRS-F011): the deepest level libxml2
 # parses, and so the XML Schema check, and Java's limit of attributes; and one beyond each.
 AT_THE_LIMITS = {"nested-2048": {"levels": 2048}, "attributes-10000": {"attributes": 10_000}}
@@ -161,6 +201,18 @@ def split() -> dict[str, bytes]:
             copies[f"{syntax}-{name}.xml"] = data.replace(
                 f">{written}<".encode(), f">{new}<".encode()
             )
+    return copies
+
+
+@cache
+def other_taxes() -> dict[str, bytes]:
+    """The copies of OTHER_TAXES."""
+    copies = dict[str, bytes]()
+    for name, (syntax, pattern, replacement) in OTHER_TAXES.items():
+        data = (STANDARD / f"01.01a-INVOICE_{syntax}.xml").read_bytes()
+        copy, count = re.subn(pattern, replacement, data, count=1, flags=re.DOTALL)
+        assert count == 1, name
+        copies[f"{name}.xml"] = copy
     return copies
 
 
@@ -223,9 +275,10 @@ def extensions(extended: Callable[..., bytes]) -> dict[str, bytes]:
 def copies(
     tmp_path_factory: pytest.TempPathFactory, extensions: dict[str, bytes]
 ) -> dict[str, Element]:
-    """The split copies and the extensions, in one call: Java starts once."""
+    """The split copies, the extensions and the taxes other than VAT, in one call: Java starts
+    once."""
     needs_validator()
-    return run(tmp_path_factory.mktemp("kosit-copies"), split() | extensions)
+    return run(tmp_path_factory.mktemp("kosit-copies"), split() | extensions | other_taxes())
 
 
 def root(path: Path) -> Element:
@@ -383,3 +436,12 @@ def test_kosit_accepts_what_validate_stops_at_the_xml_schema_beyond_its_depth(
     findings = validate(extensions["nested-2049.xml"])
     assert [finding.rule for finding in findings] == ["HAFL-XSD"]
     assert accepted(copies["nested-2049.xml"])
+
+
+@pytest.mark.parametrize("name", OTHER_TAXES)
+def test_kosit_finds_what_validate_finds_with_taxes_other_than_vat(
+    copies: dict[str, Element], name: str
+) -> None:
+    document = other_taxes()[f"{name}.xml"]
+    assert not is_valid(validate(document))
+    assert_same(name, document, copies[f"{name}.xml"])

@@ -78,8 +78,9 @@ NAMESPACES = {
 _ISO_DATE = re.compile(r"([0-9]{4})-([0-9]{2})-([0-9]{2})")
 # BT-21 at the start of a note, the convention of XRechnung and Peppol.
 _SUBJECT_CODE = re.compile(r"#([A-Z]{3})#(.*)", re.DOTALL)
-# The tax a UBL tax category belongs to.
+# The tax a UBL tax category belongs to, and a VAT breakdown entry.
 _TAX_SCHEME = "cac:TaxScheme/cbc:ID"
+_SUBTOTAL_SCHEME = f"cac:TaxCategory/{_TAX_SCHEME}"
 
 
 SPECIFICATION = "cbc:CustomizationID"  # BT-24
@@ -93,11 +94,13 @@ def specification(root: Node) -> Node | None:
 def read(root: Node, specification_id: str | None, *, credit_note: bool) -> Invoice:
     currency_code = root.text("cbc:DocumentCurrencyCode", "BT-5")
     tax_currency_code = root.text("cbc:TaxCurrencyCode", "BT-6")
-    tax_totals = root.findall("cac:TaxTotal")
+    tax_totals = _vat_tax_totals(root.findall("cac:TaxTotal"))
     vat_total, vat_total_in_tax_currency = choose_vat_totals(
         [
             (tax_total, amount)
-            for tax_total in tax_totals
+            # One holding subtotals first: the VAT breakdown is BT-110's, and BT-111's total holds
+            # none (PEPPOL-EN16931-R053, PEPPOL-EN16931-R054).
+            for tax_total in sorted(tax_totals, key=lambda total: not _holds_subtotals(total))
             if (amount := tax_total.first("cbc:TaxAmount", "BT-110 or BT-111")) is not None
         ],
         currency_code,
@@ -232,12 +235,52 @@ def _tax_amount(tax_total: Node | None) -> Node | None:
     return next((a for a in tax_total.findall("cbc:TaxAmount") if a.value is not None), None)
 
 
+def _vat_tax_totals(tax_totals: list[Node]) -> list[Node]:
+    """The `cac:TaxTotal` elements that can be VAT's: one whose subtotals holding a value are all
+    of another tax than VAT gives neither a VAT total nor the VAT breakdown, and is left out with
+    one finding (REQ-003-PRS-F002)."""
+    kept: list[Node] = []
+    for tax_total in tax_totals:
+        schemes = [
+            _scheme(subtotal)
+            for subtotal in tax_total.findall("cac:TaxSubtotal")
+            if subtotal.holds_value()
+        ]
+        others = [scheme for scheme in schemes if scheme is not None and not is_vat(scheme)]
+        if others and len(others) == len(schemes):
+            tax_total.drop(
+                f"cac:TaxTotal of a tax other than VAT ({', '.join(dict.fromkeys(others))})"
+                " is left out"
+            )
+        else:
+            kept.append(tax_total)
+    return kept
+
+
+def _scheme(subtotal: Node) -> str | None:
+    """A subtotal's tax scheme as `vat_only` reads it, the first holding only text, but without
+    findings: `_subtotals` reads it again for the subtotals that give the VAT breakdown."""
+    return next(
+        (
+            node.value
+            for node in subtotal.findall(_SUBTOTAL_SCHEME)
+            if not len(node.element) and node.value is not None
+        ),
+        None,
+    )
+
+
+def _holds_subtotals(tax_total: Node) -> bool:
+    return any(subtotal.holds_value() for subtotal in tax_total.findall("cac:TaxSubtotal"))
+
+
 def _subtotals(tax_totals: list[Node], vat_total: Node | None) -> list[Node]:
     """The VAT breakdown: the subtotals of the `cac:TaxTotal` that gives BT-110 or, without one,
-    of the first holding any; those of every other `cac:TaxTotal` are left out with a finding."""
-    source = vat_total or next((t for t in tax_totals if t.find("cac:TaxSubtotal")), None)
+    of the first holding any, those of another tax than VAT left out with a finding; those of
+    every other `cac:TaxTotal` are left out with one too."""
+    source = vat_total or next(filter(_holds_subtotals, tax_totals), None)
     for tax_total in tax_totals:
-        if source is not None and tax_total.element is source.element:
+        if tax_total is source:
             continue
         for subtotal in tax_total.findall("cac:TaxSubtotal"):
             if subtotal.holds_value():
@@ -245,9 +288,13 @@ def _subtotals(tax_totals: list[Node], vat_total: Node | None) -> list[Node]:
                     "BG-23 of a cac:TaxTotal other than the one giving the VAT breakdown"
                     " is left out"
                 )
-    return (
-        [] if source is None else [s for s in source.findall("cac:TaxSubtotal") if s.holds_value()]
+    if source is None:
+        return []
+    # BT-110's amount is the cac:TaxTotal's, which CEN's BR-CO-14 sums from all its subtotals.
+    also = (
+        "; BT-110, its cac:TaxTotal's cbc:TaxAmount, may include it" if source is vat_total else ""
     )
+    return vat_only(source.findall("cac:TaxSubtotal"), _SUBTOTAL_SCHEME, "BG-23", also)
 
 
 def _date(parent: Node, path: str, term: str) -> date | None:
@@ -605,7 +652,13 @@ def _line(line: Node, quantity_path: str) -> InvoiceLine:
         (LINE_ALLOWANCE, LINE_CHARGE),
     )
     item = line.group("cac:Item", "BG-31")
-    tax = None if item is None else item.group("cac:ClassifiedTaxCategory", "BG-30")
+    tax = (
+        None
+        if item is None
+        else first_group(
+            vat_only(item.findall("cac:ClassifiedTaxCategory"), _TAX_SCHEME, "BG-30"), "BG-30"
+        )
+    )
     documents = by_code(
         line.findall("cac:DocumentReference"),
         "cbc:DocumentTypeCode",

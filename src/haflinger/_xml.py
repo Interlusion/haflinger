@@ -366,10 +366,11 @@ def is_vat(code: str | None) -> bool:
     return code is not None and code.upper() == "VAT"
 
 
-def vat_only(nodes: list[Node], kind: str, group: str) -> list[Node]:
+def vat_only(nodes: list[Node], kind: str, group: str, also: str = "") -> list[Node]:
     """Those of `nodes` holding a value that are VAT: whose first element at `kind` holding a
     value holds `VAT` in any case, as CEN's rules compare it, or that have none. Another tax,
-    which Factur-X EXTENDED allows, is left out with a finding (REQ-003-PRS-F002)."""
+    which Factur-X EXTENDED allows, is left out with a finding, `also` added to its text
+    (REQ-003-PRS-F002)."""
     taxes: list[Node] = []
     for node in nodes:
         if not node.holds_value():
@@ -378,7 +379,7 @@ def vat_only(nodes: list[Node], kind: str, group: str) -> list[Node]:
         if value is None or is_vat(value):
             taxes.append(node)
         else:
-            node.drop(f"{group} of a tax other than VAT ({value}) is left out")
+            node.drop(f"{group} of a tax other than VAT ({value}) is left out{also}")
     return taxes
 
 

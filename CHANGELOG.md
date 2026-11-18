@@ -4,6 +4,10 @@ What changed in each release of Haflinger, for its callers. The format follows [
 
 ## [Unreleased]
 
+### Fixed
+
+- `read_invoice` leaves out a UBL VAT breakdown entry (`cac:TaxSubtotal`) or line tax category (`cac:ClassifiedTaxCategory`) of a tax other than VAT, such as `GST`, with a `HAFL-DROPPED` finding naming its tax scheme, as it does in CII, and a `cac:TaxTotal` holding only such entries gives no VAT total (BT-110, BT-111). Before, it read them as VAT without a finding; CEN's rules reject such an invoice. Of two `cac:TaxTotal` in one currency, the one holding the VAT breakdown gives BT-110, also where one without subtotals comes first, which before took BT-110 and left the breakdown out.
+
 ## [0.2.0] - 2026-11-18
 
 An alpha. A finding's `location` is written anew, so code that reads it may need to change.
