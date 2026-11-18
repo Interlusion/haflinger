@@ -3,8 +3,8 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Baselined |
-| **Version** | 0.14 |
-| **Date** | 2026-11-17 |
+| **Version** | 0.15 |
+| **Date** | 2026-11-18 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Intended Use
@@ -178,7 +178,7 @@ A comment or a processing instruction inside BT-24, or an element, splits its te
 - Every expectation of CEN's per-rule unit tests, from the release of the EN 16931 rules in use, is met: each listed rule fails where the test expects an error and doesn't where it expects success.
 - Every sample of FeRD's ZUGFeRD package for the Factur-X profiles of REQ-002-PRS-F003 is valid. The package's samples aren't vendored, as its rights of use don't name them ([ITEM-002](../backlog/item-002-official-test-material.md)): the test reads the maintainer's copy of the package and is skipped where it isn't present.
 - KoSIT's validator, the official tool, run with the same release of KoSIT's configuration, gives the same verdict and the same findings for every file of the KoSIT test suite and every invoice written from it as each target profile (REQ-004-PRS-F006): each rule with its level after the configuration's levels (REQ-002-PRS-F005), `fatal` as `error`, which KoSIT's reports name it, and its location. It is Java, so it runs as an oracle in CI and where `HAFLINGER_KOSIT_VALIDATOR` names it, never at runtime; the test is skipped elsewhere.
-- KoSIT's validator gives the same verdict and the same findings for invoices that fail too: copies of the KoSIT test suite's files, made when the test runs, each with one error (an amount due that doesn't add up, an unknown invoice type code, an unknown VAT category, the buyer reference left out, an amount with three decimals, an element the XML Schema doesn't know), every copy failing; and the broken invoices of the ZUGFeRD corpus selection kept with the tests whose profile KoSIT's configuration covers. Where the XML Schema fails, both stop there, and their parsers word and count its errors differently: the verdicts are compared, and that both report XML Schema errors alone.
+- KoSIT's validator gives the same verdict and the same findings for invoices that fail too: copies of the KoSIT test suite's files, made when the test runs, each with one error (an amount due that doesn't add up, an unknown invoice type code, an unknown VAT category, the buyer reference left out, an amount with three decimals, an element the XML Schema doesn't know), every copy failing; copies of KoSIT's case 01.01a with a tax other than VAT (`GST`) in the VAT breakdown, alone and beside VAT, as a line's category, or in a UBL `cac:TaxTotal` of its own, which CEN's rules reject (REQ-003-PRS-F002); and the broken invoices of the ZUGFeRD corpus selection kept with the tests whose profile KoSIT's configuration covers. Where the XML Schema fails, both stop there, and their parsers word and count its errors differently: the verdicts are compared, and that both report XML Schema errors alone.
 
 #### REQ-002-PRS-F008: Differences in the official files
 
