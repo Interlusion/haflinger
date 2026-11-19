@@ -17,11 +17,19 @@ from contextlib import contextmanager
 from pathlib import Path
 from types import FrameType
 from typing import Any, cast
+from xml.etree.ElementTree import Element
 
 try:
     import facturx
     from pypdf import Configuration, PdfReader, apply_configuration
-    from pypdf.generic import ArrayObject, DictionaryObject, NullObject, NumberObject, StreamObject
+    from pypdf.generic import (
+        ArrayObject,
+        DictionaryObject,
+        IndirectObject,
+        NullObject,
+        NumberObject,
+        StreamObject,
+    )
 except ImportError as error:
     raise ImportError("haflinger.pdf needs the extra 'pdf': install haflinger[pdf]") from error
 
@@ -38,10 +46,25 @@ __all__ = ["embed", "extract_xml"]
 INVOICE_NAMES = frozenset(
     {"factur-x.xml", "zugferd-invoice.xml", "xrechnung.xml", "ZUGFeRD-invoice.xml"}
 )
-# REQ-004-PRS-F007: the target profile embed writes, with its Factur-X level.
-_EMBED_LEVELS = {EN16931: "en16931"}
-_PDFA_ID = "http://www.aiim.org/pdfa/ns/id/"
+# REQ-004-PRS-F007: the target profile embed writes, with its Factur-X level as `factur-x` takes
+# it and as the XMP metadata names it.
+_EMBED_LEVELS = {EN16931: ("en16931", "EN 16931")}
+# The namespaces of XMP metadata: RDF's, PDF/A's identification and extension schemas', Factur-X's.
 _RDF = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+_PDFA_ID = "http://www.aiim.org/pdfa/ns/id/"
+_PDFA_SCHEMA = "http://www.aiim.org/pdfa/ns/schema#"
+_PDFA_PROPERTY = "http://www.aiim.org/pdfa/ns/property#"
+_FACTUR_X = "urn:factur-x:pdfa:CrossIndustryDocument:invoice:1p0#"
+_PREFIXES = {_PDFA_ID: "pdfaid", _FACTUR_X: "fx"}
+# The XMP properties of every PDF embed writes, by namespace and name, besides the level: PDF/A-3b,
+# as `factur-x` declares it, and Factur-X's (REQ-004-PRS-F007).
+_XMP_PROPERTIES = {
+    (_PDFA_ID, "part"): "3",
+    (_PDFA_ID, "conformance"): "B",
+    (_FACTUR_X, "DocumentFileName"): "factur-x.xml",
+    (_FACTUR_X, "DocumentType"): "INVOICE",
+    (_FACTUR_X, "Version"): "1.0",
+}
 _MAX_DEPTH = 32  # of the name tree of embedded files
 _MAX_ENTRIES = 100  # nodes and files of that tree read, at most (REQ-003-PRS-NF003)
 # Bytes, for each stream pypdf decodes while the invoice is looked for: for every filter whose
@@ -125,8 +148,8 @@ def embed(pdf: bytes, xml: bytes, *, timeout: float | None = None) -> bytes:
         raise InvoiceWriteError(f"the XML can't be read: {error}") from None
     # BT-24 exactly as written, as a recipient's validator matches it (REQ-004-PRS-F007).
     specification_id = None if opened.specification is None else opened.specification.element.text
-    level = _EMBED_LEVELS.get(specification_id or "")
-    if opened.document != "cii" or level is None:
+    profile = _EMBED_LEVELS.get(specification_id or "")
+    if opened.document != "cii" or profile is None:
         raise InvoiceWriteError(
             f"embed writes only CII invoices with BT-24 {', '.join(_EMBED_LEVELS)};"
             f" this is {opened.document} with BT-24 {specification_id!r}"
@@ -134,16 +157,94 @@ def embed(pdf: bytes, xml: bytes, *, timeout: float | None = None) -> bytes:
     _check_pdf(pdf)
     _write.refuse_if_invalid(_write.check_written(xml, specification_id, limit), xml)
     invoice = _cii.read(opened.reading.root, specification_id)
+    level, conformance_level = profile
     result = _embed(pdf, xml, level, _metadata(invoice))
+    # What `factur-x` writes, read back: the tests check the release they run with, and a caller
+    # may run another (REQ-004-PRS-F007).
     try:
         reader = PdfReader(io.BytesIO(result), strict=True)
         embedded = list(reader.attachments)
         extracted = extract_xml(result)
+        related = _relates_as_alternative(reader)
+        xmp = _xmp(_dictionary(reader.trailer.get("/Root")))
     except Exception as error:  # noqa: BLE001 - checking factur-x's result
         raise InvoiceWriteError(f"the written PDF can't be read back: {error!r}") from None
     if not result.startswith(b"%PDF-") or embedded != ["factur-x.xml"] or extracted != xml:
         raise InvoiceWriteError("the written PDF doesn't carry the invoice as given")
+    if not related:
+        raise InvoiceWriteError(
+            "the written PDF doesn't relate the invoice as /Alternative, in its embedded file and"
+            " in the catalogue's /AF"
+        )
+    _check_xmp(xmp, conformance_level)
     return result
+
+
+def _relates_as_alternative(reader: PdfReader) -> bool:
+    """Whether the embedded invoice's file specification and one in the catalogue's associated
+    files (`/AF`) relate it as `/Alternative`."""
+
+    def alternative(spec: DictionaryObject | None) -> bool:
+        return (
+            spec is not None
+            and spec.get("/UF", spec.get("/F")) == "factur-x.xml"
+            and spec.get("/AFRelationship") == "/Alternative"
+        )
+
+    root = _dictionary(reader.trailer.get("/Root"))
+    associated = None if root is None else root.get("/AF")
+    if isinstance(associated, IndirectObject):
+        associated = associated.get_object()
+    files: list[object] = list(associated) if isinstance(associated, ArrayObject) else []
+    return all(alternative(spec) for _, spec in _embedded_files(reader)) and any(
+        alternative(_dictionary(spec)) for spec in files
+    )
+
+
+def _check_xmp(xmp: bytes, conformance_level: str) -> None:
+    """Refuse XMP metadata that doesn't declare PDF/A-3b, an extension schema of Factur-X's
+    namespace naming its properties, and in that namespace exactly one of each of them, the level
+    `conformance_level`, all as written (REQ-004-PRS-F007)."""
+    try:
+        root = parse(xmp)
+    except InvoiceReadError as error:
+        raise InvoiceWriteError(f"the written PDF's XMP metadata isn't readable: {error}") from None
+    expected = {**_XMP_PROPERTIES, (_FACTUR_X, "ConformanceLevel"): conformance_level}
+    found = _xmp_properties(root)
+    differences = [
+        f"{_PREFIXES[namespace]}:{name} {values} instead of {value!r}"
+        for (namespace, name), value in expected.items()
+        if (values := found.get(f"{{{namespace}}}{name}", [])) != [value]
+    ]
+    names = sorted(name for namespace, name in expected if namespace == _FACTUR_X)
+    if not _declares_schema(root, _FACTUR_X, names):
+        differences.append(f"no PDF/A extension schema of {_FACTUR_X} naming {', '.join(names)}")
+    if differences:
+        raise InvoiceWriteError(
+            "the written PDF's XMP metadata doesn't declare what ZUGFeRD requires: "
+            + "; ".join(differences)
+        )
+
+
+def _declares_schema(root: Element, namespace: str, names: list[str]) -> bool:
+    """Whether a PDF/A extension schema in XMP metadata declares `namespace` with properties of
+    all of `names`, as PDF/A requires of the properties of a namespace it doesn't know."""
+    for schema in root.iter():
+        if schema.findtext(f"{{{_PDFA_SCHEMA}}}namespaceURI") == namespace:
+            declared = {e.text for e in schema.iter(f"{{{_PDFA_PROPERTY}}}name")}
+            if declared.issuperset(names):
+                return True
+    return False
+
+
+def _xmp_properties(root: Element) -> dict[str, list[str]]:
+    """The properties of XMP metadata by Clark name (`{namespace}name`), each with every value it
+    has, as an element or an attribute of an `rdf:Description`, whatever its prefix."""
+    properties: dict[str, list[str]] = {}
+    for description in root.iter(f"{{{_RDF}}}Description"):
+        for name, value in [*description.attrib.items(), *((e.tag, e.text) for e in description)]:
+            properties.setdefault(name, []).append(value or "")
+    return properties
 
 
 def _metadata(invoice: Invoice) -> dict[str, str]:
@@ -189,9 +290,7 @@ def _check_pdf(pdf: bytes) -> None:
     `/Names` of its own, holding only the invoice, and an `/AF` of its own."""
     try:
         root = _dictionary(PdfReader(io.BytesIO(pdf)).trailer.get("/Root"))
-        metadata = None if root is None else root.get("/Metadata")
-        stream = None if metadata is None else metadata.get_object()
-        xmp = stream.get_data() if isinstance(stream, StreamObject) else b""
+        xmp = _xmp(root)
         names = None if root is None else _dictionary(root.get("/Names"))
         dropped = [f"/Names {key}" for key in cast(dict[str, object], names or {})]
         if root is not None and root.get("/AF") is not None:
@@ -207,6 +306,13 @@ def _check_pdf(pdf: bytes) -> None:
         raise InvoiceWriteError(f"the PDF holds {', '.join(dropped)}, which embedding would drop")
 
 
+def _xmp(root: DictionaryObject | None) -> bytes:
+    """The XMP metadata of the PDF whose catalogue is `root`, or nothing."""
+    metadata = None if root is None else root.get("/Metadata")
+    stream = None if metadata is None else metadata.get_object()
+    return stream.get_data() if isinstance(stream, StreamObject) else b""
+
+
 def _pdfa_part(xmp: bytes) -> str | None:
     """The part of PDF/A the XMP metadata declares, as an element or an attribute in PDF/A's
     identification namespace, whatever its prefix."""
@@ -214,12 +320,8 @@ def _pdfa_part(xmp: bytes) -> str | None:
         root = parse(xmp)
     except InvoiceReadError:
         return None
-    part = f"{{{_PDFA_ID}}}part"
-    for description in root.iter(f"{{{_RDF}}}Description"):
-        value = description.get(part) or description.findtext(part)
-        if value is not None:
-            return value.strip()
-    return None
+    parts = _xmp_properties(root).get(f"{{{_PDFA_ID}}}part")
+    return parts[0].strip() if parts else None
 
 
 def _extract(reader: PdfReader, max_size: int) -> bytes:

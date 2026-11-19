@@ -7,6 +7,7 @@ What changed in each release of Haflinger, for its callers. The format follows [
 ### Fixed
 
 - `read_invoice` leaves out a UBL VAT breakdown entry (`cac:TaxSubtotal`) or line tax category (`cac:ClassifiedTaxCategory`) of a tax other than VAT, such as `GST`, with a `HAFL-DROPPED` finding naming its tax scheme, as it does in CII, and a `cac:TaxTotal` holding only such entries gives no VAT total (BT-110, BT-111). Before, it read them as VAT without a finding; CEN's rules reject such an invoice. Of two `cac:TaxTotal` in one currency, the one holding the VAT breakdown gives BT-110, also where one without subtotals comes first, which before took BT-110 and left the breakdown out.
+- `haflinger.pdf.embed` checks the PDF it writes and refuses, with `InvoiceWriteError` naming what differs, one that doesn't relate the invoice as `/Alternative`, or whose XMP metadata doesn't declare PDF/A-3b, an extension schema of Factur-X's namespace and, in that namespace, exactly one profile `EN 16931`, file name `factur-x.xml`, version `1.0` and document type `INVOICE`. Before, it handed out whatever `factur-x` wrote: the tests check the release they run with, and the extra `pdf` allows any from 7.9 on.
 
 ## [0.2.0] - 2026-11-18
 
