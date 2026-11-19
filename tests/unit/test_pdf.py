@@ -13,14 +13,22 @@ import sys
 import time
 import tracemalloc
 import zlib
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import defusedxml.ElementTree
+import facturx
 import pytest
 from pypdf import PdfReader, PdfWriter
-from pypdf.generic import ArrayObject, DecodedStreamObject, DictionaryObject, NameObject
+from pypdf.generic import (
+    ArrayObject,
+    DecodedStreamObject,
+    DictionaryObject,
+    NameObject,
+    StreamObject,
+)
 
 from haflinger import InvoiceReadError, InvoiceWriteError, ReadResult, read_invoice, write_cii
 from haflinger.pdf import embed, extract_xml
@@ -735,6 +743,189 @@ def test_embed_refuses_xml_breaking_factur_xs_schema() -> None:
         f.rule == "HAFL-XSD" and f.text.startswith("Factur-X EN 16931 XML Schema: ")
         for f in refusal.value.findings
     )
+
+
+ZUGFERD_2 = "urn:zugferd:pdfa:CrossIndustryDocument:invoice:2p0#"
+SCHEMA = f"no PDF/A extension schema of {FACTUR_X} naming"
+
+
+@pytest.fixture(scope="module")
+def embedded_xmp() -> str:
+    """The XMP metadata of the PDF embed writes with the release of factur-x the tests run with."""
+    xmp = PdfReader(io.BytesIO(embed(PDFA, XML))).xmp_metadata
+    assert xmp is not None
+    return xmp.stream.get_data().decode()
+
+
+def with_xmp(pdf: bytes, *replacements: tuple[str, str]) -> bytes:
+    """`pdf` with the first `old` of each `(old, new)` in its XMP metadata replaced by `new`."""
+    writer = PdfWriter(clone_from=io.BytesIO(pdf))
+    stream = cast(StreamObject, writer._root_object["/Metadata"].get_object())  # pyright: ignore[reportPrivateUsage]
+    xmp = stream.get_data().decode()
+    for old, new in replacements:
+        xmp = xmp.replace(old, new, 1)
+    stream.set_data(xmp.encode())
+    result = io.BytesIO()
+    writer.write(result)
+    return result.getvalue()
+
+
+def with_relationship(pdf: bytes, relationship: str, *, associated: bool) -> bytes:
+    """`pdf` with its embedded file related as `relationship`, and without the catalogue's
+    associated files (`/AF`) unless `associated`."""
+    writer = PdfWriter(clone_from=io.BytesIO(pdf))
+    root = writer._root_object  # pyright: ignore[reportPrivateUsage]
+    files = cast(DictionaryObject, cast(DictionaryObject, root["/Names"])["/EmbeddedFiles"])
+    specification = cast(DictionaryObject, cast(ArrayObject, files["/Names"])[1].get_object())
+    specification[NameObject("/AFRelationship")] = NameObject(relationship)
+    if not associated:
+        del root["/AF"]
+    result = io.BytesIO()
+    writer.write(result)
+    return result.getvalue()
+
+
+def factur_x_writing(monkeypatch: pytest.MonkeyPatch, change: Callable[[bytes], bytes]) -> None:
+    """factur-x as another release might write: the PDF the tests' release writes, changed by
+    `change`."""
+    generate = facturx.generate_from_file
+
+    def other_release(pdf_file: str, xml: bytes, **kwargs: Any) -> None:
+        generate(pdf_file, xml, **kwargs)
+        target = Path(cast(str, kwargs["output_pdf_file"]))
+        target.write_bytes(change(target.read_bytes()))
+
+    monkeypatch.setattr(facturx, "generate_from_file", other_release)
+
+
+@pytest.mark.parametrize(
+    ("replacements", "reason"),
+    [
+        (
+            [("<fx:ConformanceLevel>EN 16931<", "<fx:ConformanceLevel>BASIC<")],
+            "fx:ConformanceLevel ['BASIC'] instead of 'EN 16931'",
+        ),
+        (
+            [("<fx:DocumentFileName>factur-x.xml<", "<fx:DocumentFileName>invoice.xml<")],
+            "fx:DocumentFileName ['invoice.xml'] instead of 'factur-x.xml'",
+        ),
+        ([("<fx:Version>1.0<", "<fx:Version>1p0<")], "fx:Version ['1p0'] instead of '1.0'"),
+        (
+            [("<fx:DocumentType>INVOICE<", "<fx:DocumentType>ORDER<")],
+            "fx:DocumentType ['ORDER'] instead of 'INVOICE'",
+        ),
+        ([("<fx:Version>1.0</fx:Version>", "")], "fx:Version [] instead of '1.0'"),
+        (
+            [
+                (
+                    "<fx:Version>1.0</fx:Version>",
+                    "<fx:Version>1.0</fx:Version><fx:Version>2.0</fx:Version>",
+                )
+            ],
+            "fx:Version ['1.0', '2.0'] instead of '1.0'",
+        ),
+        (
+            [(f'xmlns:fx="{FACTUR_X}"', f'xmlns:fx="{ZUGFERD_2}"')],
+            "fx:ConformanceLevel [] instead of 'EN 16931'",
+        ),
+        ([("<pdfaid:part>3<", "<pdfaid:part>2<")], "pdfaid:part ['2'] instead of '3'"),
+        (
+            [
+                (
+                    "<pdfaid:part>3</pdfaid:part>",
+                    "<pdfaid:part>3</pdfaid:part><pdfaid:part>2</pdfaid:part>",
+                )
+            ],
+            "pdfaid:part ['3', '2'] instead of '3'",
+        ),
+        (
+            [("<pdfaid:conformance>B<", "<pdfaid:conformance>A<")],
+            "pdfaid:conformance ['A'] instead of 'B'",
+        ),
+        (
+            [("<pdfaid:conformance>B</pdfaid:conformance>", "")],
+            "pdfaid:conformance [] instead of 'B'",
+        ),
+        (
+            [(f"<pdfaSchema:namespaceURI>{FACTUR_X}<", "<pdfaSchema:namespaceURI>urn:example<")],
+            SCHEMA,
+        ),
+        ([("<pdfaProperty:name>Version<", "<pdfaProperty:name>Release<")], SCHEMA),
+        ([("</x:xmpmeta>", "")], "the written PDF's XMP metadata isn't readable"),
+    ],
+    ids=[
+        "profile",
+        "file-name",
+        "version",
+        "document-type",
+        "no-version",
+        "two-versions",
+        "zugferd-2-namespace",
+        "pdfa-2",
+        "two-pdfa-parts",
+        "pdfa-3a",
+        "no-pdfa-conformance",
+        "schema-of-another-namespace",
+        "schema-without-version",
+        "unreadable",
+    ],
+)
+def test_embed_refuses_a_result_whose_xmp_differs(
+    monkeypatch: pytest.MonkeyPatch,
+    embedded_xmp: str,
+    replacements: list[tuple[str, str]],
+    reason: str,
+) -> None:
+    for old, _ in replacements:
+        assert embedded_xmp.count(old) == 1, old
+    factur_x_writing(monkeypatch, lambda pdf: with_xmp(pdf, *replacements))
+    with pytest.raises(InvoiceWriteError, match=re.escape(reason)):
+        embed(PDFA, XML)
+
+
+@pytest.mark.parametrize(
+    "replacements",
+    [
+        [
+            (
+                "<rdf:Description>\n      <fx:DocumentType>INVOICE</fx:DocumentType>",
+                '<rdf:Description fx:DocumentType="INVOICE">',
+            )
+        ],
+        [
+            (f'xmlns:fx="{FACTUR_X}"', f'xmlns:fx="{FACTUR_X}" xmlns:zf="{FACTUR_X}"'),
+            ("<fx:Version>1.0</fx:Version>", "<zf:Version>1.0</zf:Version>"),
+        ],
+    ],
+    ids=["as-an-attribute", "another-prefix"],
+)
+def test_embed_takes_a_result_whose_xmp_says_the_same_otherwise(
+    monkeypatch: pytest.MonkeyPatch, embedded_xmp: str, replacements: list[tuple[str, str]]
+) -> None:
+    for old, _ in replacements:
+        assert embedded_xmp.count(old) == 1, old
+    factur_x_writing(monkeypatch, lambda pdf: with_xmp(pdf, *replacements))
+    assert xmp_values(embed(PDFA, XML), FACTUR_X) == {
+        "ConformanceLevel": ["EN 16931"],
+        "DocumentFileName": ["factur-x.xml"],
+        "DocumentType": ["INVOICE"],
+        "Version": ["1.0"],
+    }
+
+
+@pytest.mark.parametrize(
+    ("relationship", "associated"),
+    [("/Data", True), ("/Alternative", False)],
+    ids=["data", "no-associated-files"],
+)
+def test_embed_refuses_a_result_that_doesnt_relate_the_invoice_as_alternative(
+    monkeypatch: pytest.MonkeyPatch, relationship: str, associated: bool
+) -> None:
+    factur_x_writing(
+        monkeypatch, lambda pdf: with_relationship(pdf, relationship, associated=associated)
+    )
+    with pytest.raises(InvoiceWriteError, match="doesn't relate the invoice as /Alternative"):
+        embed(PDFA, XML)
 
 
 def test_embed_takes_an_attachment_over_ten_megabytes() -> None:
