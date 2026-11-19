@@ -3,7 +3,7 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Baselined |
-| **Version** | 0.28 |
+| **Version** | 0.29 |
 | **Date** | 2026-11-19 |
 | **Author** | loxy (drafted with Claude) |
 
@@ -161,7 +161,7 @@ The personas are [REQ-001's](req-001-core.md#personas).
 - either argument isn't `bytes`, or the `timeout` isn't valid; the PDF isn't readable, or its XMP metadata declares no conformance to PDF/A-1, -2 or -3 (the reason says that the input must be PDF/A); or the PDF holds what embedding would drop: a name tree (`/Names`: embedded files, named destinations and the others) or associated files of the document (`/AF`);
 - the XML isn't a CII invoice whose BT-24 is exactly `urn:cen.eu:en16931:2017`, with no whitespace around it, the ZUGFeRD / Factur-X EN 16931 profile; XRechnung, the other target profile of REQ-004-PRS-F002, is sent as XML;
 - the XML fails REQ-004-PRS-F004 or REQ-004-PRS-F005, with the findings, or can't be checked by them because the rules don't end within `timeout` or their worker dies ([REQ-002-PRS-NF004](req-002-conformance.md#req-002-prs-nf004-time-limit), [REQ-002-PRS-NF005](req-002-conformance.md#req-002-prs-nf005-rules-in-a-worker-process));
-- the PDF `factur-x` writes doesn't read back as one PDF carrying the XML byte for byte as its only embedded file, `factur-x.xml`; its embedded file and the catalogue's associated files (`/AF`) don't relate it as `/Alternative`; or its XMP metadata isn't readable, or doesn't declare PDF/A-3b (exactly one `pdfaid:part` `3` and one `pdfaid:conformance` `B`), a PDF/A extension schema of Factur-X's namespace naming its four properties, and, in that namespace, exactly one of each: the profile `EN 16931`, the file name `factur-x.xml`, the version `1.0` and the document type `INVOICE`, each as written, as an element or an attribute, whatever its prefix; the reason names what differs. Haflinger's tests check the release of `factur-x` they run with, and a caller may run another.
+- the PDF `factur-x` writes doesn't read back as one PDF carrying the XML byte for byte as its only embedded file, `factur-x.xml`; its embedded file and the catalogue's associated files (`/AF`) don't relate it as `/Alternative`; or its XMP metadata isn't readable, or doesn't declare PDF/A-3b (exactly one `pdfaid:part` `3` and one `pdfaid:conformance` `B`), a PDF/A extension schema of Factur-X's namespace naming its four properties, and, in that namespace, exactly one of each: the profile `EN 16931`, the file name `factur-x.xml`, the version `1.0` and the document type `INVOICE`, each as written, as an element or an attribute, whatever its prefix; the reason names what differs. Haflinger's tests check the release of `factur-x` they run with, and a caller may run another. The result is read back with `haflinger.pdf.extract_xml` and its limits ([REQ-003-PRS-F007](req-003-incoming-invoices.md#req-003-prs-f007-zugferd-pdfs)), so a result above 100 MiB is refused as unreadable: `embed` hands out only what Haflinger reads with its defaults, and an invoice PDF of that size means something upstream is broken.
 
 **Related URS**: REQ-004-URS-F002, REQ-004-URS-F004 | **Rationale**: ZUGFeRD PDFs go to businesses, XRechnung to public authorities as XML (Intended Use). ZUGFeRD 2.5.2 allows only `/Alternative` for the EN 16931 profile in Germany, and Factur-X allows it in France: the PDF shows the same invoice as the XML, which is up to the caller, who renders the PDF. ZUGFeRD's XRECHNUNG profile in a PDF (`xrechnung.xml`) is an open question; `factur-x` doesn't write it.
 
