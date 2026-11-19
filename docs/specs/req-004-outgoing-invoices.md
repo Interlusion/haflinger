@@ -3,8 +3,8 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Baselined |
-| **Version** | 0.26 |
-| **Date** | 2026-11-12 |
+| **Version** | 0.27 |
+| **Date** | 2026-11-19 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Intended Use
@@ -156,7 +156,7 @@ The personas are [REQ-001's](req-001-core.md#personas).
 
 #### REQ-004-PRS-F007: ZUGFeRD PDF
 
-**Description**: With the extra `pdf` installed, `haflinger.pdf.embed(pdf: bytes, xml: bytes, *, timeout: float = …) -> bytes` SHALL return the given PDF as PDF/A-3 with the XML embedded as `factur-x.xml`, with the relationship `/Alternative` and the XMP metadata (profile, version) that ZUGFeRD and Factur-X require, and the pages unchanged. The PDF's XMP metadata and document information are replaced by those of the invoice (title and subject from BT-1, BT-2 and BT-27, author BT-27), and a reader opening it shows its attachments (`/PageMode /UseAttachments`). It SHALL raise `InvoiceWriteError`, and no other exception, when:
+**Description**: With the extra `pdf` installed, `haflinger.pdf.embed(pdf: bytes, xml: bytes, *, timeout: float = …) -> bytes` SHALL return the given PDF as PDF/A-3 with the XML embedded as `factur-x.xml`, with the relationship `/Alternative` and the XMP metadata (profile, file name, version, document type) that ZUGFeRD and Factur-X require, and the pages unchanged. The PDF's XMP metadata and document information are replaced by those of the invoice (title and subject from BT-1, BT-2 and BT-27, author BT-27), and a reader opening it shows its attachments (`/PageMode /UseAttachments`). It SHALL raise `InvoiceWriteError`, and no other exception, when:
 
 - either argument isn't `bytes`, or the `timeout` isn't valid; the PDF isn't readable, or its XMP metadata declares no conformance to PDF/A-1, -2 or -3 (the reason says that the input must be PDF/A); or the PDF holds what embedding would drop: a name tree (`/Names`: embedded files, named destinations and the others) or associated files of the document (`/AF`);
 - the XML isn't a CII invoice whose BT-24 is exactly `urn:cen.eu:en16931:2017`, with no whitespace around it, the ZUGFeRD / Factur-X EN 16931 profile; XRechnung, the other target profile of REQ-004-PRS-F002, is sent as XML;
@@ -164,7 +164,7 @@ The personas are [REQ-001's](req-001-core.md#personas).
 
 **Related URS**: REQ-004-URS-F002, REQ-004-URS-F004 | **Rationale**: ZUGFeRD PDFs go to businesses, XRechnung to public authorities as XML (Intended Use). ZUGFeRD 2.5.2 allows only `/Alternative` for the EN 16931 profile in Germany, and Factur-X allows it in France: the PDF shows the same invoice as the XML, which is up to the caller, who renders the PDF. ZUGFeRD's XRECHNUNG profile in a PDF (`xrechnung.xml`) is an open question; `factur-x` doesn't write it.
 
-**Definition of Done**: for a CII invoice of the EN 16931 profile and a PDF/A test file, and for the same file after incremental updates, the result is one PDF that a strict reader reads, `haflinger.pdf.extract_xml` on the result returns the XML byte for byte, the result reads with `read_invoice` to the invoice's model, the XMP names the invoice's profile, the embedded file's relationship is `/Alternative`, the page content equals the input's, and veraPDF, the reference PDF/A validator, finds the result conformant to PDF/A-3 and the PDF/A-2 input not (tests; veraPDF runs as an oracle in CI and where it is installed); a PDF/A whose page content holds the text `%PDF-`, one whose XMP uses another prefix for the PDF/A namespace, one with a catalogue `/Dests`, and an invoice with an attachment (BG-24) of more than 10 MB are embedded; one test per refusal, among them a description that mentions `pdfaid:part` without declaring it, a name tree other than embedded files, `/AF`, a BT-24 with whitespace around it, and an invoice that fails only FeRD's rules.
+**Definition of Done**: for a CII invoice of the EN 16931 profile and a PDF/A test file, and for the same file after incremental updates, the result is one PDF that a strict reader reads, `haflinger.pdf.extract_xml` on the result returns the XML byte for byte, the result reads with `read_invoice` to the invoice's model, the XMP names the invoice's profile, the file name `factur-x.xml`, the version `1.0` and the document type `INVOICE`, the embedded file's relationship is `/Alternative`, the page content equals the input's, and veraPDF, the reference PDF/A validator, finds the result conformant to PDF/A-3 and the PDF/A-2 input not (tests; veraPDF runs as an oracle in CI and where it is installed); a PDF/A whose page content holds the text `%PDF-`, one whose XMP uses another prefix for the PDF/A namespace, one with a catalogue `/Dests`, and an invoice with an attachment (BG-24) of more than 10 MB are embedded; one test per refusal, among them a description that mentions `pdfaid:part` without declaring it, a name tree other than embedded files, `/AF`, a BT-24 with whitespace around it, and an invoice that fails only FeRD's rules.
 
 ## PRS — Non-Functional
 
