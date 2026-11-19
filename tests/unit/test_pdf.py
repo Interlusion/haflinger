@@ -17,6 +17,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import cast
 
+import defusedxml.ElementTree
 import pytest
 from pypdf import PdfReader, PdfWriter
 from pypdf.generic import ArrayObject, DecodedStreamObject, DictionaryObject, NameObject
@@ -269,8 +270,33 @@ def test_mutated_pdfs_read_or_are_refused_in_time() -> None:
 # REQ-004-PRS-F007: embedding
 
 
-def test_embeds_an_invoice_into_a_pdfa_file() -> None:
-    result = embed(PDFA, XML)
+# The namespaces of the XMP metadata's RDF, of PDF/A's identification and of Factur-X's properties.
+RDF = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+PDFA_ID = "http://www.aiim.org/pdfa/ns/id/"
+FACTUR_X = "urn:factur-x:pdfa:CrossIndustryDocument:invoice:1p0#"
+
+
+def xmp_values(pdf: bytes, namespace: str) -> dict[str, list[str]]:
+    """The properties of `namespace` in the XMP metadata of `pdf`, by local name, each with every
+    value it has, as an element or an attribute of an `rdf:Description`, whatever its prefix."""
+    xmp = PdfReader(io.BytesIO(pdf)).xmp_metadata
+    assert xmp is not None
+    values: dict[str, list[str]] = {}
+    root = defusedxml.ElementTree.fromstring(xmp.stream.get_data())
+    for description in root.iter(f"{{{RDF}}}Description"):
+        properties = [
+            *description.attrib.items(),
+            *((child.tag, child.text) for child in description),
+        ]
+        for name, value in properties:
+            if name.startswith(f"{{{namespace}}}"):
+                values.setdefault(name.removeprefix(f"{{{namespace}}}"), []).append(value or "")
+    return values
+
+
+@pytest.mark.parametrize("incremental", [False, True], ids=["pdfa", "incrementally updated"])
+def test_embeds_an_invoice_into_a_pdfa_file(incremental: bool) -> None:
+    result = embed(incrementally_updated(PDFA) if incremental else PDFA, XML)
     assert extract_xml(result) == XML
     assert read_invoice(result).invoice == INVOICE
     reader, original = PdfReader(io.BytesIO(result)), PdfReader(io.BytesIO(PDFA))
@@ -280,14 +306,13 @@ def test_embeds_an_invoice_into_a_pdfa_file() -> None:
         assert contents is not None
         assert original_contents is not None
         assert contents.get_data() == original_contents.get_data()
-    xmp = reader.xmp_metadata
-    assert xmp is not None
-    text = xmp.stream.get_data().decode()
-    assert re.search(r"pdfaid:part(>|=\")3", text)
-    assert re.search(r"fx:ConformanceLevel>EN 16931<|fx:ConformanceLevel=\"EN 16931\"", text)
-    assert re.search(
-        r"fx:DocumentFileName>factur-x.xml<|fx:DocumentFileName=\"factur-x.xml\"", text
-    )
+    assert xmp_values(result, PDFA_ID)["part"] == ["3"]
+    assert xmp_values(result, FACTUR_X) == {
+        "ConformanceLevel": ["EN 16931"],
+        "DocumentFileName": ["factur-x.xml"],
+        "DocumentType": ["INVOICE"],
+        "Version": ["1.0"],
+    }
 
 
 def verapdf() -> str | None:
