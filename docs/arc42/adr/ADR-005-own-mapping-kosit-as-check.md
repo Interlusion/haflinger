@@ -53,7 +53,7 @@ The model read from KoSIT's semantic XML, all its terms without mapping work of 
 
 ### Alternative 3: A Java library (phax, Mustang) as the reader
 
-**Rejected because**: a JVM at runtime ([ADR-003](ADR-003-integrate-dont-implement.md), alternative 3). phax's converter checks the reading in CI instead (Decision). Mustang isn't a check there either (weighed on 2026-11-19): its conversion of CII to UBL is phax's converter, its reading gives no model to compare without a Java program of Haflinger's own, and its validator runs the official rules and veraPDF that Haflinger's tests already run; of its checks of a ZUGFeRD PDF's XMP metadata, Haflinger's own test checks the profile, file name, version and document type of the PDFs it writes ([REQ-004-PRS-F007](../../specs/req-004-outgoing-invoices.md#req-004-prs-f007-zugferd-pdf)).
+**Rejected because**: a JVM at runtime ([ADR-003](ADR-003-integrate-dont-implement.md), alternative 3). phax's converter checks the reading in CI instead (Decision). Mustang isn't a check there either (weighed on 2026-11-19): its conversion of CII to UBL is phax's converter, its reading gives no model to compare without a Java program of Haflinger's own, and its validator runs the official rules and veraPDF that Haflinger's tests already run; of its checks of a ZUGFeRD PDF's XMP metadata, `embed` checks the profile, file name, version and document type in each PDF it writes, and its tests check that it does ([REQ-004-PRS-F007](../../specs/req-004-outgoing-invoices.md#req-004-prs-f007-zugferd-pdf)).
 
 ## Consequences
 
