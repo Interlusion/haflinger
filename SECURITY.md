@@ -25,7 +25,7 @@ Out of scope:
 
 - Haflinger's other modules, which are internal; what they do matters where it reaches an entry point.
 - The official artefacts and the libraries Haflinger builds on: KoSIT's, CEN's and FeRD's rules and stylesheets, SchXslt, Saxon, lxml and libxml2, `defusedxml`, `pypdf`, `factur-x`. Report those to their projects; tell us too where Haflinger should guard against it.
-- What a caller does with what Haflinger hands back: showing an attachment or a PDF to a person, storing files, booking an invoice. The ERPNext app is its own project.
+- What a caller does with what Haflinger hands back: showing an attachment or a PDF to a person, storing files, booking an invoice. The ERPNext app, [Haflinger Saddle](https://github.com/interlusion/haflinger-saddle), is its own project, with its own security policy.
 - The known costs of large input within `max_size`, the memory reading takes and the number of findings a hostile file can produce ([backlog](docs/backlog/backlog.md)): a caller reading outside input passes a smaller `max_size`.
 - A business rule the official rules don't check: Haflinger runs them unchanged and doesn't reimplement them ([ADR-003](docs/arc42/adr/ADR-003-integrate-dont-implement.md)); a rule they lack is a feature request, or goes to their projects.
 

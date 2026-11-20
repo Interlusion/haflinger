@@ -7,7 +7,7 @@ body:
       value: >-
         Haflinger runs the official rules unchanged and doesn't reimplement them (ADR-003);
         a rule they lack goes to KoSIT, CEN or FeRD first. Mapping ERPNext's documents
-        belongs to the ERPNext app, not to the library (ADR-001). Never attach a real
+        belongs to the ERPNext app, Haflinger Saddle, not to the library (ADR-001). Never attach a real
         invoice; use an official test file or placeholders such as Example GmbH.
   - type: dropdown
     id: area
