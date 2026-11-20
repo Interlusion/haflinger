@@ -4,12 +4,12 @@
 | :- | :- |
 | **Status** | Baselined |
 | **Version** | 0.24 |
-| **Date** | 2026-11-12 |
+| **Date** | 2026-11-20 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Intended Use
 
-Haflinger is a Python library for e-invoicing, `haflinger`. It holds one model of the EN 16931 business terms, reads invoices received in CII, UBL and ZUGFeRD PDFs into it, validates them with the official rules, and writes invoices as CII and ZUGFeRD PDFs. Any Python software can build on it; the first is an ERPNext app, later and in its own repository, that maps ERPNext's purchase and sales invoices to and from the model.
+Haflinger is a Python library for e-invoicing, `haflinger`. It holds one model of the EN 16931 business terms, reads invoices received in CII, UBL and ZUGFeRD PDFs into it, validates them with the official rules, and writes invoices as CII and ZUGFeRD PDFs. Any Python software can build on it; the first is Haflinger Saddle, an ERPNext app in its own repository, that maps ERPNext's purchase and sales invoices to and from the model.
 
 This base spec holds what every other spec shares: the personas, stories and terms, the model, and the rules for values, outside input and its size, refusals and findings. Conformance (REQ-002), incoming invoices (REQ-003) and outgoing invoices (REQ-004) build on it; the [specs index](README.md) says what goes where.
 

@@ -3,14 +3,14 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Accepted |
-| **Date** | 2026-11-02 |
+| **Date** | 2026-11-20 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Context
 
 Haflinger runs the official rules with `saxonche` ([ADR-006](ADR-006-validation-with-official-rules.md)), today inside the process that calls `validate`, `write_cii` or `embed`. Three problems share that cause:
 
-- **Licence.** Most of Saxon's files are marked "incompatible with secondary licenses" under MPL-2.0; Saxonica's SaxonC page says the code "cannot be combined with code issued under a GPL license". The ERPNext app is GPL-3.0 ([ADR-009](ADR-009-licences-and-name.md)). Asked on 2026-11-02, Saxonica declined to say whether a GPL-3.0 app that loads `saxonche` in its process through Haflinger is allowed ("We are not lawyers"), and offered no extra permission, only a paid licence for Saxon-PE or Saxon-EE, which suits a closed product, not a GPL-3.0 app given away ([ITEM-008](../../backlog/item-008-saxonche-licence.md)). The Free Software Foundation counts code loaded into one process and called with shared data as one program, and separate processes that exchange data over pipes as separate programs, depending on what they exchange.
+- **Licence.** Most of Saxon's files are marked "incompatible with secondary licenses" under MPL-2.0; Saxonica's SaxonC page says the code "cannot be combined with code issued under a GPL license". The ERPNext app is GPL-3.0 ([ADR-009](ADR-009-licences-and-name.md)). Asked on 2026-11-02, Saxonica declined to say whether a GPL-3.0 app that loads `saxonche` in its process through Haflinger is allowed ("We are not lawyers"), and offered no extra permission, only a paid licence for Saxon-PE or Saxon-EE, which suits a closed product, not a GPL-3.0 app given away (SADL-ITEM-002). The Free Software Foundation counts code loaded into one process and called with shared data as one program, and separate processes that exchange data over pipes as separate programs, depending on what they exchange.
 - **Time.** On hostile input the official rules take minutes (87 s for a 2 MB UBL invoice with 64,000 `cbc:PaymentID`), Saxon holds Python's global interpreter lock meanwhile, and a running stylesheet can't be stopped from within the process; ADR-006 leaves the time limit to the caller ([ITEM-007](../../backlog/archive/item-007-validation-time-limit.md)).
 - **Crashes.** Saxon is native code built with GraalVM. `factur-x` dropped `saxonche` 13.0.0 in 2026 after it aborted the Odoo process with "Failed to enter the specified IsolateThread context"; a crash in Saxon ends the host's process with it. Saxon also prints stack traces to the process's stderr, which Python's logging can't capture.
 
@@ -76,7 +76,7 @@ As `factur-x` does since release 6.0, with a separate Saxon server.
 - A worker killed after a time limit, or for a call that ended early, costs the next call a compile of 0.25 to 1.05 s.
 - IPC, a worker's lifecycle and a fork check are new code that can fail; errors cross a process boundary.
 - The worker is started with `sys.executable`, which in a host that embeds Python (uWSGI, mod_wsgi) may name the host's program instead of an interpreter; Frappe's gunicorn and RQ workers run Python as a program.
-- Whether a process boundary suffices legally is a reading too, if a stronger one; a lawyer should confirm it before the app is published ([ITEM-008](../../backlog/item-008-saxonche-licence.md)).
+- Whether a process boundary suffices legally is a reading too, if a stronger one; a lawyer should confirm it before the app is published (SADL-ITEM-002).
 
 ## Reconsideration Triggers
 
@@ -93,5 +93,5 @@ As `factur-x` does since release 6.0, with a separate Saxon server.
 ## References
 
 - Affects: arc42 [§5](../README.md#5-building-block-view), [§6](../README.md#6-runtime-view), [§7](../README.md#7-deployment-view), [§8](../README.md#8-cross-cutting-concepts), [§11](../README.md#11-risks-and-technical-debt); REQ-002's time limit and assumptions
-- [ADR-006](ADR-006-validation-with-official-rules.md), [ADR-009](ADR-009-licences-and-name.md), [ITEM-007](../../backlog/archive/item-007-validation-time-limit.md), [ITEM-008](../../backlog/item-008-saxonche-licence.md)
+- [ADR-006](ADR-006-validation-with-official-rules.md), [ADR-009](ADR-009-licences-and-name.md), [ITEM-007](../../backlog/archive/item-007-validation-time-limit.md)
 - [GNU GPL FAQ: separate programs or one program](https://www.gnu.org/licenses/gpl-faq.html#MereAggregation)

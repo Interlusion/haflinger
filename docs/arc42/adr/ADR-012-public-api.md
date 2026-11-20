@@ -3,7 +3,7 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Accepted |
-| **Date** | 2026-11-11 |
+| **Date** | 2026-11-20 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Context
@@ -16,7 +16,7 @@ The specs define five entry points, `read_invoice`, `validate` and `write_cii` i
 
 None of the submodules has an `__all__`, so nothing tells their public names from their helpers. What a caller needs is missing at the same time: `Flag`, the type of a finding's flag, `Syntax`, the type of the syntax an invoice was read from, and the target profiles of writing, which a caller needs to choose BT-24 before `write_cii`, aren't exported, and the rule that an invoice is valid when no finding is `fatal` or `error` lives only in the spec (REQ-002-PRS-F002), so each caller would write it again. `validate` returns a `list`, while `ReadResult.findings` and `InvoiceWriteError.findings` are tuples. The package's docstring is one line.
 
-Haflinger isn't released, and the ERPNext app isn't written yet ([ITEM-003](../../backlog/item-003-erpnext-app.md)): what the first release exports is what the app and every other caller will build on. Python's style guide asks for internal modules to carry a leading underscore even where `__all__` is set (PEP 8, "Public and Internal Interfaces"). The security policy's scope is already the five entry points.
+Before the first release, with the ERPNext app not yet written, what the first release exported was what the app and every other caller would build on. Python's style guide asks for internal modules to carry a leading underscore even where `__all__` is set (PEP 8, "Public and Internal Interfaces"). The security policy's scope was already the five entry points.
 
 ## Decision
 
@@ -94,5 +94,5 @@ The model's classes stay importable from a public `haflinger.model` beside `hafl
 ## References
 
 - Affects: REQ-001 (the public interface, REQ-001-PRS-F006), REQ-002 (`validate`'s return type, REQ-002-PRS-F001; `is_valid` and `Flag`, REQ-002-PRS-F002), REQ-004 (`TARGET_PROFILES`, REQ-004-PRS-F002), arc42 [§5](../README.md#5-building-block-view), the [security policy](../../../SECURITY.md)
-- [ADR-001](ADR-001-library-and-app.md), [ADR-005](ADR-005-own-mapping-kosit-as-check.md), [ITEM-003](../../backlog/item-003-erpnext-app.md)
+- [ADR-001](ADR-001-library-and-app.md), [ADR-005](ADR-005-own-mapping-kosit-as-check.md)
 - [PEP 8, Public and Internal Interfaces](https://peps.python.org/pep-0008/#public-and-internal-interfaces)

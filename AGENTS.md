@@ -4,7 +4,7 @@ Instructions for coding agents working on Haflinger. `CLAUDE.md` imports this fi
 
 ## Project
 
-Haflinger: e-invoicing in Python (ZUGFeRD, XRechnung, Peppol). A library with one model of the EN 16931 business terms, read from CII, UBL and ZUGFeRD PDFs, validated with the official rules, written as CII and ZUGFeRD PDFs. Its first user is an ERPNext app, later and in its own repository. See `README.md` and the [architecture](docs/arc42/README.md).
+Haflinger: e-invoicing in Python (ZUGFeRD, XRechnung, Peppol). A library with one model of the EN 16931 business terms, read from CII, UBL and ZUGFeRD PDFs, validated with the official rules, written as CII and ZUGFeRD PDFs. Its first user is Haflinger Saddle, an ERPNext app in its own repository. See `README.md` and the [architecture](docs/arc42/README.md).
 
 ## Rules
 
@@ -24,6 +24,7 @@ Start at `docs/README.md`. The specs in `docs/specs/` are the contract: a new bu
 
 - **Tests first** where a spec's Definition of Done describes the behaviour: write the failing test from it, run it red, then write the code. Commit the tests before the code (`test:` then `feat:`).
 - Write requirement IDs in full (`REQ-003-PRS-F004`, not `PRS-F004`), and business terms by their EN 16931 ID (`BT-110`, `BG-23`).
+- Outside this repository, Haflinger's IDs carry its project code, `HAFL-ADR-010`, as requirement IDs do ([ADR-004](docs/arc42/adr/ADR-004-specs-by-direction.md)). Haflinger knows next to nothing of its callers; where it names a document of Haflinger Saddle, it writes Saddle's project code, `SADL-ITEM-002`, without a link.
 - **Analyses are temporary.** `docs/analysis/analysis-NNN-*.md` hold explorations and spike results; once their findings are carried into ADRs, specs, guides or the backlog, they move to `docs/analysis/archive/`. ADRs, specs and guides never link to an analysis: they state the facts they rely on.
 
 ## Conventions

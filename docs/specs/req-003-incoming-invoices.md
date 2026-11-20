@@ -4,14 +4,14 @@
 | :- | :- |
 | **Status** | Baselined |
 | **Version** | 0.24 |
-| **Date** | 2026-11-18 |
+| **Date** | 2026-11-20 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Intended Use
 
 Receiving an invoice: reading what a supplier sent, as CII, UBL or a ZUGFeRD PDF, into the model, so that a person can see it and it can be booked. Reading takes in everything an invoice holds of the model's terms, even when the invoice is incomplete, and reports what it couldn't take in; validation (REQ-002) then says what is wrong with the invoice. Reading refuses only what it can't read at all.
 
-Out of scope: receiving by e-mail or Peppol (the caller, providers); rendering an invoice for people; archiving (the caller keeps the original bytes); checks of the PDF container itself ([ITEM-004](../backlog/item-004-pdf-checks.md)); the Purchase Invoice in ERPNext (the app, [ITEM-003](../backlog/item-003-erpnext-app.md)).
+Out of scope: receiving by e-mail or Peppol (the caller, providers); rendering an invoice for people; archiving (the caller keeps the original bytes); checks of the PDF container itself ([ITEM-004](../backlog/item-004-pdf-checks.md)); the Purchase Invoice in ERPNext (the app).
 
 Read [REQ-001](req-001-core.md) first: it holds the personas, stories and terms, and the rules every spec follows.
 
@@ -237,7 +237,7 @@ The findings are those of [REQ-002-PRS-F010](req-002-conformance.md#req-002-prs-
 
 - A selection of the ZUGFeRD corpus (Apache-2.0) is vendored with the tests ([ADR-008](../arc42/adr/ADR-008-vendoring-official-files.md)): the Mustang project's PDFs, valid and broken, and broken invoices of other producers, FeRD's and FNFE-MPE's among them, which the corpus passes on under its licence; the samples of FeRD's own package aren't, as its rights of use don't name them ([ITEM-002](../backlog/item-002-official-test-material.md)).
 - The official test files include a UBL credit note (Peppol BIS or CEN examples).
-- The library bounds the time of looking for the invoice in a PDF, not the time of reading the XML, which grows with its size (REQ-003-PRS-NF002). The bound on PDFs works within the thread: pypdf is pure Python, and a profile function that Python calls on every function call raises once the time is up. A caller that reads outside input still runs it where a time limit applies, such as a background job with a timeout ([ITEM-003](../backlog/item-003-erpnext-app.md)); validation has its own time limit ([REQ-002-PRS-NF004](req-002-conformance.md#req-002-prs-nf004-time-limit)).
+- The library bounds the time of looking for the invoice in a PDF, not the time of reading the XML, which grows with its size (REQ-003-PRS-NF002). The bound on PDFs works within the thread: pypdf is pure Python, and a profile function that Python calls on every function call raises once the time is up. A caller that reads outside input still runs it where a time limit applies, such as a background job with a timeout; validation has its own time limit ([REQ-002-PRS-NF004](req-002-conformance.md#req-002-prs-nf004-time-limit)).
 
 ## Open Questions
 

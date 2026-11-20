@@ -3,7 +3,7 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Accepted |
-| **Date** | 2026-11-12 |
+| **Date** | 2026-11-20 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Context
@@ -22,7 +22,7 @@ Haflinger also ships files it didn't write, each under its own licence:
 | SchXslt (runtime, compiles FeRD's Schematron) | MIT |
 | The PDF/A file of veraPDF's test corpus (tests only) | CC BY 4.0 |
 | FeRD's Factur-X XML Schemas and Schematron | Apache-2.0, by FeRD's rights of use; its XSLT and samples are not named there |
-| `saxonche` (runtime) | Not named in its package metadata; per Saxonica, MPL-2.0 for the most part, its files marked "Incompatible With Secondary Licenses", shipping GraalVM Community Edition; beside the GPL-3.0 app an open question ([ITEM-008](../../backlog/item-008-saxonche-licence.md)) |
+| `saxonche` (runtime) | Not named in its package metadata; per Saxonica, MPL-2.0 for the most part, its files marked "Incompatible With Secondary Licenses", shipping GraalVM Community Edition; beside the GPL-3.0 app an open question, followed in the app's repository (SADL-ITEM-002) |
 | `defusedxml`, `lxml` (runtime); `factur-x`, `pypdf` (`pdf` extra) | PSF, BSD-3-Clause; BSD, BSD-3-Clause |
 
 Frappe's trademark policy doesn't allow "ERPNext" or "Frappe" in the name of a third-party product; a description may say "for ERPNext".
@@ -36,7 +36,7 @@ Frappe's trademark policy doesn't allow "ERPNext" or "Frappe" in the name of a t
 - **New runtime dependencies** need a licence that allows distributing them with an Apache-2.0 library; copyleft beyond unchanged files needs an ADR.
 - **The package says what it ships**: `THIRD-PARTY-NOTICES` lists the vendored files of the wheel with their terms, a `Licence` line of SPDX identifiers per directory, and holds the notices of UN/CEFACT and OASIS and W3C's licence, which have no licence file of their own; `pyproject.toml`'s licence expression is Apache-2.0 and those lines together. The licence files and `THIRD-PARTY-NOTICES` are among the package's licence files (PEP 639). It isn't named `NOTICE`, which Apache-2.0 section 4(d) would have every redistributor reproduce. The wheel holds only the runtime artefacts; the test files and veraPDF's PDF are in the repository only.
 - **ETSI's XAdES schemas**, which OASIS's UBL 2.1 schemas import, carry no notice, in ETSI's originals or in OASIS's copies, and no licence of them is known. They are shipped as OASIS's UBL 2.1 and KoSIT's configuration ship them, and `THIRD-PARTY-NOTICES` says so. ETSI publishes the current edition of these namespaces' schemas under BSD-3-Clause; whether that covers the earlier versions OASIS copied was asked of ETSI on 2026-11-11 ([backlog](../../backlog/backlog.md)). Without them, the UBL schemas still load, but the XML Schema check would no longer be KoSIT's.
-- **Saxon doesn't block Haflinger's releases**: Haflinger ships none of Saxon's files and only requires `saxonche`, and Apache-2.0 beside Saxon's MPL-2.0 isn't in question. Whether the GPL-3.0 app may use it is the app's question, to settle before the app is published ([ITEM-008](../../backlog/item-008-saxonche-licence.md)); [ADR-010](ADR-010-saxon-in-a-worker-process.md) keeps Saxon out of the caller's process.
+- **Saxon doesn't block Haflinger's releases**: Haflinger ships none of Saxon's files and only requires `saxonche`, and Apache-2.0 beside Saxon's MPL-2.0 isn't in question. Whether the GPL-3.0 app may use it is the app's question, to settle before the app is published (SADL-ITEM-002); [ADR-010](ADR-010-saxon-in-a-worker-process.md) keeps Saxon out of the caller's process.
 - **The name**: Haflinger in prose, `haflinger` as an identifier, `HAFLINGER_` for variables; the project code `HAFL`. "ERPNext" and "Frappe" are not in the project or package name; descriptions may say "for ERPNext", and the README says Haflinger is not affiliated with Frappe Technologies.
 
 ## Alternatives Considered
@@ -69,7 +69,7 @@ Frappe's trademark policy doesn't allow "ERPNext" or "Frappe" in the name of a t
 
 ## Reconsideration Triggers
 
-1. Saxon's licence turns out not to allow requiring it from an Apache-2.0 library, or a lawyer's answer for the app (ITEM-008) changes how Haflinger runs it.
+1. Saxon's licence turns out not to allow requiring it from an Apache-2.0 library, or a lawyer's answer for the app (SADL-ITEM-002) changes how Haflinger runs it.
 2. A review before the first release finds a conflict with a vendored licence.
 3. Frappe changes its trademark policy.
 

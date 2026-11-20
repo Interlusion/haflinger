@@ -13,7 +13,7 @@ What Haflinger is not for:
 
 - **Reimplementing the official rules.** Haflinger runs KoSIT's, CEN's and FeRD's rules unchanged and never rewrites what they check; a rule they lack goes to their projects first. A check of Haflinger's own, such as a German requirement beyond the official rules, needs a spec and an ADR before code ([ADR-003](docs/arc42/adr/ADR-003-integrate-dont-implement.md)).
 - **Editing the official files.** Vendored artefacts and test files stay byte for byte as their source ships them, and an update replaces them from it ([development guide](docs/guides/development.md#updating-official-files)). A file that looks wrong is recorded in a test with its reason, and a defect in it is reported upstream ([ADR-008](docs/arc42/adr/ADR-008-vendoring-official-files.md), [development guide](docs/guides/development.md#tests)).
-- **ERPNext itself.** Mapping ERPNext's documents, print formats and the review of incoming invoices belong to the ERPNext app, in its own repository; the library imports no Frappe or ERPNext code ([ADR-001](docs/arc42/adr/ADR-001-library-and-app.md)).
+- **ERPNext itself.** Mapping ERPNext's documents, print formats and the review of incoming invoices belong to the ERPNext app, [Haflinger Saddle](https://github.com/Interlusion/haflinger-saddle), in its own repository; the library imports no Frappe or ERPNext code ([ADR-001](docs/arc42/adr/ADR-001-library-and-app.md)).
 
 ## How a change is made
 

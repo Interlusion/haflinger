@@ -10,7 +10,7 @@
 
 ## Summary
 
-Decide what Haflinger's public API is, and make the package say so, before the ERPNext app is written against it ([ITEM-003](../item-003-erpnext-app.md)) and before the first release. Today it is wider than the specs document, and some of what a caller needs isn't exported.
+Decide what Haflinger's public API is, and make the package say so, before the ERPNext app is written against it and before the first release. Today it is wider than the specs document, and some of what a caller needs isn't exported.
 
 ## Context / Motivation
 

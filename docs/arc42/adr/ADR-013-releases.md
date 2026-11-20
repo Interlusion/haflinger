@@ -3,14 +3,14 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Accepted |
-| **Date** | 2026-11-11 |
+| **Date** | 2026-11-20 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Context
 
-Haflinger isn't released. The name is reserved on PyPI with a placeholder 0.0.0 without code, yanked; `pyproject.toml` says 0.0.0 too. The API the first release fixes is what `haflinger` and `haflinger.pdf` export ([ADR-012](ADR-012-public-api.md)). The security policy already promises fixes for the latest minor version only, and warns that while Haflinger is at 0.x a minor version may break the interface.
+Before the first release, the name was reserved on PyPI with a placeholder 0.0.0 without code, yanked, and `pyproject.toml` said 0.0.0 too. The API the first release fixed is what `haflinger` and `haflinger.pdf` export ([ADR-012](ADR-012-public-api.md)). The security policy already promised fixes for the latest minor version only, and warned that while Haflinger is at 0.x a minor version may break the interface.
 
-Its first caller, the ERPNext app, installs it into a bench ([ITEM-003](../../backlog/item-003-erpnext-app.md)), and so does anyone else: from PyPI, by version. A caller needs to know from a version number whether an update may break their code, and from a list in their words what changed; the commits say what changed for the maintainers, tests and docs included. An update of the official files changes verdicts without touching the code ([ADR-008](ADR-008-vendoring-official-files.md)).
+Its first caller, the ERPNext app, installs it into a bench, and so does anyone else: from PyPI, by version. A caller needs to know from a version number whether an update may break their code, and from a list in their words what changed; the commits say what changed for the maintainers, tests and docs included. An update of the official files changes verdicts without touching the code ([ADR-008](ADR-008-vendoring-official-files.md)).
 
 Uploading from a maintainer's machine needs a PyPI API token: a secret that lasts until it is revoked, and nothing ties the uploaded files to a commit. PyPI's Trusted Publishing lets a workflow of a named repository upload instead: GitHub gives the run a signed identity (OpenID Connect), PyPI checks it against the publisher configured for the project and hands out a token that expires within minutes. Uploaded this way, pypa's publish action also signs an attestation for each file (PEP 740): which repository, workflow and commit built it, which PyPI shows and anyone can verify.
 
