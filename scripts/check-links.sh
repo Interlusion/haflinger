@@ -38,7 +38,9 @@ docker build -q -t haflinger-lychee .github/lychee >/dev/null
 # included, as PyPI shows the README and the GitHub Release a changelog section (ADR-013), and
 # none of the README's into this repository may name a tag, which only a release's build writes.
 for file in README.md CHANGELOG.md; do
-  relative=$(docker run --rm -v "$PWD":/w:ro -w /w haflinger-lychee --config /dev/null --dump "$file" | grep '^file://' || true)
+  # The dump first, so that a failing lychee fails the check instead of finding nothing.
+  dump=$(docker run --rm -v "$PWD":/w:ro -w /w haflinger-lychee --config /dev/null --dump "$file")
+  relative=$(grep '^file://' <<<"$dump" || true)
   if [ -n "$relative" ]; then
     echo "$relative"
     echo "::error::$file links above are relative, which break on PyPI and in a GitHub Release; link https://github.com/Interlusion/haflinger/blob/main/<path>"
