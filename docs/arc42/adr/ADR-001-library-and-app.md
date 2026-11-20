@@ -3,7 +3,7 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Accepted |
-| **Date** | 2026-10-30 |
+| **Date** | 2026-11-20 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Context
@@ -16,7 +16,7 @@ Haflinger is to be maintained largely by agents. They need behaviour they can ch
 
 - **A standalone Python library, `haflinger`.** It holds one model of the EN 16931 business terms. It reads CII, UBL and ZUGFeRD PDFs into the model, validates with the official rules ([ADR-006](ADR-006-validation-with-official-rules.md)) and writes CII and ZUGFeRD PDFs ([ADR-003](ADR-003-integrate-dont-implement.md)). It imports no Frappe or ERPNext code and is tested against the official test files.
 - **All syntax and format knowledge is in the library**: the elements of CII and UBL, and how XML is embedded in a ZUGFeRD PDF (PDF/A-3, XMP). PDF support is an optional extra, `haflinger[pdf]`, so that the plain library stays small.
-- **A slim ERPNext app later, in its own repository**, which maps ERPNext documents to and from the model, renders the readable PDF of an outgoing invoice with ERPNext's print formats, and holds no syntax knowledge of its own. It is the library's first user, not part of it: its name, its requirements, and whether parts of it run elsewhere (as tools of another system, or as a separate service) are decided there, per feature. Licences of the library and the app: [ADR-009](ADR-009-licences-and-name.md).
+- **A slim ERPNext app in its own repository**, Haflinger Saddle, which maps ERPNext documents to and from the model, renders the readable PDF of an outgoing invoice with ERPNext's print formats, and holds no syntax knowledge of its own. It is the library's first user, not part of it: its name, its requirements, and whether parts of it run elsewhere (as tools of another system, or as a separate service) are decided there, per feature. Licences of the library and the app: [ADR-009](ADR-009-licences-and-name.md).
 - **Peppol later**, through an access point; not part of the library.
 
 ## Alternatives Considered

@@ -3,7 +3,7 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Accepted |
-| **Date** | 2026-11-08 |
+| **Date** | 2026-11-20 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Context
@@ -13,7 +13,7 @@ A supporting document (BG-24) may carry the document itself, embedded in the inv
 - **The official files**: 36 attachments in 32 files of KoSIT's test suite, all PDFs with a file name; 18 in 13 files of the ZUGFeRD corpus, PDFs, PNGs and one `application/octet-stream`. The largest is 1.1 MB of Base64, about 0.8 MB of file. None of them breaks its Base64 into lines, and their XML Schemas refuse text that isn't Base64.
 - **The official rules**: CEN's `BR-CL-24` checks the media type against its list (PDF, PNG, JPEG, CSV, the spreadsheet formats of Excel and OpenDocument); `UBL-DT-06` and `UBL-DT-07` require a UBL attachment's media type and file name; XRechnung's `BR-DE-22` requires unique file names; CEN's `CII-SR-476`, a warning, allows one attachment among a CII invoice's supporting documents, where EN 16931 and UBL allow one for each; KoSIT's scenarios lower it to information for XRechnung, as its context is wrong, and check one for each supporting document instead (`BR-TMP-5`, a warning). Factur-X BASIC has no attachments; EN 16931 and EXTENDED have them.
 - **Size**: every input is refused above `max_size`, by default 100 MiB, before it is parsed (REQ-001-PRS-NF003). An attachment is part of the XML, so it already counts against that limit, and its decoded bytes are three quarters of its Base64 text.
-- **Outside input**: an attachment is a file from the sender. Haflinger already treats incoming XML as hostile (`defusedxml`, ADR-003); the app scans incoming files, and offers PDFs as a download rather than rendering them ([ITEM-003](../../backlog/item-003-erpnext-app.md)). KoSIT's release of 2026-10-13 fixed script injection through attachment file names in its rendering ([ITEM-005](../../backlog/item-005-rendering.md)).
+- **Outside input**: an attachment is a file from the sender. Haflinger already treats incoming XML as hostile (`defusedxml`, ADR-003); the app scans incoming files, and offers PDFs as a download rather than rendering them. KoSIT's release of 2026-10-13 fixed script injection through attachment file names in its rendering ([ITEM-005](../../backlog/item-005-rendering.md)).
 - **ZUGFeRD PDFs**: Factur-X lets the PDF carry further files beside the invoice XML. Those are files of the PDF, not EN 16931 terms; BT-125 is inside the XML.
 
 ## Decision
@@ -82,4 +82,4 @@ A separate keyword argument, below `max_size`, for the attachments alone.
 ## References
 
 - Affects: REQ-001 (the model, REQ-001-URS-NF001's exceptions), REQ-003 (reading BT-125), REQ-004 (writing BT-125), arc42 [§8](../README.md#8-cross-cutting-concepts)
-- [ADR-001](ADR-001-library-and-app.md), [ADR-003](ADR-003-integrate-dont-implement.md), [ADR-007](ADR-007-model-scope-and-editions.md), [ITEM-003](../../backlog/item-003-erpnext-app.md), [ITEM-005](../../backlog/item-005-rendering.md)
+- [ADR-001](ADR-001-library-and-app.md), [ADR-003](ADR-003-integrate-dont-implement.md), [ADR-007](ADR-007-model-scope-and-editions.md), [ITEM-005](../../backlog/item-005-rendering.md)

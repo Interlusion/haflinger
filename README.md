@@ -8,7 +8,7 @@ E-invoicing in Python: ZUGFeRD, XRechnung and Peppol, on one model of the EN 169
 
 - **A Python library.** One model of the EN 16931 business terms. It reads invoices in CII, UBL and from ZUGFeRD PDFs, validates them with the official rules, and writes CII and ZUGFeRD PDFs. Any Python software can use it; it needs no ERP system to run or to be tested.
 - **Built on the official artefacts**: KoSIT's and CEN's rules run unchanged, and the official test files are the reference ([ADR-003](https://github.com/Interlusion/haflinger/blob/main/docs/arc42/adr/ADR-003-integrate-dont-implement.md)).
-- **ERPNext first.** A slim ERPNext app, later and in its own repository, maps ERPNext's sales and purchase invoices to and from the model ([ADR-001](https://github.com/Interlusion/haflinger/blob/main/docs/arc42/adr/ADR-001-library-and-app.md)).
+- **ERPNext first.** [Haflinger Saddle](https://github.com/Interlusion/haflinger-saddle), an ERPNext app in its own repository, maps ERPNext's sales and purchase invoices to and from the model ([ADR-001](https://github.com/Interlusion/haflinger/blob/main/docs/arc42/adr/ADR-001-library-and-app.md)).
 
 ## What it is not
 

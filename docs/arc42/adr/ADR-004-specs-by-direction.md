@@ -3,7 +3,7 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Accepted |
-| **Date** | 2026-10-30 |
+| **Date** | 2026-11-20 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Context
@@ -28,7 +28,7 @@ Haflinger's parts differ in exactly those ways:
 - **Other specs may tighten REQ-001's rules, never loosen them.** A rule is loosened only in REQ-001, by naming the exception.
 - **Placement follows a map** in the [specs index](../../specs/README.md), by a requirement's main subject: business terms and the model to REQ-001; artefacts, test files, editions, profiles and rule sets to REQ-002; an incoming invoice to REQ-003; an outgoing invoice to REQ-004. Validation splits along the same line: choosing and running the rule set is REQ-002's; what a finding means for an incoming invoice is REQ-003's, for an outgoing one REQ-004's.
 - **IDs are written in full** (`REQ-003-PRS-F002`), with the project code outside the repository (`HAFL-REQ-003-PRS-F002`).
-- **The ERPNext app's requirements** belong to the app, in its own repository ([ADR-001](ADR-001-library-and-app.md), [ADR-009](ADR-009-licences-and-name.md)); until it exists, [ITEM-003](../../backlog/item-003-erpnext-app.md) collects them. What the app needs from the library goes into REQ-001 to REQ-004 by the map, like any caller's needs.
+- **The ERPNext app's requirements** belong to the app, Haflinger Saddle, in its own repository ([ADR-001](ADR-001-library-and-app.md), [ADR-009](ADR-009-licences-and-name.md)). What the app needs from the library goes into REQ-001 to REQ-004 by the map, like any caller's needs.
 
 ## Alternatives Considered
 

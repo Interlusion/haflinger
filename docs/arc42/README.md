@@ -8,7 +8,7 @@ Diagrams are Mermaid, rendered by GitHub. Background on the standards, formats a
 
 ## 1. Introduction and goals
 
-Haflinger is a Python library for e-invoicing (ZUGFeRD, XRechnung, Peppol), `haflinger`, that holds one model of the EN 16931 business terms. It reads invoices in CII and UBL and from ZUGFeRD PDFs, validates them with the official rules, and writes CII and ZUGFeRD PDFs. Any Python software can build on it. The first is a slim ERPNext app, later and in its own repository, that maps ERPNext's sales and purchase invoices to and from the model; this document describes the library.
+Haflinger is a Python library for e-invoicing (ZUGFeRD, XRechnung, Peppol), `haflinger`, that holds one model of the EN 16931 business terms. It reads invoices in CII and UBL and from ZUGFeRD PDFs, validates them with the official rules, and writes CII and ZUGFeRD PDFs. Any Python software can build on it. The first is Haflinger Saddle, an ERPNext app in its own repository, that maps ERPNext's sales and purchase invoices to and from the model; this document describes the library.
 
 Why it exists: ERPNext, its first user, has no complete e-invoicing. ALYF's European e-Invoice app is bound to CII, without UBL or Peppol ([ADR-001](adr/ADR-001-library-and-app.md)). Python has no mature library with a syntax-neutral model; the mature tools are Java.
 
@@ -72,7 +72,7 @@ flowchart LR
 | Official artefacts | upstream → repository | Rules, reading stylesheets and test files, taken from upstream releases at update time and vendored; nothing is fetched at runtime |
 | Transport | caller ↔ suppliers and customers | Not the library's: e-mail, portals, and Peppol through a certified provider; no AS4 of Haflinger's own ([ADR-003](adr/ADR-003-integrate-dont-implement.md)) |
 
-**Out of scope:** sending and receiving e-mail and Peppol messages (the caller, providers); archiving storage (the caller; Haflinger hands back the original bytes); bookkeeping decisions (a person, in the caller's system); the ERPNext app and its context, described in its own repository ([ITEM-003](../backlog/item-003-erpnext-app.md) until it exists); rendering invoices for people (later, with KoSIT's visualisation stylesheets, [ITEM-005](../backlog/item-005-rendering.md)).
+**Out of scope:** sending and receiving e-mail and Peppol messages (the caller, providers); archiving storage (the caller; Haflinger hands back the original bytes); bookkeeping decisions (a person, in the caller's system); the ERPNext app and its context, described in its own repository, [Haflinger Saddle](https://github.com/Interlusion/haflinger-saddle); rendering invoices for people (later, with KoSIT's visualisation stylesheets, [ITEM-005](../backlog/item-005-rendering.md)).
 
 ## 4. Solution strategy
 
@@ -199,7 +199,7 @@ sequenceDiagram
     end
 ```
 
-An invalid invoice is refused with its findings and the written document; a model that can't be written at all (an unsupported profile, a value of the wrong type) is refused before writing ([REQ-004-PRS-F001](../specs/req-004-outgoing-invoices.md#req-004-prs-f001-one-entry-point)). Rendering the readable PDF as PDF/A is the caller's job (for ERPNext: [ITEM-003](../backlog/item-003-erpnext-app.md)).
+An invalid invoice is refused with its findings and the written document; a model that can't be written at all (an unsupported profile, a value of the wrong type) is refused before writing ([REQ-004-PRS-F001](../specs/req-004-outgoing-invoices.md#req-004-prs-f001-one-entry-point)). Rendering the readable PDF as PDF/A is the caller's job.
 
 ## 7. Deployment view
 
@@ -311,7 +311,7 @@ Speed serves conformance: every invoice, received or sent, is validated.
 | Rules and their unit tests from different releases look like defects | Vendor both from the same release ([ADR-008](adr/ADR-008-vendoring-official-files.md)) |
 | Libraries with a single maintainer (`factur-x`) | Kept behind Haflinger's own interface, replaceable |
 | The official test files differ between CII and UBL in places | Recorded per case in the tests, rechecked with every release |
-| An outgoing ZUGFeRD PDF is only PDF/A-3 if the rendered PDF was PDF/A | `embed` refuses other PDFs; veraPDF checks the results in the tests (REQ-004); producing PDF/A is the caller's (for ERPNext: [ITEM-003](../backlog/item-003-erpnext-app.md)) |
+| An outgoing ZUGFeRD PDF is only PDF/A-3 if the rendered PDF was PDF/A | `embed` refuses other PDFs; veraPDF checks the results in the tests (REQ-004); producing PDF/A is the caller's |
 | One maintainer | Small own code, official tests as the reference, behaviour checkable without an ERP system |
 
 ### Open questions
@@ -319,7 +319,7 @@ Speed serves conformance: every invoice, received or sent, is validated.
 | # | Question | Where to confirm | Affects |
 | -- | :- | :- | :- |
 | 1 | Is Saxon's size acceptable in a bench, and does any target lack a wheel ([ADR-006](adr/ADR-006-validation-with-official-rules.md))? | Maintainer, [backlog](../backlog/backlog.md) | §2, §7 |
-| 2 | Saxon's licence for SaxonC-HE beside the GPL-3.0 ERPNext app, to confirm before the app is published (Haflinger's releases ship none of Saxon's files); Saxonica answered on 2026-11-02 without a verdict, [ADR-010](adr/ADR-010-saxon-in-a-worker-process.md) keeps Saxon out of the app's process | Saxonica's licence terms, [ITEM-008](../backlog/item-008-saxonche-licence.md), [backlog](../backlog/backlog.md) | [ADR-009](adr/ADR-009-licences-and-name.md) |
+| 2 | Saxon's licence for SaxonC-HE beside the GPL-3.0 ERPNext app, to confirm before the app is published (Haflinger's releases ship none of Saxon's files); Saxonica answered on 2026-11-02 without a verdict, [ADR-010](adr/ADR-010-saxon-in-a-worker-process.md) keeps Saxon out of the app's process | Saxonica's licence terms, SADL-ITEM-002, [backlog](../backlog/backlog.md) | [ADR-009](adr/ADR-009-licences-and-name.md) |
 
 ## 12. Glossary
 
