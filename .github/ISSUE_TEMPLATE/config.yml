@@ -3,6 +3,9 @@ contact_links:
   - name: Security vulnerability
     url: https://github.com/interlusion/haflinger/security/advisories/new
     about: Report it privately, never as an issue (SECURITY.md).
+  - name: Haflinger Saddle, the ERPNext app
+    url: https://github.com/interlusion/haflinger-saddle/issues
+    about: Mapping ERPNext's documents, its print formats and the review of incoming invoices.
   - name: Documentation
     url: https://github.com/interlusion/haflinger/blob/main/docs/README.md
     about: The specs, the architecture and the guides.
