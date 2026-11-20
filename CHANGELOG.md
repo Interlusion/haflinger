@@ -4,6 +4,8 @@ What changed in each release of Haflinger, for its callers. The format follows [
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-20
+
 ### Fixed
 
 - `read_invoice` leaves out a UBL VAT breakdown entry (`cac:TaxSubtotal`) or line tax category (`cac:ClassifiedTaxCategory`) of a tax other than VAT, such as `GST`, with a `HAFL-DROPPED` finding naming its tax scheme, as it does in CII, and a `cac:TaxTotal` holding only such entries gives no VAT total (BT-110, BT-111). Before, it read them as VAT without a finding; CEN's rules reject such an invoice. Of two `cac:TaxTotal` in one currency, the one holding the VAT breakdown gives BT-110, also where one without subtotals comes first, which before took BT-110 and left the breakdown out.
@@ -47,4 +49,5 @@ The first release, an alpha; the README lists its known limits.
 
 [0.1.0]: https://github.com/Interlusion/haflinger/tree/v0.1.0
 [0.2.0]: https://github.com/Interlusion/haflinger/compare/v0.1.0...v0.2.0
-[unreleased]: https://github.com/Interlusion/haflinger/compare/v0.2.0...HEAD
+[0.2.1]: https://github.com/Interlusion/haflinger/compare/v0.2.0...v0.2.1
+[unreleased]: https://github.com/Interlusion/haflinger/compare/v0.2.1...HEAD
