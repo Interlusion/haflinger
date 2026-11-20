@@ -18,7 +18,7 @@ What only the ERPNext side can do, and no standards body maintains ([ADR-003](..
 
 - the mapping between ERPNext documents and the model: taxes, Skonto, rounding;
 - matching incoming invoices to suppliers, items and accounts, and the review flow;
-- rendering the readable PDF of an outgoing invoice with ERPNext's print formats, as PDF/A, which the library then turns into a ZUGFeRD PDF; `embed` refuses a PDF that isn't PDF/A ([REQ-004-PRS-F007](../specs/req-004-outgoing-invoices.md#req-004-prs-f007-zugferd-pdf));
+- rendering the readable PDF of an outgoing invoice with ERPNext's print formats, as PDF/A, which the library then turns into a ZUGFeRD PDF; `embed` refuses a PDF that isn't PDF/A ([REQ-004-PRS-F007](../specs/req-004-outgoing-invoices.md#req-004-prs-f007-zugferd-pdf); [PDF/A from ERPNext](#pdfa-from-erpnext));
 - completeness under German VAT law beyond the official rules: the seller's tax number (BT-32) when no VAT identifier is given and the delivery date (BT-72) or invoicing period (BG-14), §14(4) UStG; no official rule enforces them, so `write_cii` hands out an invoice without them ([REQ-004](../specs/req-004-outgoing-invoices.md));
 - further German specifics, for example a note on cash-basis taxation, if it becomes required;
 - archiving the original invoice unchanged (GoBD);
@@ -36,6 +36,24 @@ Its `main` branch targets Frappe/ERPNext 17-dev.
 
 How it handles German content beyond the official rules (at commit `1385900`, 2026-10-31): by mapping, not by checks. The company's Tax ID is written as a VAT identifier (BT-31) when it is one, otherwise as a tax number (BT-32, `schemeID="FC"`); nothing checks that either is present. A delivery date (BT-72) is always written: the latest delivery date of the lines, else the end of the billing period, else the invoice date. The billing period (BG-14) comes from the invoice's from and to dates. Validation runs only the official rules, on outgoing invoices before submission and on imported ones; nothing checks German content in incoming invoices, and there is nothing on cash-basis taxation.
 
+## PDF/A from ERPNext
+
+Measured on 2026-11-20 with ERPNext 16.55.0 and Frappe 16.56.0 (the image `frappe/erpnext:v16.55.0`), on a sales invoice of `Example GmbH` in a throwaway site without network access:
+
+- Frappe has no PDF/A setting. Its generators are wkhtmltopdf, Chromium (the default of a new site and of ERPNext's builder formats, such as "Sales Invoice Classic"; Frappe downloads `chrome-headless-shell` into the bench on first use), PlutoPrint (not installed), Typst and WeasyPrint. Neither wkhtmltopdf nor Chromium writes PDF/A; Typst refuses a builder format holding an HTML block or a letterhead with HTML, as "Sales Invoice Classic" does.
+- Ghostscript 10.05.1 converted Chromium's PDFs of "Sales Invoice Classic" and "Standard", and wkhtmltopdf's of "Standard", to PDF/A-3b, with European e-Invoice's command (`gs -dPDFA=3 -dPDFACompatibilityPolicy=2 -sColorConversionStrategy=RGB … PDFA_def.ps`). veraPDF passed each, `embed` took each, and veraPDF passed the ZUGFeRD PDFs. A conversion took 60 ms; the text read from the PDF was unchanged, and under 0.1 % of the rendered page's pixels differed, at the edges of the glyphs.
+- WeasyPrint, which Frappe 16 keeps as a legacy renderer, writes PDF/A-3b itself (`pdf_variant="pdf/a-3b"`) from the same HTML, and veraPDF passed it. But `embed` refused it: the `id` attributes of ERPNext's HTML become named destinations (`/Names /Dests`), which `factur-x` would drop. Its layout also differs from the browser's preview, which Chromium's matches.
+
+So the app prints with ERPNext's own generator, converts the PDF with Ghostscript, as European e-Invoice does (at commit `797acf2`, 2026-11-16), and then calls `embed`. Where Ghostscript is missing or fails, European e-Invoice embeds the XML into the unconverted PDF and only logs an error; the app instead sends the invoice as XML, which is the e-invoice, and says why. The app may start with XML alone and add the ZUGFeRD PDF later.
+
+What Ghostscript costs:
+
+- Its licence is AGPL-3.0. The app calls it as a separate program and doesn't ship it: it names Ghostscript as a system requirement, and whoever distributes Ghostscript, for example in a Docker image, carries its obligations.
+- It is a system package, missing from the image `frappe/erpnext`: a Docker setup builds its own image.
+- Its interpreter has had many security holes. Here it reads only the company's own PDF, with `-dSAFER`, its default, kept on.
+- Its output can change between versions: the app's tests check the result with veraPDF, and `embed` refuses a PDF that doesn't declare PDF/A.
+- Not yet tried: invoices with a logo, images or several pages.
+
 ## Open Questions
 
 - Where does it run (the ADR above)?
@@ -43,5 +61,5 @@ How it handles German content beyond the official rules (at commit `1385900`, 20
 - Which of its needs are requirements on the library, for REQ-001 to REQ-004, and which are the app's own, for its specs ([ADR-004](../arc42/adr/ADR-004-specs-by-direction.md))?
 - Which profile does an ERPNext invoice get by default: XRechnung for public buyers, ZUGFeRD EN 16931 otherwise?
 - The delivery date (BT-72) when ERPNext has none: write the invoice date, as European e-Invoice does (§14(4) UStG allows a delivery date equal to the invoice date, but the invoice then states a date nobody entered), or require a real one?
-- How does ERPNext produce PDF/A: a print-format setting, a different PDF generator, or a conversion step in the app?
+- Can a hosted bench, such as Frappe Cloud, install Ghostscript ([PDF/A from ERPNext](#pdfa-from-erpnext))?
 - May the GPL-3.0 app be published while Haflinger requires `saxonche`? To settle before publishing it ([ITEM-008](item-008-saxonche-licence.md)).
