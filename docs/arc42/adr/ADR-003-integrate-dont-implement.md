@@ -43,7 +43,7 @@ What no one else maintains, and where Haflinger's value is:
 
 - the bindings of the business terms to CII and UBL: a fixed table of paths per syntax, checked against KoSIT's ([ADR-005](ADR-005-own-mapping-kosit-as-check.md));
 - in the ERPNext app, outside this repository: the mapping between ERPNext documents and the model (taxes, Skonto, rounding), matching incoming invoices to suppliers, items and accounts, and the review flow;
-- German specifics beyond the official rules (for example the tax number or VAT ID and the delivery date that §14(4) UStG requires, or the planned note on cash-basis taxation); where they live, in the library as an optional rule set of Haflinger's own or in the app, is open (SADL-ITEM-001);
+- German specifics beyond the official rules (for example the tax number or VAT ID and the delivery date that §14(4) UStG requires, or the planned note on cash-basis taxation); where they live, in the library as an optional rule set of Haflinger's own or in the app, is open; [ITEM-010](../../backlog/item-010-german-vat-checks.md) weighs running KoSIT's German rules on any invoice under German VAT against rules of Haflinger's own;
 - glue: running the artefacts, turning their output into the model and into refusals or warnings;
 - **following upstream**: new releases of the artefacts and code lists open agent pull requests, checked against the official tests.
 
