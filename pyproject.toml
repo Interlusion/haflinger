@@ -1,6 +1,6 @@
 [project]
 name = "haflinger"
-version = "0.2.0"
+version = "0.2.1"
 description = "E-invoicing in Python: ZUGFeRD, XRechnung and Peppol on one model of the EN 16931 business terms"
 readme = "README.md"
 # Haflinger's code, and the vendored files under their own terms (THIRD-PARTY-NOTICES, ADR-009).
