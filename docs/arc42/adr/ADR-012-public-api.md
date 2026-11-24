@@ -3,7 +3,7 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Accepted |
-| **Date** | 2026-11-20 |
+| **Date** | 2026-11-24 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Context
@@ -22,7 +22,7 @@ Before the first release, with the ERPNext app not yet written, what the first r
 
 - **Two public modules**: `haflinger` and `haflinger.pdf`. `haflinger.pdf` stays a module of its own, as it needs the extra `pdf` (`pypdf`, `factur-x`), which importing `haflinger` doesn't.
 - **Every other module is private**, its name starting with an underscore: `_model`, `_errors`, `_findings`, `_read`, `_cii`, `_ubl`, `_kosit`, `_validation` and `_write`, beside the private ones there already are. The tests and scripts of this repository import them; callers don't.
-- **The API is what the two `__all__` list**, nothing else. `haflinger` exports the three entry points, the model's classes (REQ-001-PRS-F001) and `Syntax`, `ReadResult`, `Finding`, `Flag`, `is_valid`, `TARGET_PROFILES` and the two errors; `haflinger.pdf` exports `extract_xml` and `embed`.
+- **The API is what the two `__all__` list**, nothing else. `haflinger` exports the entry points `read_invoice`, `validate`, `check_german_vat` ([ADR-014](ADR-014-german-vat-checks.md)) and `write_cii`, the model's classes (REQ-001-PRS-F001) and `Syntax`, `ReadResult`, `Finding`, `Flag`, `is_valid`, `TARGET_PROFILES` and the two errors; `haflinger.pdf` exports `extract_xml` and `embed`.
 - **New exports for what callers need**: `Flag` and `Syntax`, the types of `Finding.flag` and `Invoice.syntax`; `TARGET_PROFILES`, the BT-24 values `write_cii` writes (REQ-004-PRS-F002), as a tuple; and `is_valid(findings)`, a function that applies REQ-002-PRS-F002's rule to `validate`'s findings: no finding with the flag `fatal` or `error`. It judges the rules that ran: a `HAFL-PROFILE` warning says the profile's own rules didn't. Reading's findings are no verdict, and an `InvoiceWriteError` is a refusal whatever findings it holds; `is_valid` is not for them.
 - **`validate` returns a tuple** of findings, as `ReadResult.findings` and `InvoiceWriteError.findings` do.
 - **Documented in the package**: the docstring of `haflinger` names the entry points and what they hand back, so that `help(haflinger)` says it; the README shows them in use. Generated reference documentation waits for the releases.

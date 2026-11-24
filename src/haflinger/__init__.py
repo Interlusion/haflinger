@@ -8,6 +8,10 @@ An invoice is read into the model, validated with the official rules and written
   its profile and returns their findings; `is_valid(findings)` says whether none of them is
   `fatal` or `error`. A `HAFL-PROFILE` warning says that the profile's own rules weren't run,
   only CEN's EN 16931 rules (REQ-002);
+- `check_german_vat(data)` checks a CII or UBL invoice that German invoicing law (§14 UStG)
+  governs for what §14(4) UStG asks beyond its profile's rules, with KoSIT's German rules on
+  any profile but Factur-X MINIMUM and BASIC WL, which get `HAFL-DE-PROFILE`; every finding is
+  meant to be shown (REQ-002, ADR-014);
 - `write_cii(invoice)` writes an `Invoice` whose BT-24 is one of `TARGET_PROFILES` as CII, when
   it passes the XML Schema and the official rules; otherwise it raises `InvoiceWriteError`, a
   refusal whatever findings it holds (REQ-004).
@@ -47,7 +51,7 @@ from haflinger._model import (
     VatBreakdown,
 )
 from haflinger._read import ReadResult, read_invoice
-from haflinger._validation import validate
+from haflinger._validation import check_german_vat, validate
 from haflinger._write import TARGET_PROFILES, write_cii
 
 __all__ = [
@@ -80,6 +84,7 @@ __all__ = [
     "TaxRepresentative",
     "Totals",
     "VatBreakdown",
+    "check_german_vat",
     "is_valid",
     "read_invoice",
     "validate",
