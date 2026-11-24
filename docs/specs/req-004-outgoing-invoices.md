@@ -3,8 +3,8 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Baselined |
-| **Version** | 0.29 |
-| **Date** | 2026-11-20 |
+| **Version** | 0.30 |
+| **Date** | 2026-11-24 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Intended Use
@@ -13,7 +13,7 @@ Sending an invoice: turning the model into the XML and PDF that leave the compan
 
 Writing is checked with what the read side has: Haflinger's reader, KoSIT's reading stylesheet, the XML Schema of CII and the official rules; no hand-written expected XML.
 
-Out of scope: writing UBL; sending by e-mail, portal or Peppol (the caller, providers); rendering the readable PDF, and making it PDF/A (the caller); completeness under German VAT law beyond the official rules, such as the tax number or VAT ID and the delivery date of §14(4) UStG (the caller); the Sales Invoice in ERPNext (the app).
+Out of scope: writing UBL; sending by e-mail, portal or Peppol (the caller, providers); rendering the readable PDF, and making it PDF/A (the caller); checking what German VAT law asks beyond the official rules of the target profile, such as the time of supply of §14(4) UStG, when writing: the caller checks the written CII with `check_german_vat` (REQ-002-PRS-F012); the Sales Invoice in ERPNext (the app).
 
 Read [REQ-001](req-001-core.md) first: it holds the personas, stories and terms, and the rules every spec follows.
 

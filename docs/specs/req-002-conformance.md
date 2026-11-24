@@ -3,25 +3,26 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Baselined |
-| **Version** | 0.15 |
-| **Date** | 2026-11-18 |
+| **Version** | 0.16 |
+| **Date** | 2026-11-24 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Intended Use
 
-Which official rules an invoice is checked against, and how Haflinger shows that it follows them. This spec holds validation (choosing and running the official rule set for an invoice, and the findings, Haflinger's own included), the profiles, versions and editions Haflinger supports, and how the official test files are used. Incoming invoices (REQ-003) and outgoing invoices (REQ-004) say what a finding means for them.
+Which official rules an invoice is checked against, and how Haflinger shows that it follows them. This spec holds validation (choosing and running the official rule set for an invoice, and the findings, Haflinger's own included), the profiles, versions and editions Haflinger supports, and how the official test files are used. It also holds the German VAT check: what §14(4) UStG asks of an invoice that German invoicing law governs, checked with KoSIT's German rules on any profile ([ADR-014](../arc42/adr/ADR-014-german-vat-checks.md)). Incoming invoices (REQ-003) and outgoing invoices (REQ-004) say what a finding means for them.
 
-Out of scope: Peppol BIS rules beyond those XRechnung includes; PDF/A conformance of a PDF itself.
+Out of scope: Peppol BIS rules beyond those XRechnung includes; PDF/A conformance of a PDF itself; the invoicing law of other member states, and deciding which state's law governs an invoice (the caller).
 
 Read [REQ-001](req-001-core.md) first: it holds the personas, stories and terms, and the rules every spec follows.
 
-Key constraints: the official rules run unchanged, with Saxon ([ADR-006](../arc42/adr/ADR-006-validation-with-official-rules.md)), in a worker process ([ADR-010](../arc42/adr/ADR-010-saxon-in-a-worker-process.md)); official artefacts and test files are vendored, pinned and unchanged ([ADR-008](../arc42/adr/ADR-008-vendoring-official-files.md)).
+Key constraints: the official rules run unchanged, with Saxon ([ADR-006](../arc42/adr/ADR-006-validation-with-official-rules.md)), in a worker process ([ADR-010](../arc42/adr/ADR-010-saxon-in-a-worker-process.md)); the German VAT check runs KoSIT's German rules on any invoice, with three rules of Haflinger's own ([ADR-014](../arc42/adr/ADR-014-german-vat-checks.md)); official artefacts and test files are vendored, pinned and unchanged ([ADR-008](../arc42/adr/ADR-008-vendoring-official-files.md)).
 
 ## User Stories
 
 The personas are [REQ-001's](req-001-core.md#personas).
 
 - REQ-002-P1-1. As the operator, I need an invoice judged with the official rules, as the official validators judge it, and told where Haflinger couldn't run a profile's own rules, so that what Haflinger accepts the authorities and my customers accept too.
+- REQ-002-P1-2. As the operator, I need to know where an invoice that German invoicing law governs lacks what §14(4) UStG asks for, also when it isn't an XRechnung invoice, so that I neither send one nor deduct input VAT from one that the tax office wouldn't accept.
 - REQ-002-P2-1. As the maintainer, I need to adopt a new release of the rules or test files in one step and see from the tests what changed.
 - REQ-002-P3-1. As the integrator, I need each failed rule reported with its ID and text, so that I can show it to a person or act on it.
 - REQ-002-P3-2. As the integrator, I need validation to end within a time I set and to leave my process alone, so that a hostile invoice can't hold or crash the host that validates it.
@@ -42,9 +43,9 @@ The personas are [REQ-001's](req-001-core.md#personas).
 
 #### REQ-002-URS-F002: The rules the invoice claims
 
-**Description**: Each invoice SHALL be checked against the rule set of its syntax and profile.
+**Description**: Validation SHALL check each invoice against the rule set of its syntax and profile.
 
-**Related User Stories**: REQ-002-P1-1 | **Rationale**: Checking a ZUGFeRD MINIMUM invoice with the EN 16931 rules, or an XRechnung 2.1 invoice with the 3.0 rules, reports failures that aren't there.
+**Related User Stories**: REQ-002-P1-1 | **Rationale**: Checking a ZUGFeRD MINIMUM invoice with the EN 16931 rules, or an XRechnung 2.1 invoice with the 3.0 rules, reports failures that aren't there. The German VAT check (REQ-002-URS-F005) is apart from validation: it answers what German law asks, not what the profile does.
 
 #### REQ-002-URS-F003: Findings that can be acted on
 
@@ -58,6 +59,12 @@ The personas are [REQ-001's](req-001-core.md#personas).
 
 **Related User Stories**: REQ-002-P1-1 | **Rationale**: Both editions are in use until March 2029 ([ADR-007](../arc42/adr/ADR-007-model-scope-and-editions.md)).
 
+#### REQ-002-URS-F005: What German invoicing law asks
+
+**Description**: On the caller's request, Haflinger SHALL check an invoice that German invoicing law governs for what §14(4) UStG asks of it beyond the rules of its profile, with the official rules that check it, and SHALL state what the check doesn't cover.
+
+**Related User Stories**: REQ-002-P1-2 | **Rationale**: [ADR-014](../arc42/adr/ADR-014-german-vat-checks.md). KoSIT's German rules run in validation only where BT-24 names XRechnung, so an invoice between businesses gets none; input VAT is deductible only from an invoice that holds what §14 UStG asks (§15(1) no. 1 UStG). Which state's invoicing law governs an invoice follows the place of supply, which the invoice doesn't show; the caller knows.
+
 ## URS — Non-Functional
 
 #### REQ-002-URS-NF001: Checked against the official test files
@@ -68,19 +75,19 @@ The personas are [REQ-001's](req-001-core.md#personas).
 
 #### REQ-002-URS-NF002: Offline
 
-**Description**: Validation SHALL need no network access and SHALL fetch no artefact at install or run time.
+**Description**: Validation and the German VAT check SHALL need no network access and SHALL fetch no artefact at install or run time.
 
 **Related User Stories**: REQ-002-P1-1
 
 #### REQ-002-URS-NF003: Fast enough for every invoice
 
-**Description**: Validation SHALL be fast enough that a caller can validate every invoice it receives or sends: well under a second for a usual invoice, under a minute for one of tens of megabytes.
+**Description**: Validation and the German VAT check SHALL be fast enough that a caller can check every invoice it receives or sends: well under a second for a usual invoice, under a minute for one of tens of megabytes.
 
 **Related User Stories**: REQ-002-P1-1 | **Rationale**: If validation were slow, callers would skip it, and an invoice nobody checked could reach the books or a customer. Whether a caller validates large invoices in a background job is its own choice.
 
 #### REQ-002-URS-NF004: Bounded time
 
-**Description**: Validation SHALL end within a time limit the caller can set, on any input.
+**Description**: Validation and the German VAT check SHALL end within a time limit the caller can set, on any input.
 
 **Related User Stories**: REQ-002-P3-2 | **Rationale**: On hostile input the official rules take minutes, and no list of refusals can catch every such input (see the assumptions).
 
@@ -203,8 +210,9 @@ A comment or a processing instruction inside BT-24, or an element, splits its te
 | Rule | Flag | Reported by | When | Location and text |
 | :- | :- | :- | :- | :- |
 | `HAFL-PROFILE` | `warning` | `validate` | BT-24 names no profile for the invoice's syntax, or more than one, or is missing (REQ-002-PRS-F004) | BT-24's element, or the root; the text names BT-24's text, of each BT-24 element, and its pieces where a comment, a processing instruction or an element splits it (REQ-002-PRS-F003), each shortened to its start and its end and at most five, with how many more, and the rule sets it names where it names more than one, and says that the profile's own rules weren't run |
-| `HAFL-XSD` | `fatal` | `validate`, `write_cii`, `haflinger.pdf.embed` | the document violates an XML Schema it must pass, or can't be parsed for the check (REQ-002-PRS-F011, REQ-004-PRS-F004) | the element the schema check names, or the line where it names none or one Haflinger can't tell from its siblings; a text of more than 500 characters shortened to its start and its end; the text names the schema |
-| `HAFL-RULES` | `fatal` | `validate`, `write_cii`, `haflinger.pdf.embed` | the official rules fail on an invoice that passed the XML Schema, as when a value a stylesheet expects once occurs twice; KoSIT's validator reports this as a processing error and rejects the invoice (REQ-002-PRS-F001) | the root element; the text names the rule set and the processor's message |
+| `HAFL-XSD` | `fatal` | `validate`, `check_german_vat`, `write_cii`, `haflinger.pdf.embed` | the document violates an XML Schema it must pass, or can't be parsed for the check (REQ-002-PRS-F011, REQ-004-PRS-F004) | the element the schema check names, or the line where it names none or one Haflinger can't tell from its siblings; a text of more than 500 characters shortened to its start and its end; the text names the schema |
+| `HAFL-RULES` | `fatal` | `validate`, `check_german_vat`, `write_cii`, `haflinger.pdf.embed` | the official rules fail on an invoice that passed the XML Schema, as when a value a stylesheet expects once occurs twice; KoSIT's validator reports this as a processing error and rejects the invoice (REQ-002-PRS-F001, REQ-002-PRS-F013) | the root element; the text names the rule set, for `check_german_vat` the German VAT check's rules, and the processor's message |
+| `HAFL-DE-PROFILE` | `error` | `check_german_vat` | REQ-002-PRS-F003 chooses the rules of Factur-X MINIMUM or BASIC WL (REQ-002-PRS-F012) | the BT-24 element that names the profile; the text names the profile and says that it is no e-invoice under §14(1) UStG, that its XML lacks what §14(4) UStG asks for, such as the invoice lines, and that the check's rules weren't run |
 | `HAFL-VALUE` | `error` | `read_invoice` | a value isn't written as its business term requires, and is read as missing (REQ-003-PRS-F002) | the element; the text names the business term and the value |
 | `HAFL-DROPPED` | `warning` | `read_invoice` | a value the model has no place for: a repeat of a term the model holds once, a VAT total in a third currency (REQ-003-PRS-F002) | the element left out; the text names the business term |
 
@@ -220,11 +228,64 @@ A comment or a processing instruction inside BT-24, or an element, splits its te
 
 **Definition of Done**: a CII and a UBL file of the KoSIT suite with an unknown element, and one with an amount written `1,00`, each get `HAFL-XSD` findings and no finding of a rule; a Factur-X copy that violates its profile's schema gets `HAFL-XSD`; a copy of a KoSIT file declaring an encoding that Python knows and libxml2 doesn't (`mac-roman`) gets no `HAFL-XSD`; a copy nested 50,000 elements deep gets `HAFL-XSD`, not a crash; a copy of KoSIT's 01.01a UBL file with an extension whose deepest element lies at level 2,048 gets the rules' findings and no `HAFL-` finding, and one at level 2,049 gets `HAFL-XSD`, and `HAFL-RULES` from the rules without the check; one with an element of 10,000 attributes in its extension gets the rules' findings and no `HAFL-` finding, and one of 10,001 gets `HAFL-RULES` (tests); KoSIT's validator gives the same findings as `validate` for the copies at level 2,048 and of 10,000 attributes, accepts the copy at level 2,049 and rejects the one of 10,001 attributes with a processing error (conformance test, where `HAFLINGER_KOSIT_VALIDATOR` names it); a copy with an unknown element whose prefixed name is longer than the 98 bytes libxml2's paths keep gets a `HAFL-XSD` finding located at it, or at its line where the cut splits a character, not a crash; a copy with an attached document of 400,000 characters the schema refuses gets a `HAFL-XSD` finding under 1,000 characters (tests).
 
+#### REQ-002-PRS-F012: The German VAT check
+
+**Description**: `haflinger.check_german_vat(data: bytes, *, max_size: int = …, timeout: float = …) -> tuple[Finding, ...]` SHALL check a CII invoice or a UBL invoice or credit note for what §14(4) UStG asks of it beyond the rules of its profile, and return its findings. It SHALL refuse what `validate` refuses (REQ-002-PRS-F001), with `InvoiceReadError` and the same reasons, a PDF's saying to check the XML that `haflinger.pdf.extract_xml` gives. It SHALL then check the invoice against the XML Schema `validate` checks it against (REQ-002-PRS-F011), and where the schema fails, return its `HAFL-XSD` findings and nothing else. Where REQ-002-PRS-F003 chooses the rules of Factur-X MINIMUM or BASIC WL for the invoice, it SHALL return one `HAFL-DE-PROFILE` finding (REQ-002-PRS-F010) and run no rules; otherwise the rules of REQ-002-PRS-F013, with the exceptions of REQ-002-PRS-F014. Its time limit and worker SHALL be `validate`'s (REQ-002-PRS-NF004, REQ-002-PRS-NF005). It SHALL check any invoice it is given: whether German invoicing law governs the invoice is the caller's to decide.
+
+**Related URS**: REQ-002-URS-F005 | **Rationale**: [ADR-014](../arc42/adr/ADR-014-german-vat-checks.md). The check runs the same stylesheets on the same outside input as `validate`, so it needs the same limits; the rules assume a schema-valid document. MINIMUM and BASIC WL have no invoice lines and are no e-invoices under §14(1) UStG, by the BMF; on them, `BR-DE-TMP-32`'s condition on the lines holds when there are none, so that the rules would miss the time of supply and report the addresses alone. Which state's invoicing law governs an invoice follows the place of supply, and on reverse charge the state where the supplier is established (Article 219a of the EU VAT Directive); the seller's country, a VAT identifier or the rate don't tell it.
+
+**Definition of Done**: a CII and a UBL file of the KoSIT suite are checked; each refusal of REQ-002-PRS-F001 tested against the check as against `validate`; a copy with an unknown element gets `HAFL-XSD` findings and nothing else; invoices of Factur-X MINIMUM and BASIC WL that pass their XML Schema, under each spelling of REQ-002-PRS-F003, get one `HAFL-DE-PROFILE` finding each, located at BT-24, and nothing else, and one that fails its profile's XML Schema gets `HAFL-XSD` and no `HAFL-DE-PROFILE`; a copy of KoSIT case 01.01a in CII whose BT-24 names XRechnung 3.0 and Factur-X MINIMUM gets the check's rules, as REQ-002-PRS-F003 chooses XRechnung's; a copy of KoSIT case 01.01a in CII whose BT-24 names no profile is checked like one that names EN 16931 (tests).
+
+#### REQ-002-PRS-F013: The check's rules
+
+**Description**: The check SHALL run KoSIT's XRechnung 3.0 stylesheet for the invoice's syntax, as vendored (`XRechnung-CII-validation.xsl`, `XRechnung-UBL-validation.xsl` for invoices and credit notes), unchanged, whatever BT-24 names, and SHALL return of its findings only those of these rules, with their IDs, flags, locations and texts as REQ-002-PRS-F002 gives them; KoSIT's scenario sets no level for them (REQ-002-PRS-F005):
+
+| Rule | Flag | What it asks for | §14(4) UStG |
+| :- | :- | :- | :- |
+| `BR-DE-TMP-32` | `information` | the actual delivery date (BT-72), an invoicing period (BG-14) or a period on every line (BG-26) | no. 6, the time of supply |
+| `BR-DE-3` | `fatal` | the seller's city (BT-37) | no. 1, the seller's full address |
+| `BR-DE-4` | `fatal` | the seller's post code (BT-38) | no. 1 |
+| `BR-DE-8` | `fatal` | the buyer's city (BT-52) | no. 1, the buyer's full address |
+| `BR-DE-9` | `fatal` | the buyer's post code (BT-53) | no. 1 |
+
+Where the stylesheet fails on the invoice, the check SHALL return the `HAFL-RULES` finding (REQ-002-PRS-F010), naming the German VAT check's rules.
+
+**Related URS**: REQ-002-URS-F005 | **Rationale**: [ADR-014](../arc42/adr/ADR-014-german-vat-checks.md). Of KoSIT's German rules, these ask for what §14(4) UStG asks; the others are XRechnung's own (the payment instructions `BR-DE-1`, the seller's contact `BR-DE-2`, the buyer reference `BR-DE-15`, BT-24 naming XRechnung `BR-DE-21`), and `BR-DE-16`, the seller's VAT identifier or tax number, asks for what CEN's `BR-S-02` and its siblings already require, which `validate` runs. CEN's rules aren't run again: they are `validate`'s. The four address rules check an address the invoice gives; that it gives one, which EN 16931 requires of seller and buyer, CEN's `BR-08` and `BR-10` check in `validate`.
+
+**Definition of Done**: copies of KoSIT case 01.01a in CII and UBL, BT-24 set to `urn:cen.eu:en16931:2017`, without BT-72, BG-14 and BG-26 get `BR-DE-TMP-32` with flag `information`, without the seller's city and post code `BR-DE-3` and `BR-DE-4`, without the buyer's `BR-DE-8` and `BR-DE-9`, each located as the rule locates it; a copy of CEN's UBL credit note with BT-112 above 250, without the seller's and the buyer's city and post code, gets the four address findings; the XML of the three files under `ZUGFeRDv2/correct/Mustangproject/` of the ZUGFeRD corpus, of the EN 16931 profile, gets no finding, though the stylesheet finds `BR-DE-21`, `BR-DE-2` and Peppol's rules among them; KoSIT's 01.01a UBL file with an element of 10,001 attributes in its extension (REQ-002-PRS-F011), on which the stylesheet fails, gets `HAFL-RULES` naming the check's rules; a test fails when one of the five IDs no longer occurs in the vendored stylesheets (tests).
+
+#### REQ-002-PRS-F014: Exceptions under German law
+
+**Description**: The check SHALL drop findings of REQ-002-PRS-F013 that the law doesn't support, judged by the values `read_invoice` reads from the invoice (REQ-003-PRS-F001):
+
+- a small invoice, whose invoice total with VAT (BT-112) is at most 250 in absolute value, in the currency (BT-5) `EUR`, with no VAT breakdown whose category (BT-118) is `K` or `AE`: the findings of `BR-DE-TMP-32`, `BR-DE-8` and `BR-DE-9`;
+- a credit note or an invoice for an advance payment, whose type (BT-3) is `381` or `386`: the finding of `BR-DE-TMP-32`.
+
+Where a value an exception judges by isn't read (BT-3; for small invoices BT-112, BT-5, or the category of any VAT breakdown), that exception SHALL NOT apply.
+
+**Related URS**: REQ-002-URS-F005 | **Rationale**: [ADR-014](../arc42/adr/ADR-014-german-vat-checks.md). An invoice of at most €250 including VAT needs neither the time of supply nor the buyer (§33 UStDV), except for distance sales (§3c UStG), which the invoice doesn't show, intra-Community supplies (§6a, category `K`) and reverse charge (§13b, `AE`); a corrective invoice (`384`) may be negative. A credit note corrects an invoice it refers to; an invoice for an advance payment states the date of the payment, where known, not the time of supply (§14(4) no. 6). A value that isn't read can't show that an exception holds.
+
+**Definition of Done**: copies of KoSIT case 01.01a in CII and UBL without the time of supply and the buyer's city and post code: with BT-112 at 250.00 and at -250.00 `EUR` get none of the three findings, at 250.01 and at -250.01 all three; at 100.00 `USD` all three; at 100.00 `EUR` with a breakdown of category `K`, and one of `AE`, all three; with BT-3 `381` or `386` and BT-112 above 250, `BR-DE-8` and `BR-DE-9` and no `BR-DE-TMP-32`; without BT-112, which the XML Schema allows, all three; a copy of CEN's UBL credit note (BT-3 `381` in `cbc:CreditNoteTypeCode`) with BT-112 above 250, without BG-14 and the buyer's city and post code, gets `BR-DE-8` and `BR-DE-9` and no `BR-DE-TMP-32` (tests).
+
+#### REQ-002-PRS-F015: What the check states
+
+**Description**: The docstring of `check_german_vat` SHALL state:
+
+- that the caller calls it where German invoicing law (§14 UStG) governs the invoice, which Haflinger doesn't decide;
+- that every finding is meant to be shown, whatever its flag, and that `is_valid` is for `validate`'s findings, not the check's;
+- that the time of supply is missing on many proper invoices, as the invoice date may give it (UStAE 15.2a (1a));
+- what it doesn't check: the street or post office box (BT-35, BT-50); price reductions agreed in advance, such as a cash discount (no. 7); the date of an advance payment (no. 6); the notes of nos. 9 and 10; the buyer's VAT identifier on a reverse charge for a service in another member state (§14a(1) UStG); the line delivery dates of Factur-X EXTENDED, which `BR-DE-TMP-32` doesn't see; distance sales among small invoices (§3c UStG); credit notes of other types than `381`, which keep `BR-DE-TMP-32`; and that a buyer in a country without post codes gets `BR-DE-9`;
+- that it states what it checks, not that an invoice meets the law.
+
+**Related URS**: REQ-002-URS-F005 | **Rationale**: [ADR-014](../arc42/adr/ADR-014-german-vat-checks.md). `BR-DE-TMP-32` fails on 36 of the 86 accepted files of KoSIT's test suite; a caller that holds an invoice back on any finding, or on none that `is_valid` counts, would hold back proper invoices or miss the time of supply.
+
+**Definition of Done**: inspection of the docstring against this list.
+
 ## PRS — Non-Functional
 
 #### REQ-002-PRS-NF001: No network
 
-**Description**: Validation SHALL work without network access, and installing Haflinger SHALL download nothing beyond its packages.
+**Description**: Validation and the German VAT check SHALL work without network access, and installing Haflinger SHALL download nothing beyond its packages.
 
 **Related URS**: REQ-002-URS-NF002
 
@@ -232,7 +293,7 @@ A comment or a processing instruction inside BT-24, or an element, splits its te
 
 #### REQ-002-PRS-NF002: Speed
 
-**Description**: The first validation of a KoSIT test file with a rule set in a process, compiling that rule set included, SHALL take at most 2 s. After that, validating a file of the KoSIT test suite SHALL take at most 50 ms, and the 25.7 MB Peppol invoice of the ZUGFeRD corpus (`PEPPOL/Valid/Qvalia/Large_Invoice_sample1.xml`, 26,813 lines, at corpus commit `82e886f`) at most 30 s, on the reference machine. Validating the 61.1 MB Peppol invoice (`PEPPOL/Valid/Qvalia/Large_Invoice_sample2.xml`) SHALL take at most 60 s, and its peak memory SHALL be measured.
+**Description**: The first validation of a KoSIT test file with a rule set in a process, compiling that rule set included, SHALL take at most 2 s. After that, validating a file of the KoSIT test suite SHALL take at most 50 ms, and the 25.7 MB Peppol invoice of the ZUGFeRD corpus (`PEPPOL/Valid/Qvalia/Large_Invoice_sample1.xml`, 26,813 lines, at corpus commit `82e886f`) at most 30 s, on the reference machine. Validating the 61.1 MB Peppol invoice (`PEPPOL/Valid/Qvalia/Large_Invoice_sample2.xml`) SHALL take at most 60 s, and its peak memory SHALL be measured. The German VAT check of a file of the KoSIT test suite SHALL take at most 50 ms after its first call in a process.
 
 **Related URS**: REQ-002-URS-NF003
 
@@ -248,11 +309,11 @@ A comment or a processing instruction inside BT-24, or an element, splits its te
 
 #### REQ-002-PRS-NF004: Time limit
 
-**Description**: `validate`, `write_cii` and `haflinger.pdf.embed` SHALL take a keyword argument `timeout`, in seconds, an `int` or `float` greater than 0 and at most a year (31,536,000 s). Its default SHALL be the environment variable `HAFLINGER_RULES_TIMEOUT`, read on each call, or 60 s where it isn't set. The official rules of one call, waiting for another thread's call, starting the worker and compiling the rule set included, SHALL end within `timeout`. When it passes while the call's own rules run, the worker SHALL be killed; when it passes while the call still waits for its turn, the worker SHALL be left to the other call. Either way, `validate` SHALL raise `InvoiceReadError`, `write_cii` and `embed` `InvoiceWriteError` (REQ-004-PRS-F001, REQ-004-PRS-F007), with a reason that says the rules took longer than the limit and names it. A `timeout` (a `bool` included) that isn't such a number of seconds, or, where no `timeout` is given, a `HAFLINGER_RULES_TIMEOUT` that isn't one, SHALL be refused the same way, with a reason that names it, before the rules run.
+**Description**: `validate`, `check_german_vat`, `write_cii` and `haflinger.pdf.embed` SHALL take a keyword argument `timeout`, in seconds, an `int` or `float` greater than 0 and at most a year (31,536,000 s). Its default SHALL be the environment variable `HAFLINGER_RULES_TIMEOUT`, read on each call, or 60 s where it isn't set. The official rules of one call, waiting for another thread's call, starting the worker and compiling the rule set included, SHALL end within `timeout`. When it passes while the call's own rules run, the worker SHALL be killed; when it passes while the call still waits for its turn, the worker SHALL be left to the other call. Either way, `validate` and `check_german_vat` SHALL raise `InvoiceReadError`, `write_cii` and `embed` `InvoiceWriteError` (REQ-004-PRS-F001, REQ-004-PRS-F007), with a reason that says the rules took longer than the limit and names it. A `timeout` (a `bool` included) that isn't such a number of seconds, or, where no `timeout` is given, a `HAFLINGER_RULES_TIMEOUT` that isn't one, SHALL be refused the same way, with a reason that names it, before the rules run.
 
 **Related URS**: REQ-002-URS-NF004 | **Rationale**: The default lies well above the largest real invoice's time (the 61.1 MB invoice of REQ-002-PRS-NF002 validated in 18.5 s on the development machine; a usual invoice takes milliseconds) and below what hostile input takes. A caller that validates invoices of tens of megabytes on a slower machine passes a higher one. A limit must leave room for starting the worker and compiling a rule set, up to about 1 s, which it includes; a year is longer than any validation, and the platform's own limits on waiting lie beyond it. The variable lets a host set the limit without code.
 
-**Definition of Done**: a crafted UBL invoice of 16,000 distinct `cbc:PaymentID` (about 5 s) with `timeout=0.5` is refused within 1.5 s, naming the limit, and the next call validates a KoSIT file; the same holds for `write_cii` and `embed` with a `timeout` too short for their rules; `HAFLINGER_RULES_TIMEOUT` sets the default, and an explicit `timeout` overrides it, an invalid variable included; a call that waits behind another thread's slow call past its own `timeout` is refused while the other call goes on; `0`, `-1`, `nan`, `inf`, `1e10`, `10**400`, `True` and `"60"` as `timeout`, and `abc`, `0` and `1e10` as the variable, are refused, and a year is accepted (tests).
+**Definition of Done**: a crafted UBL invoice of 16,000 distinct `cbc:PaymentID` (about 5 s) with `timeout=0.5` is refused within 1.5 s, naming the limit, and the next call validates a KoSIT file; the same holds for `write_cii` and `embed` with a `timeout` too short for their rules, and for `check_german_vat` with one too short for its stylesheet's first compile in a fresh worker; `HAFLINGER_RULES_TIMEOUT` sets the default, and an explicit `timeout` overrides it, an invalid variable included; a call that waits behind another thread's slow call past its own `timeout` is refused while the other call goes on; `0`, `-1`, `nan`, `inf`, `1e10`, `10**400`, `True` and `"60"` as `timeout`, and `abc`, `0` and `1e10` as the variable, are refused, and a year is accepted (tests).
 
 #### REQ-002-PRS-NF005: Rules in a worker process
 
@@ -260,7 +321,7 @@ A comment or a processing instruction inside BT-24, or an element, splits its te
 
 **Related URS**: REQ-002-URS-NF005 | **Rationale**: [ADR-010](../arc42/adr/ADR-010-saxon-in-a-worker-process.md). Background jobs end with a signal handler's exception (RQ's job timeout), which Python raises between any two steps of the calling thread. Rules left running for a call that ended early would hold up the next job for up to its time limit; killing the worker costs that job a compile instead, about 1 s at most. A worker shared across a fork would get the requests of two processes on one pipe, and a child forked during another thread's call inherits a lock that no thread of its own will release; a child that holds a worker's stdin keeps it from ending with the caller. A broken installation reported as `HAFL-RULES` would make every invoice look invalid.
 
-**Definition of Done**: in a fresh interpreter, `saxonche` isn't in `sys.modules` after `validate`, `write_cii` and `embed`; a worker killed between calls is replaced, and the next call validates; a worker killed during a call gives the refusal saying that it died; a child forked after a validation validates with the same findings and with a worker of its own, and so does a child forked while another thread waits on the worker; a child forked while the worker starts holds none of its pipes; 8 threads validating different KoSIT files at once each get their own file's findings; an invoice that makes Saxon print to stderr leaves the text in the `haflinger` log; a call interrupted by a signal handler's exception, at any moment of hundreds tried, in the XML Schema check (REQ-002-PRS-F011) too, leaves the next call its own findings within its time limit; so does an exception at any step of a process's first call, threading's own code included, which reaches the caller as it is; a slow call interrupted after 1 s leaves the next call its findings within 2 s; a call whose helper thread ended before taking its request gets its findings; a worker killed while it takes a request is reported as having died; a helper thread that can't be started is refused; a stylesheet that doesn't compile and a worker that can't be started are refused, not findings; a call whose deadline has passed before it sends anything leaves the worker running; validation works with more than 1,024 files open; a caller that finds Haflinger on an import path of its own has a worker that uses the same; the worker of a caller that writes no bytecode writes none, and that of a caller with a cache prefix writes its bytecode below it (tests); inspection that no `pickle` crosses the boundary.
+**Definition of Done**: in a fresh interpreter, `saxonche` isn't in `sys.modules` after `validate`, `check_german_vat`, `write_cii` and `embed`; a worker killed between calls is replaced, and the next call validates; a worker killed during a call gives the refusal saying that it died; a child forked after a validation validates with the same findings and with a worker of its own, and so does a child forked while another thread waits on the worker; a child forked while the worker starts holds none of its pipes; 8 threads validating different KoSIT files at once each get their own file's findings; an invoice that makes Saxon print to stderr leaves the text in the `haflinger` log; a call interrupted by a signal handler's exception, at any moment of hundreds tried, in the XML Schema check (REQ-002-PRS-F011) too, leaves the next call its own findings within its time limit; so does an exception at any step of a process's first call, threading's own code included, which reaches the caller as it is; a slow call interrupted after 1 s leaves the next call its findings within 2 s; a call whose helper thread ended before taking its request gets its findings; a worker killed while it takes a request is reported as having died; a helper thread that can't be started is refused; a stylesheet that doesn't compile and a worker that can't be started are refused, not findings; a call whose deadline has passed before it sends anything leaves the worker running; validation works with more than 1,024 files open; a caller that finds Haflinger on an import path of its own has a worker that uses the same; the worker of a caller that writes no bytecode writes none, and that of a caller with a cache prefix writes its bytecode below it (tests); inspection that no `pickle` crosses the boundary.
 
 ## Acceptance Criteria
 
@@ -269,13 +330,15 @@ A comment or a processing instruction inside BT-24, or an element, splits its te
 - Each profile of the rule-set table runs its own rules, under each of its spellings; other profiles get the EN 16931 rules and a `HAFL-PROFILE` warning. BT-24 is compared as KoSIT's scenarios compare it, a comment inside it too.
 - KoSIT's rule levels apply; the rules judge the document as received.
 - Only EN 16931-1:2017 is handled; other editions are refused.
-- Haflinger's own findings are the five of REQ-002-PRS-F010.
+- Haflinger's own findings are the six of REQ-002-PRS-F010.
+- The German VAT check returns only the findings of its five rules and Haflinger's, with the exceptions of German law, on any profile but Factur-X MINIMUM and BASIC WL, which get `HAFL-DE-PROFILE`.
 - Validation works offline and within the speed limits.
 - Validation ends within its time limit, and the rules run in a worker process, never in the caller's.
 - Every artefact and test file set carries its provenance.
 
 ## Assumptions
 
+- KoSIT's XRechnung stylesheets check any CII or UBL invoice in their syntax, and BT-24 only chooses KoSIT's scenario: over the 86 files of KoSIT's test suite, they gave the same findings with BT-24 set to `urn:cen.eu:en16931:2017`, but for `BR-DE-21` (measured on 2026-11-21). `BR-DE-TMP-32` fails on 36 of those accepted files.
 - XRechnung 3.0 is the only XRechnung version the authorities accept today; earlier versions need no rules of their own.
 - The Factur-X rules and XML Schemas for MINIMUM, BASIC WL, BASIC, EN 16931 and EXTENDED come from FeRD's ZUGFeRD package, whose rights of use put the schemas and Schematron under Apache-2.0, so that Haflinger can vendor them under [ADR-008](../arc42/adr/ADR-008-vendoring-official-files.md) ([ITEM-002](../backlog/item-002-official-test-material.md)). The rights of use don't name the XSLT the package also holds; Haflinger compiles the Schematron itself ([ADR-006](../arc42/adr/ADR-006-validation-with-official-rules.md)).
 - KoSIT's scenario file, which sets the rule levels of REQ-002-PRS-F005, is vendored with KoSIT's stylesheets.

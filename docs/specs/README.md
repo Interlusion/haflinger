@@ -5,7 +5,7 @@ REQ-001 is the base spec: the personas, stories and terms, the model of the EN 1
 | Spec | Area | Status |
 | :- | :- | :- |
 | [REQ-001](req-001-core.md) | Core: personas, stories and terms, the model, the rules every spec follows | Baselined |
-| [REQ-002](req-002-conformance.md) | Conformance: official artefacts and test files, profiles and versions, validation | Baselined |
+| [REQ-002](req-002-conformance.md) | Conformance: official artefacts and test files, profiles and versions, validation, the German VAT check | Baselined |
 | [REQ-003](req-003-incoming-invoices.md) | Incoming invoices: reading CII, UBL and ZUGFeRD PDFs into the model | Baselined |
 | [REQ-004](req-004-outgoing-invoices.md) | Outgoing invoices: writing CII and ZUGFeRD PDFs from the model | Baselined |
 
@@ -21,7 +21,7 @@ Why the specs are cut this way: [ADR-004](../arc42/adr/ADR-004-specs-by-directio
 | Spec | Main subjects |
 | :- | :- |
 | REQ-001 Core | Business terms and the model; exact values and their only exceptions; outside input in general, its size limit included; refusals and findings as concepts |
-| REQ-002 Conformance | Official artefacts; official test files and differences found in them; profiles, versions and editions supported; choosing and running the rule set; findings, Haflinger's own included |
+| REQ-002 Conformance | Official artefacts; official test files and differences found in them; profiles, versions and editions supported; choosing and running the rule set; findings, Haflinger's own included; the German VAT check |
 | REQ-003 Incoming invoices | An invoice received: CII, UBL and PDF input, the choices made in reading, what is read, reported and refused, embedded files |
 | REQ-004 Outgoing invoices | An invoice Haflinger produces: target profiles, the choices made in writing, the XML Schema check, ZUGFeRD PDFs, what is handed out and what is refused |
 
