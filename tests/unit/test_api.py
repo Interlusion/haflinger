@@ -41,6 +41,7 @@ MODEL = {
 PUBLIC = MODEL | {
     "read_invoice",
     "validate",
+    "check_german_vat",
     "write_cii",
     "Syntax",
     "ReadResult",
@@ -51,7 +52,7 @@ PUBLIC = MODEL | {
     "InvoiceReadError",
     "InvoiceWriteError",
 }
-ENTRY_POINTS = ("read_invoice", "validate", "write_cii", "extract_xml", "embed")
+ENTRY_POINTS = ("read_invoice", "validate", "check_german_vat", "write_cii", "extract_xml", "embed")
 
 
 def test_every_module_but_the_package_and_pdf_is_private() -> None:
