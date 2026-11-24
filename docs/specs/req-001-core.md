@@ -3,8 +3,8 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Baselined |
-| **Version** | 0.24 |
-| **Date** | 2026-11-20 |
+| **Version** | 0.25 |
+| **Date** | 2026-11-24 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Intended Use
@@ -286,14 +286,14 @@ General vocabulary (CIUS, Leitweg-ID, Peppol …): the [E-Invoicing 101 glossary
 
 **Description**: `haflinger` and `haflinger.pdf` SHALL be the library's only public modules; the name of every other module of the package SHALL start with an underscore. The public names SHALL be those their `__all__` lists, each importable from its module:
 
-- `haflinger`: the entry points `read_invoice` (REQ-003-PRS-F001), `validate` (REQ-002-PRS-F001) and `write_cii` (REQ-004-PRS-F001); the model's classes (REQ-001-PRS-F001) and `Syntax`, the type of `Invoice.syntax` (REQ-001-PRS-F002); `ReadResult`; `Finding`, `Flag` and `is_valid` (REQ-002-PRS-F002); `TARGET_PROFILES` (REQ-004-PRS-F002); `InvoiceReadError` and `InvoiceWriteError`.
+- `haflinger`: the entry points `read_invoice` (REQ-003-PRS-F001), `validate` (REQ-002-PRS-F001), `check_german_vat` (REQ-002-PRS-F012) and `write_cii` (REQ-004-PRS-F001); the model's classes (REQ-001-PRS-F001) and `Syntax`, the type of `Invoice.syntax` (REQ-001-PRS-F002); `ReadResult`; `Finding`, `Flag` and `is_valid` (REQ-002-PRS-F002); `TARGET_PROFILES` (REQ-004-PRS-F002); `InvoiceReadError` and `InvoiceWriteError`.
 - `haflinger.pdf`, with the extra `pdf`: `extract_xml` (REQ-003-PRS-F007) and `embed` (REQ-004-PRS-F007).
 
 The docstring of `haflinger` SHALL name its entry points and `haflinger.pdf`'s. Every other name, and every name in a module whose name starts with an underscore, is internal.
 
 **Related URS**: REQ-001-URS-NF005 | **Rationale**: [ADR-012](../arc42/adr/ADR-012-public-api.md). `haflinger.pdf` is a module of its own because it needs the extra; importing `haflinger` doesn't.
 
-**Definition of Done**: tests that the package's modules other than `haflinger` and `haflinger.pdf` start with an underscore, that the two `__all__` list exactly these names, that each resolves, and that the docstring of `haflinger` names the five entry points.
+**Definition of Done**: tests that the package's modules other than `haflinger` and `haflinger.pdf` start with an underscore, that the two `__all__` list exactly these names, that each resolves, and that the docstring of `haflinger` names the six entry points.
 
 ## PRS — Non-Functional
 
