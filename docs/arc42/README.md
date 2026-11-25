@@ -96,7 +96,7 @@ How the requirements are cut into specs: [ADR-004](adr/ADR-004-specs-by-directio
 ```mermaid
 flowchart TB
     subgraph lib["haflinger"]
-        api["haflinger: read_invoice, validate, write_cii<br/>the public API"]
+        api["haflinger: read_invoice, validate,<br/>check_german_vat, write_cii<br/>the public API"]
         model["_model<br/>EN 16931 business terms"]
         safe["_xml<br/>safe parsing, access by business term"]
         cii["_cii<br/>read and write"]
@@ -131,11 +131,11 @@ flowchart TB
 
 | Block | Responsibility | State |
 | :- | :- | :- |
-| entry points (`read_invoice`, `write_cii`, `validate`) | The public API with the model's classes and findings, which `haflinger.__all__` lists; every module but `haflinger` and `haflinger.pdf` is private ([ADR-012](adr/ADR-012-public-api.md)). Check size and safety, detect the syntax from the root element, dispatch, hand back a model with findings, a document, findings, or a refusal | Built |
+| entry points (`read_invoice`, `write_cii`, `validate`, `check_german_vat`) | The public API with the model's classes and findings, which `haflinger.__all__` lists; every module but `haflinger` and `haflinger.pdf` is private ([ADR-012](adr/ADR-012-public-api.md)). Check size and safety, detect the syntax from the root element, dispatch, hand back a model with findings, a document, findings, or a refusal | Built |
 | `_model` | The business terms as frozen dataclasses with `Decimal` and `date`, each field mapped to its BT or BG ID by REQ-001; equal invoices compare equal whatever their syntax | Built: the terms REQ-001-PRS-F001 lists, growing by ADR-007 |
 | `_xml` | Parse outside XML with `defusedxml`; read elements by path, with `HAFL-VALUE` and `HAFL-DROPPED` findings that name the business term | Built |
 | `_cii`, `_ubl` | The syntax bindings: each business term read from the element EN 16931-3-3 (CII) or -3-2 (UBL) assigns it, CII also written | Built |
-| `_validation` | Choose the rule set, check the invoice against the rule set's XML Schema, run the rules on a schema-valid invoice, turn the SVRL report into findings (rule, flag, location, text) | Built: KoSIT's scenarios with their levels (EN 16931, XRechnung 3.0, its extension, CVD); FeRD's Factur-X rules (MINIMUM, BASIC WL, BASIC, EXTENDED, and EN 16931 for written invoices), compiled with SchXslt on first use. Planned: the German VAT check, KoSIT's German rules on any invoice ([ADR-014](adr/ADR-014-german-vat-checks.md)) |
+| `_validation` | Choose the rule set, check the invoice against the rule set's XML Schema, run the rules on a schema-valid invoice, turn the SVRL report into findings (rule, flag, location, text) | Built: KoSIT's scenarios with their levels (EN 16931, XRechnung 3.0, its extension, CVD); FeRD's Factur-X rules (MINIMUM, BASIC WL, BASIC, EXTENDED, and EN 16931 for written invoices), compiled with SchXslt on first use; the German VAT check, KoSIT's German rules for §14(4) UStG on any invoice, with three rules of Haflinger's own ([ADR-014](adr/ADR-014-german-vat-checks.md), Proposed) |
 | XSD check | Check an incoming invoice against the XML Schema of its rule set before the rules, and a written invoice against the CII and Factur-X XML Schemas | Built, with lxml ([ADR-006](adr/ADR-006-validation-with-official-rules.md)): on `validate`, on the text as decoded for Saxon, CII D16B, UBL 2.1 Invoice and CreditNote, and FeRD's schema of each Factur-X profile (MINIMUM, BASIC WL, BASIC, EXTENDED); on writing, on the bytes as a recipient parses them, CII D16B and Factur-X's EN 16931 profile for that target |
 | `_kosit` | Read through KoSIT's stylesheet into the same model; the tests' independent second reader | Built; agrees with `read_invoice` on the KoSIT suite, CEN's UBL credit note and the vendored corpus PDFs |
 | `_saxon` | Start the worker process on first use and keep it; a helper thread alone talks to it, taking the calls' requests in turn, so that a signal in a caller never interrupts an exchange; send it the document, decoded once in Python, and the stylesheets' names; enforce the time limit, killing the worker when it passes; replace a worker that died; log its stderr | Built ([ADR-010](adr/ADR-010-saxon-in-a-worker-process.md)); never imports `saxonche` |

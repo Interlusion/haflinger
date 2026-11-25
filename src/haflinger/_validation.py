@@ -8,10 +8,11 @@ levels of some rules. The Factur-X profiles have FeRD's Schematron, compiled wit
 import re
 import time
 from dataclasses import dataclass
+from decimal import Decimal
 from functools import cache
 from xml.etree.ElementTree import Element
 
-from haflinger import _cii, _saxon, _ubl, _xsd
+from haflinger import _cii, _read, _saxon, _ubl, _xsd
 from haflinger._errors import InvoiceReadError
 from haflinger._findings import Finding, Flag
 from haflinger._input import Document, Opened, open_invoice
@@ -123,6 +124,23 @@ _DOCUMENTS: dict[Document, str] = {
     "ubl-invoice": "a UBL invoice",
     "ubl-credit-note": "a UBL credit note",
 }
+# REQ-002-PRS-F013: the rules of KoSIT's XRechnung stylesheets that ask for what §14(4) UStG asks,
+# run on any profile (ADR-014), with the scenario whose stylesheet is taken for each document.
+GERMAN_VAT_RULES = frozenset({"BR-DE-TMP-32", "BR-DE-3", "BR-DE-4", "BR-DE-8", "BR-DE-9"})
+_GERMAN_VAT_SCENARIOS: dict[Document, str] = {
+    "cii": "EN16931 XRechnung (CII)",
+    "ubl-invoice": "EN16931 XRechnung (UBL Invoice)",
+    "ubl-credit-note": "EN16931 XRechnung (UBL CreditNote)",
+}
+# REQ-002-PRS-F012: the profiles that are no e-invoices under §14(1) UStG.
+_NO_E_INVOICES = ("Factur-X MINIMUM", "Factur-X BASIC WL")
+# REQ-002-PRS-F014: the small invoices of §33 UStDV, in EUR, and what they don't need; the
+# categories of intra-Community supplies and reverse charge, to which §33 doesn't apply; the
+# types of credit notes and advance payments, which need no time of supply.
+_SMALL = Decimal(250)
+_SMALL_NEEDS_NOT = frozenset({"BR-DE-TMP-32", "BR-DE-8", "BR-DE-9"})
+_NOT_SMALL = frozenset({"K", "AE"})
+_NO_TIME_OF_SUPPLY = frozenset({"381", "386"})
 _FLAGS: dict[str, Flag] = {
     "fatal": "fatal",
     "error": "error",
@@ -146,21 +164,126 @@ def validate(
     and where the rules don't end within `timeout` seconds, by default `HAFLINGER_RULES_TIMEOUT`
     or 60 (REQ-002-PRS-NF004)."""
     limit = _saxon.time_limit(timeout)
+    opened, name, no_profile, schema = _schema_checked(data, max_size, "validate")
+    findings = [] if no_profile is None else [no_profile]
+    if schema:
+        return (*findings, *schema)
+    return (*findings, *_rules(data, name, opened, limit, time.monotonic()))
+
+
+def check_german_vat(
+    data: bytes, *, max_size: int = MAX_SIZE, timeout: float | None = None
+) -> tuple[Finding, ...]:
+    """Check a CII invoice or a UBL invoice or credit note for what §14(4) UStG asks of it
+    beyond the rules of its profile, with KoSIT's German rules of XRechnung on any profile
+    (REQ-002-PRS-F012 to REQ-002-PRS-F015, ADR-014); Factur-X MINIMUM and BASIC WL, no
+    e-invoices under §14(1) UStG, get `HAFL-DE-PROFILE` instead. Refuses what `validate`
+    refuses, with the same limits and time limit; the XML Schema check comes first.
+
+    Call it where German invoicing law, §14 UStG, governs the invoice: that follows the place of
+    supply, and on reverse charge the state where the supplier is established, which Haflinger
+    doesn't decide. Every finding is meant to be shown, whatever its flag; `is_valid` is for
+    `validate`'s findings, not these. The time of supply (`BR-DE-TMP-32`, `information`) is
+    missing on many proper invoices, as the invoice date may give it (UStAE 15.2a (1a)).
+
+    Not checked: the street or post office box (BT-35, BT-50); price reductions agreed in
+    advance, such as a cash discount (§14(4) no. 7); the date of an advance payment (no. 6); the
+    notes of nos. 9 and 10; the buyer's VAT identifier on a reverse charge for a service in
+    another member state (§14a(1) UStG); the line delivery dates of Factur-X EXTENDED, which
+    `BR-DE-TMP-32` doesn't see; distance sales among small invoices (§3c UStG); credit notes of
+    other types than `381`, which keep `BR-DE-TMP-32`. A buyer in a country without post codes
+    gets `BR-DE-9`. The check states what it checks, not that an invoice meets the law."""
+    limit = _saxon.time_limit(timeout)
+    opened, name, _, schema = _schema_checked(data, max_size, "check")
+    if schema:
+        return tuple(schema)
+    if name in _NO_E_INVOICES:
+        return (_no_e_invoice(opened, name),)
+    stylesheet, levels = _german_vat_rules(opened.document)
+    findings = _run(
+        data, (stylesheet,), levels, "the German VAT check", opened, limit, time.monotonic()
+    )
+    found = {finding.rule for finding in findings}
+    dropped = _needs_not(opened) if found & _SMALL_NEEDS_NOT else frozenset[str]()
+    return tuple(
+        finding
+        for finding in findings
+        if finding.rule == "HAFL-RULES"
+        or (finding.rule in GERMAN_VAT_RULES and finding.rule not in dropped)
+    )
+
+
+def _schema_checked(
+    data: bytes, max_size: int, verb: str
+) -> tuple[Opened, str, Finding | None, list[Finding]]:
+    """The steps before the rules that `validate` and `check_german_vat` share: the invoice
+    opened, with what can't be read or would cost too much refused (REQ-002-PRS-F001), the name
+    of the rule set its BT-24 calls for, the finding that BT-24 names no profile, and the
+    findings of the rule set's XML Schema (REQ-002-PRS-F011); `verb` names the call in the
+    message on a PDF."""
     opened = open_invoice(
         data,
         max_size,
-        pdf="the input is a PDF; validate the XML that haflinger.pdf.extract_xml gives",
+        pdf=f"the input is a PDF; {verb} the XML that haflinger.pdf.extract_xml gives",
     )
     _refuse_costly(opened)
     text = decode(data)
     tree = _xsd.tree(text)
     name, no_profile = rule_set(opened, tree)
-    findings = [] if no_profile is None else [no_profile]
-    schema = _xsd.check(text if tree is None else tree, _scenarios()[name].schema)
-    del text, tree  # freed before the rules, which may run for a minute
-    if schema:
-        return (*findings, *schema)
-    return (*findings, *_rules(data, name, opened, limit, time.monotonic()))
+    return (
+        opened,
+        name,
+        no_profile,
+        _xsd.check(text if tree is None else tree, _scenarios()[name].schema),
+    )
+
+
+def _german_vat_rules(document: Document) -> tuple[str, dict[str, Flag]]:
+    """The XRechnung stylesheet of the document's scenario, which holds KoSIT's German rules,
+    with KoSIT's levels; a KoSIT release that moves or splits it fails here rather than leaving
+    the check without rules."""
+    scenario = _scenarios()[_GERMAN_VAT_SCENARIOS[document]]
+    found = [path for path in scenario.stylesheets if "/xrechnung/" in path]
+    if len(found) != 1:
+        raise RuntimeError(
+            f"the scenario {_GERMAN_VAT_SCENARIOS[document]} holds {len(found)} XRechnung"
+            f" stylesheets, not one: {', '.join(scenario.stylesheets)}"
+        )
+    return found[0], scenario.levels
+
+
+def _no_e_invoice(opened: Opened, name: str) -> Finding:
+    """`HAFL-DE-PROFILE` (REQ-002-PRS-F010), at the BT-24 that names the profile."""
+    return Finding(
+        rule="HAFL-DE-PROFILE",
+        flag="error",
+        location=(opened.specification or opened.reading.root).path,
+        text=f"{name} is no e-invoice under §14(1) UStG: its XML lacks what §14(4) UStG asks"
+        " for, such as the invoice lines; the German VAT check's rules weren't run",
+    )
+
+
+def _needs_not(opened: Opened) -> frozenset[str]:
+    """The rules whose findings the law doesn't support for the invoice, by the values reading
+    gives (REQ-002-PRS-F014), the VAT categories of the breakdown and of the lines; a value that
+    isn't read, or a breakdown that isn't, shows no exception."""
+    invoice = _read.model(opened)
+    needs_not = set[str]()
+    if invoice.type_code in _NO_TIME_OF_SUPPLY:
+        needs_not.add("BR-DE-TMP-32")
+    total = None if invoice.totals is None else invoice.totals.total_with_vat
+    categories = {breakdown.category_code for breakdown in invoice.vat_breakdown}
+    categories |= {line.vat_category_code for line in invoice.lines}
+    if (
+        total is not None
+        and invoice.vat_breakdown
+        and abs(total) <= _SMALL
+        and invoice.currency_code == "EUR"
+        and None not in categories
+        and not categories & _NOT_SMALL
+    ):
+        needs_not |= _SMALL_NEEDS_NOT
+    return frozenset(needs_not)
 
 
 def _refuse_costly(opened: Opened) -> None:
@@ -236,8 +359,22 @@ def _rules(data: bytes, name: str, opened: Opened, timeout: float, started: floa
     as KoSIT's validator reports a processing error (REQ-002-PRS-F010). Rules that don't end
     within `timeout` from `started`, and a worker that dies, raise `_saxon.WorkerError`."""
     scenario = _scenarios()[name]
+    return _run(data, scenario.stylesheets, scenario.levels, name, opened, timeout, started)
+
+
+def _run(
+    data: bytes,
+    stylesheets: tuple[str, ...],
+    levels: dict[str, Flag],
+    name: str,
+    opened: Opened,
+    timeout: float,
+    started: float,
+) -> list[Finding]:
+    """The findings of `stylesheets`, with KoSIT's `levels`; where they fail on the invoice,
+    `HAFL-RULES`, which names the rules as `name`."""
     try:
-        reports = _saxon.transform(data, *scenario.stylesheets, timeout=timeout, started=started)
+        reports = _saxon.transform(data, *stylesheets, timeout=timeout, started=started)
     except _saxon.TransformError as error:
         return [
             Finding(
@@ -249,7 +386,7 @@ def _rules(data: bytes, name: str, opened: Opened, timeout: float, started: floa
         ]
     findings: list[Finding] = []
     for report in reports:
-        findings.extend(_findings(parse(report), scenario.levels))
+        findings.extend(_findings(parse(report), levels))
     return findings
 
 

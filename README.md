@@ -46,9 +46,11 @@ xml = write_cii(replace(invoice, specification_id=TARGET_PROFILES[0]))
 
 `is_valid` judges the rules that ran: where BT-24 names no supported profile, or none, `validate` runs CEN's EN 16931 rules alone and adds a `HAFL-PROFILE` warning. Reading's findings are no verdict, and an `InvoiceWriteError` is a refusal whatever findings it holds.
 
+Where German invoicing law (§14 UStG) governs an invoice, which the caller decides, `check_german_vat(data)` reports what §14(4) UStG asks beyond the rules of its profile, with KoSIT's German rules on any profile: the time of supply, and city and post code of seller and buyer. Factur-X MINIMUM and BASIC WL get `HAFL-DE-PROFILE` instead, as they are no e-invoices under §14(1) UStG. Every finding is meant to be shown, whatever its flag; `is_valid` isn't for them. Its docstring lists what it doesn't check ([ADR-014](https://github.com/Interlusion/haflinger/blob/main/docs/arc42/adr/ADR-014-german-vat-checks.md)).
+
 The names `haflinger` and `haflinger.pdf` export are the API; every other module is internal ([ADR-012](https://github.com/Interlusion/haflinger/blob/main/docs/arc42/adr/ADR-012-public-api.md)).
 
-The official rules run in a worker process that Haflinger starts, within a time limit: `timeout=` on `validate`, `write_cii` and `embed`, by default the environment variable `HAFLINGER_RULES_TIMEOUT` or 60 seconds.
+The official rules run in a worker process that Haflinger starts, within a time limit: `timeout=` on `validate`, `check_german_vat`, `write_cii` and `embed`, by default the environment variable `HAFLINGER_RULES_TIMEOUT` or 60 seconds.
 
 A ZUGFeRD PDF, with the extra `pdf`: `read_invoice` reads it directly; validate the invoice embedded in it.
 

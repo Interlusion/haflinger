@@ -144,7 +144,7 @@ The rules are in [ADR-008](../arc42/adr/ADR-008-vendoring-official-files.md). On
 
 4. Update the source's README: release, commit, SHA-256, licence; and the licence file if it changed. For a runtime source, also its block in `THIRD-PARTY-NOTICES`, with its `Licence` line, and the licence expression in `pyproject.toml` where a licence was added or dropped; `tests/unit/test_vendoring.py` checks that they agree. For KoSIT's configuration, also the ZIP's URL and SHA-256 in `.github/kosit-validator/Dockerfile`, which KoSIT's validator runs with; that test checks they name the same release.
 
-5. If the rules changed, take the tests that check them from the same release (CEN's unit tests with CEN's rules).
+5. If the rules changed, take the tests that check them from the same release (CEN's unit tests with CEN's rules). For KoSIT's configuration, also read the changes to its `BR-DE` rules: the German VAT check keeps the findings of those [REQ-002-PRS-F013](../specs/req-002-conformance.md#req-002-prs-f013-the-checks-rules) lists, and a rule renamed, split, changed or added for §14(4) UStG needs a change of REQ-002 ([ADR-014](../arc42/adr/ADR-014-german-vat-checks.md)).
 
 6. Run the tests. A failure is either a change Haflinger has to follow, or a new difference in the official files to record. The diff of the vendored files and the tests' verdict go into the pull request.
 

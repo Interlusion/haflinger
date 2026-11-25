@@ -24,6 +24,7 @@ from haflinger import (
     InvoiceReadError,
     InvoiceWriteError,
     _saxon,
+    check_german_vat,
     is_valid,
     read_invoice,
     validate,
@@ -71,6 +72,15 @@ def test_validate_gives_up_after_its_timeout() -> None:
     assert is_valid(validate(CII.read_bytes()))
 
 
+def test_check_german_vat_gives_up_after_its_timeout() -> None:
+    """Its stylesheet is quick on `SLOW`, whose cost lies in CEN's rules; compiling it in a new
+    worker isn't."""
+    _saxon.clear_caches()
+    with pytest.raises(InvoiceReadError, match=r"took longer than 0\.05 s"):
+        check_german_vat(CII.read_bytes(), timeout=0.05)
+    assert isinstance(check_german_vat(CII.read_bytes()), tuple)
+
+
 def test_write_cii_gives_up_after_its_timeout() -> None:
     _saxon.clear_caches()  # starting the worker and compiling the rules count against the limit
     with pytest.raises(InvoiceWriteError, match=r"took longer than 0\.05 s") as error:
@@ -110,6 +120,12 @@ INVALID = [0, -1, float("nan"), float("inf"), 1e10, 10**400, 31_536_000.5, True,
 def test_validate_refuses_an_invalid_timeout(timeout: Any) -> None:
     with pytest.raises(InvoiceReadError, match="timeout"):
         validate(CII.read_bytes(), timeout=timeout)
+
+
+@pytest.mark.parametrize("timeout", INVALID, ids=repr)
+def test_check_german_vat_refuses_an_invalid_timeout(timeout: Any) -> None:
+    with pytest.raises(InvoiceReadError, match="timeout"):
+        check_german_vat(CII.read_bytes(), timeout=timeout)
 
 
 @pytest.mark.parametrize("timeout", INVALID, ids=repr)
@@ -158,6 +174,7 @@ import haflinger
 from haflinger.pdf import embed
 data = open({str(CII)!r}, "rb").read()
 haflinger.validate(data)
+haflinger.check_german_vat(data)
 invoice = replace(haflinger.read_invoice(data).invoice, specification_id={EN16931!r})
 embed(open({str(PDFA)!r}, "rb").read(), haflinger.write_cii(invoice))
 assert "saxonche" not in sys.modules, "saxonche loaded"

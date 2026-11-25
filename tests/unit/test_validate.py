@@ -4,7 +4,6 @@ import re
 import time
 from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import replace
 from pathlib import Path
 from xml.etree.ElementTree import Element, tostring
 
@@ -15,11 +14,7 @@ from lxml import etree
 from haflinger import (
     Finding,
     Flag,
-    Invoice,
     InvoiceReadError,
-    Party,
-    Totals,
-    _cii,
     is_valid,
     read_invoice,
     validate,
@@ -259,95 +254,12 @@ FACTUR_X = [
     (f"{EN16931}#conformant#urn:zugferd.de:2p0:extended", "FX-SCH-A-000635"),
     (f"{EN16931}:compliant:factur-x.eu:1p0:extended", "FX-SCH-A-000635"),
 ]
-MODEL = read_invoice(CII.read_bytes()).invoice
-assert MODEL.totals is not None
-assert MODEL.seller is not None
-assert MODEL.buyer is not None
-# KoSIT case 01.01a's model reduced to what MINIMUM, BASIC WL and BASIC hold, so that the invoice
-# passes their XML Schemas (REQ-002-PRS-F011); EN 16931 and EXTENDED take the whole model.
-WITHOUT_LINES = replace(
-    MODEL,
-    # Neither MINIMUM nor BASIC WL has a VAT point date.
-    vat_point_date=None,
-    notes=(),
-    lines=(),
-    buyer_reference=None,
-    supporting_documents=(),
-    # The parties' terms that every profile's XML Schema allows.
-    seller=Party(
-        name=MODEL.seller.name,
-        legal_registration_id=MODEL.seller.legal_registration_id,
-        vat_id=MODEL.seller.vat_id,
-        country_code=MODEL.seller.country_code,
-    ),
-    buyer=Party(name=MODEL.buyer.name, country_code=MODEL.buyer.country_code),
-    totals=Totals(
-        total_without_vat=MODEL.totals.total_without_vat,
-        vat_total=MODEL.totals.vat_total,
-        total_with_vat=MODEL.totals.total_with_vat,
-        amount_due=MODEL.totals.amount_due,
-    ),
-)
-MINIMUM = replace(
-    WITHOUT_LINES,
-    vat_point_date_code=None,
-    vat_breakdown=(),
-    buyer=Party(name=MODEL.buyer.name),
-    payee=None,
-    tax_representative=None,
-    payment_terms=None,
-    payment_instructions=None,
-)
-# BASIC has no VAT point date, seller contact, additional legal information or supporting
-# documents, no line references, and of an item only its standard identifier and its name.
-BASIC = replace(
-    MODEL,
-    vat_point_date=None,
-    supporting_documents=(),
-    seller=replace(MODEL.seller, contact=None, additional_legal_information=None),
-    lines=tuple(
-        replace(
-            line,
-            object_id=None,
-            purchase_order_line_reference=None,
-            buyer_accounting_reference=None,
-            item_description=None,
-            seller_item_id=None,
-            buyer_item_id=None,
-            item_classifications=(),
-            item_country_of_origin=None,
-            item_attributes=(),
-        )
-        for line in MODEL.lines
-    ),
-)
-BASIC_WL = replace(
-    WITHOUT_LINES,
-    totals=replace(WITHOUT_LINES.totals, line_net_total=MODEL.totals.line_net_total),  # type: ignore[arg-type]
-)
-
-
-def factur_x(specification_id: str, *edits: tuple[str, str], model: Invoice | None = None) -> bytes:
-    """An invoice of the Factur-X profile `specification_id` names that passes its XML Schema."""
-    if model is None:
-        model = (
-            MINIMUM
-            if "minimum" in specification_id
-            else BASIC_WL
-            if "basicwl" in specification_id
-            else BASIC
-            if "basic" in specification_id
-            else MODEL
-        )
-    text = _cii.write(replace(model, specification_id=specification_id)).decode()
-    for old, new in edits:
-        assert text.count(old) == 1, old
-        text = text.replace(old, new)
-    return text.encode()
 
 
 @pytest.mark.parametrize(("specification_id", "rule"), FACTUR_X)
-def test_factur_x_runs_ferds_rules_for_its_profile(specification_id: str, rule: str) -> None:
+def test_factur_x_runs_ferds_rules_for_its_profile(
+    specification_id: str, rule: str, factur_x: Callable[..., bytes]
+) -> None:
     """Each spelling of REQ-002-PRS-F003's Factur-X rows runs FeRD's rules for its profile."""
     findings = validate(factur_x(specification_id, WRONG_TYPE_CODE))
     assert (rule, "error") in rules(findings)
@@ -355,7 +267,7 @@ def test_factur_x_runs_ferds_rules_for_its_profile(specification_id: str, rule: 
     assert xrechnung_rules(findings) == set()
 
 
-def test_a_factur_x_bt_24_is_compared_by_each_piece() -> None:
+def test_a_factur_x_bt_24_is_compared_by_each_piece(factur_x: Callable[..., bytes]) -> None:
     """As KoSIT's scenarios compare CII's (REQ-002-PRS-F003): a comment beside the identifier
     leaves it naming its profile, one inside it names none."""
     minimum = "urn:factur-x.eu:1p0:minimum"
@@ -376,7 +288,9 @@ def test_a_factur_x_bt_24_is_compared_by_each_piece() -> None:
         (f"{EN16931}:compliant:factur-x.eu:1p0:extended", "FX-SCH-A-000636"),
     ],
 )
-def test_ferds_rules_judge_a_colon_spelling(specification_id: str, rule: str) -> None:
+def test_ferds_rules_judge_a_colon_spelling(
+    specification_id: str, rule: str, factur_x: Callable[..., bytes]
+) -> None:
     """The colon spellings select their profile's rules, whose code list for BT-24 lacks them:
     the official verdict, reported as such."""
     findings = validate(factur_x(specification_id))
@@ -396,12 +310,10 @@ def test_an_official_extended_invoice_gets_the_extended_schema() -> None:
     assert findings[0].text.startswith("Factur-X EXTENDED XML Schema: ")
 
 
-def test_a_rule_without_an_id() -> None:
+def test_a_rule_without_an_id(factur_x: Callable[..., bytes]) -> None:
     """FeRD reports an element its profile doesn't use without a rule ID or flag: an `error`
     with an empty rule (REQ-002-PRS-F002). MINIMUM doesn't use the buyer's address."""
-    findings = validate(
-        factur_x("urn:factur-x.eu:1p0:minimum", model=replace(MINIMUM, buyer=WITHOUT_LINES.buyer))
-    )
+    findings = validate(factur_x("urn:factur-x.eu:1p0:minimum", buyer_country=True))
     unnamed = [finding for finding in findings if finding.rule == ""]
     assert unnamed
     assert all(finding.flag == "error" for finding in unnamed)
@@ -982,7 +894,9 @@ def test_a_factur_x_invoice_gets_its_profiles_schema() -> None:
 # REQ-001-PRS-NF001: validation writes nothing to the file system
 
 
-def test_validation_writes_no_file(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_validation_writes_no_file(
+    monkeypatch: pytest.MonkeyPatch, factur_x: Callable[..., bytes]
+) -> None:
     """Nothing asks for a temporary file or directory while validating."""
 
     def refuse(*args: object, **kwargs: object) -> None:
@@ -995,7 +909,7 @@ def test_validation_writes_no_file(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_factur_x_rules_under_a_path_with_hash_and_percent(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, factur_x: Callable[..., bytes]
 ) -> None:
     """The compiled Schematron reads its code lists relative to a file URI, not a raw path."""
     import shutil

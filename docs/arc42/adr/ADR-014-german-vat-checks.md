@@ -3,7 +3,7 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Proposed |
-| **Date** | 2026-11-21 |
+| **Date** | 2026-11-24 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Context
@@ -12,7 +12,7 @@ An invoice that German invoicing law governs has to hold what §14(4) UStG lists
 
 Much of §14(4) is mandatory in EN 16931 itself and checked by CEN's rules on every invoice of an EN 16931 profile: the invoice number (BT-1), the date of issue (BT-2), the seller's and buyer's names and countries, quantity and type of each item, the net amounts and the VAT per rate (BG-23), the seller's VAT identifier, tax number or tax representative's VAT identifier on any line of the categories S, Z, E, AE, K, G, L or M (`BR-S-02` and its siblings), and the reason for an exemption (`BR-E-10`, `BR-AE-10`, `BR-IC-10`). For §14a(1) and (3) UStG, CEN's rules ask for the buyer's VAT identifier on an intra-Community supply (`BR-IC-02`), and on reverse charge for it or the buyer's legal registration identifier (BT-47, `BR-AE-02`), where §14a(1) asks for the VAT identifier for a service in another member state; on domestic reverse charge (§13b(2)), §14a(5) asks only for the note, which `BR-AE-10` requires.
 
-KoSIT's German rules of XRechnung check more, but `validate` runs them only where BT-24 names XRechnung, the profile for public buyers ([ITEM-010](../../backlog/item-010-german-vat-checks.md)). Of them, these are §14(4)'s:
+KoSIT's German rules of XRechnung check more, but `validate` runs them only where BT-24 names XRechnung, the profile for public buyers ([ITEM-010](../../backlog/archive/item-010-german-vat-checks.md)). Of them, these are §14(4)'s:
 
 - `BR-DE-TMP-32`: the actual delivery date (BT-72), an invoicing period (BG-14) or a period on every line (BG-26), for the time of supply of no. 6, at the level `information`. An invoice without the time of supply isn't issued properly; it may be a calendar month (§31(4) UStDV), and it may follow from the invoice date where there is no doubt the supply was made in that month (UStAE 15.2a (1a), after BFH V R 18/17, by the BMF's letter of 2021-09-09), which no rule can tell. 36 of the 86 accepted files of KoSIT's test suite get this finding.
 - `BR-DE-3`, `BR-DE-4`, `BR-DE-8`, `BR-DE-9`: the city and post code of seller and buyer (BT-37, BT-38, BT-52, BT-53), part of the full addresses of no. 1. A buyer in a country without post codes gets `BR-DE-9` too.
@@ -108,5 +108,5 @@ From the seller's country (BT-40), a VAT identifier starting with `DE`, or the r
 
 - Affects: arc42 [§4](../README.md#4-solution-strategy), [§5](../README.md#5-building-block-view); REQ-001-PRS-F006 and [ADR-012](ADR-012-public-api.md), which list the public names; [REQ-002](../../specs/req-002-conformance.md), which lists the rule IDs and Haflinger's own findings (REQ-002-PRS-F010); [REQ-004](../../specs/req-004-outgoing-invoices.md), whose scope leaves this to the caller until then; the [security policy](../../../SECURITY.md), which names the entry points
 - Updates [ADR-003](ADR-003-integrate-dont-implement.md#our-own-code)'s open point on German specifics; beside [ADR-006](ADR-006-validation-with-official-rules.md)'s choice of the rule set
-- [ITEM-010](../../backlog/item-010-german-vat-checks.md)
+- [ITEM-010](../../backlog/archive/item-010-german-vat-checks.md)
 - §14, §14a, §15 UStG, §31 and §33 UStDV; UStAE 15.2a (1a); BMF, letter of 2021-09-09 on the time of supply (BFH V R 18/17); Article 219a of Directive 2006/112/EC

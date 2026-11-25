@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from haflinger import _cii, _ubl
 from haflinger._errors import InvoiceReadError
 from haflinger._findings import Finding
-from haflinger._input import is_pdf, open_invoice
+from haflinger._input import Opened, is_pdf, open_invoice
 from haflinger._model import Invoice
 from haflinger._xml import MAX_SIZE, check_bytes, check_size
 
@@ -25,14 +25,18 @@ def read_invoice(data: bytes, *, max_size: int = MAX_SIZE) -> ReadResult:
     if is_pdf(data):
         return _read_pdf(data, max_size)
     opened = open_invoice(data, max_size, pdf="")
+    return ReadResult(invoice=model(opened), findings=opened.reading.findings())
+
+
+def model(opened: Opened) -> Invoice:
+    """The model of an invoice that passed the checks, by its syntax."""
     root, specification_id = opened.reading.root, opened.specification_id
     match opened.document:
         case "cii":
-            invoice = _cii.read(root, specification_id)
+            return _cii.read(root, specification_id)
         case "ubl-invoice" | "ubl-credit-note":
             credit_note = opened.document == "ubl-credit-note"
-            invoice = _ubl.read(root, specification_id, credit_note=credit_note)
-    return ReadResult(invoice=invoice, findings=opened.reading.findings())
+            return _ubl.read(root, specification_id, credit_note=credit_note)
 
 
 def _read_pdf(data: bytes, max_size: int) -> ReadResult:
