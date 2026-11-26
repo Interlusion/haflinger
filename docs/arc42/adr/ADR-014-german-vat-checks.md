@@ -2,8 +2,8 @@
 
 | Meta | Value |
 | :- | :- |
-| **Status** | Proposed |
-| **Date** | 2026-11-24 |
+| **Status** | Accepted |
+| **Date** | 2026-11-26 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Context
@@ -43,7 +43,7 @@ Which invoicing law governs an invoice doesn't follow from the invoice: the sell
 - **Every finding of the check is meant to be shown, whatever its flag**: the time of supply comes at KoSIT's level `information`, which Haflinger doesn't raise ([ADR-006](ADR-006-validation-with-official-rules.md)). `is_valid` is for `validate`'s findings, not the check's. A caller that holds an invoice back on a finding chooses by flag and rule knowingly: the missing time of supply is common on proper invoices, whose date may give it.
 - **Three rules of Haflinger's own**, with the law they follow:
   - Factur-X MINIMUM and BASIC WL get one finding of Haflinger's own instead of the rules: no e-invoice under §14(1) UStG, its XML lacks what §14(4) asks for. Its ID and text are REQ-002's.
-  - Small invoices: where the invoice total with VAT (BT-112) is at most 250 in absolute value, as a corrective invoice (`384`) may be negative, the currency (BT-5) is EUR and no VAT category (BT-118) is K or AE, the findings of `BR-DE-TMP-32`, `BR-DE-8` and `BR-DE-9` are dropped. The values are those `read_invoice` reads; where one of them isn't read, nothing is dropped. A distance sale can't be told from the invoice; that limit is stated, not guessed.
+  - Small invoices: where the invoice total with VAT (BT-112) is at most 250 in absolute value, as a corrective invoice (`384`) may be negative, the currency (BT-5) is EUR, the invoice has a VAT breakdown and no VAT category of the breakdown (BT-118) or of a line (BT-151) is K or AE, the findings of `BR-DE-TMP-32`, `BR-DE-8` and `BR-DE-9` are dropped. The values are those `read_invoice` reads; where one of them isn't read, nothing is dropped. A distance sale can't be told from the invoice; that limit is stated, not guessed.
   - Credit notes (`381`) and invoices for advance payments (`386`): the finding of `BR-DE-TMP-32` is dropped.
 - **What no rule checks is stated as not checked**, with the gaps above: the street or post office box and no. 7's price reductions, no. 6's advance payments, nos. 9 and 10, the buyer's VAT identifier on a cross-border reverse charge, and the line delivery dates of Factur-X EXTENDED, which `BR-DE-TMP-32` doesn't see.
 - **`validate` stays as it is.** It judges an invoice by the rules its BT-24 claims ([ADR-006](ADR-006-validation-with-official-rules.md)); the check answers the caller's other question, what §14 UStG asks of the invoice. On an XRechnung invoice both report the five rules, and on a small one `validate` keeps what XRechnung requires and the check drops: the caller shows the two lists apart.

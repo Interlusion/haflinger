@@ -559,6 +559,31 @@ def test_a_request_left_with_an_ended_helper_goes_to_the_current_one(
     assert validate(CII.read_bytes(), timeout=5) == expected
 
 
+def test_a_helper_not_kept_ends_with_its_worker_once_idle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two threads that start a helper at once each get their own, with a worker of its own; the
+    one not kept, made here as the other thread makes it, ends, and its worker with it, once it
+    has had no request for a second (REQ-002-PRS-NF005). The kept one stays current throughout,
+    so that it doesn't end itself while the spare one compiles."""
+    expected = validate(CII.read_bytes())
+    current = _saxon._current_helper()  # pyright: ignore[reportPrivateUsage]
+    real = _saxon._current_helper  # pyright: ignore[reportPrivateUsage]
+    spare = _saxon._Helper()  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(_saxon, "_current_helper", lambda: spare)
+    assert validate(CII.read_bytes()) == expected
+    monkeypatch.setattr(_saxon, "_current_helper", real)
+    assert spare.worker is not None
+    process = spare.worker.process
+    ended = time.monotonic()
+    while spare.alive and time.monotonic() - ended < 3 * _saxon._IDLE:  # pyright: ignore[reportPrivateUsage]
+        time.sleep(0.05)
+    assert not spare.alive
+    assert time.monotonic() - ended < 2 * _saxon._IDLE  # pyright: ignore[reportPrivateUsage]
+    assert process.wait(timeout=5) is not None
+    assert current.alive
+
+
 def test_a_child_forked_while_the_worker_starts_holds_none_of_its_pipes() -> None:
     """The child would keep the worker's stdin open, and the worker running, after the parent
     has ended."""

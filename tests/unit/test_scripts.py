@@ -2,11 +2,13 @@
 the benchmark (development guide; REQ-002-PRS-NF002, REQ-003-PRS-NF002, REQ-004-PRS-NF001)."""
 
 import csv
+import re
 import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+SUITE = ROOT / "tests/data/kosit-testsuite/instances/standard"
 
 
 def script(name: str, *arguments: str | Path) -> str:
@@ -138,6 +140,29 @@ def test_benchmark_without_the_corpus() -> None:
     assert requirements == {"REQ-002-PRS-NF002", "REQ-003-PRS-NF002", "REQ-004-PRS-NF001"}
     assert sum("First validation in a fresh process" in line for line in table) == 15
     assert sum(line.endswith("| skipped: no corpus clone |") for line in table) == 5
+    assert sum("| German VAT check of a KoSIT file | 50 ms | max " in line for line in table) == 1
+
+
+def test_benchmark_measures_the_workers_peak_memory(tmp_path: Path) -> None:
+    """A KoSIT file in the place of the 25.7 MB Peppol invoice: validating it reports the worker's
+    peak memory beside the caller's, as the rules hold the invoice there; reading it, the
+    caller's alone (REQ-002-PRS-NF002)."""
+    stand_in = tmp_path / "PEPPOL/Valid/Qvalia/Large_Invoice_sample1.xml"
+    stand_in.parent.mkdir(parents=True)
+    stand_in.write_bytes((SUITE / "01.01a-INVOICE_ubl.xml").read_bytes())
+    output = script("benchmark.py", tmp_path)
+    cells = [line.split(" | ") for line in output.splitlines() if line.startswith("| REQ-")]
+    measured = {cell[1]: cell[3].removesuffix(" |") for cell in cells}
+    validated = re.fullmatch(
+        r"\d+\.\d s, peak memory \d+ MiB, the worker's (\d+) MiB",
+        measured["Validate the 25.7 MB Peppol invoice"],
+    )
+    assert validated, measured["Validate the 25.7 MB Peppol invoice"]
+    assert int(validated[1]) > 0
+    assert re.fullmatch(
+        r"\d+\.\d s, peak memory \d+ MiB", measured["Read the 25.7 MB Peppol invoice"]
+    )
+    assert measured["Validate the 61.1 MB Peppol invoice"] == "skipped: no corpus clone"
 
 
 def test_corpus_report_counts_crashes_by_outcome_only(tmp_path: Path) -> None:

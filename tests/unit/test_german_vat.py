@@ -305,8 +305,17 @@ def test_small_invoices(path: Path, total: str, found: set[str]) -> None:
         (BREAKDOWN_CATEGORY, "S<", "K<"),
         (BREAKDOWN_CATEGORY, "S<", "AE<"),
         (LINE_CATEGORY, "S<", "AE<"),
+        (LINE_CATEGORY, "S<", "K<"),
+        (LINE_CATEGORY, "S<", "<"),
     ],
-    ids=["usd", "intra-community", "reverse-charge", "reverse-charge-line"],
+    ids=[
+        "usd",
+        "intra-community",
+        "reverse-charge",
+        "reverse-charge-line",
+        "intra-community-line",
+        "line-category-not-read",
+    ],
 )
 def test_no_small_invoice(path: Path, edited_codes: dict[Path, str], old: str, new: str) -> None:
     code = edited_codes[path]

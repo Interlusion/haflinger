@@ -19,7 +19,7 @@ from dataclasses import replace
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
-from haflinger import Party, Totals, _cii, read_invoice, validate
+from haflinger import Party, Totals, _cii, check_german_vat, read_invoice, validate
 from haflinger._input import open_invoice
 from haflinger._validation import _RULE_SETS as RULE_SETS  # pyright: ignore[reportPrivateUsage]
 from haflinger._validation import _scenarios, rule_set  # pyright: ignore[reportPrivateUsage]
@@ -34,13 +34,15 @@ SUITE_UBL = ROOT / "tests/data/kosit-testsuite/instances/standard/01.01a-INVOICE
 LARGE_1 = "PEPPOL/Valid/Qvalia/Large_Invoice_sample1.xml"  # 25.7 MB
 LARGE_2 = "PEPPOL/Valid/Qvalia/Large_Invoice_sample2.xml"  # 61.1 MB
 
-# Run in a fresh process: prints the seconds of the measured step and the peak memory in bytes.
+# Run in a fresh process: prints the seconds of the measured step, and the peak memory in bytes
+# of the process and of the worker that ran the rules, 0 where none did. The worker is stopped
+# first, so that its peak counts among the process's ended children.
 MEASURE = """
 import resource, sys, time
 from pathlib import Path
 step, path = sys.argv[1], Path(sys.argv[2])
 start = time.perf_counter()
-from haflinger import _cii, read_invoice, validate
+from haflinger import _cii, _saxon, read_invoice, validate
 data = path.read_bytes()
 if step == "write":
     invoice = _cii.with_one_preceding_invoice(read_invoice(data).invoice)
@@ -56,19 +58,23 @@ else:
     validate(data)
 seconds = time.perf_counter() - start
 peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-print(seconds, peak if sys.platform == "darwin" else peak * 1024)
+_saxon.clear_caches()
+worker = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss
+unit = 1 if sys.platform == "darwin" else 1024
+print(seconds, peak * unit, worker * unit)
 """
 
 
-def fresh(step: str, path: Path) -> tuple[float, int] | str:
-    """Seconds and peak memory of `step` in a fresh process, or why it failed."""
+def fresh(step: str, path: Path) -> tuple[float, int, int] | str:
+    """Seconds of `step` in a fresh process, and the peak memory of the process and of its
+    worker, or why it failed."""
     command = [sys.executable, "-c", MEASURE, step, str(path)]
     result = subprocess.run(command, capture_output=True, text=True, check=False)  # noqa: S603
     if result.returncode != 0:
         lines = result.stderr.strip().splitlines()
         return f"failed: {lines[-1] if lines else result.returncode}"
-    seconds, peak = result.stdout.split()
-    return float(seconds), int(peak)
+    seconds, peak, worker = result.stdout.split()
+    return float(seconds), int(peak), int(worker)
 
 
 def timed[T](action: Callable[[T], object], items: list[T]) -> list[float]:
@@ -252,6 +258,15 @@ def measure(corpus: Path | None, scratch: Path) -> int:
     rows.append(
         ("REQ-002-PRS-NF002", "Validate a KoSIT file", "50 ms", ms(per_file(validate, SUITE)))
     )
+    per_file(check_german_vat, SUITE)  # the German rules compiled
+    rows.append(
+        (
+            "REQ-002-PRS-NF002",
+            "German VAT check of a KoSIT file",
+            "50 ms",
+            ms(per_file(check_german_vat, SUITE)),
+        )
+    )
 
     large = [
         ("REQ-003-PRS-NF002", "read", LARGE_1, "Read the 25.7 MB Peppol invoice", "-"),
@@ -279,8 +294,10 @@ def measure(corpus: Path | None, scratch: Path) -> int:
             continue
         measured = fresh(step, path)
         if not isinstance(measured, str):
-            seconds, peak = measured
+            seconds, peak, worker = measured
             measured = f"{seconds:.1f} s, peak memory {peak / 2**20:.0f} MiB"
+            if worker:
+                measured += f", the worker's {worker / 2**20:.0f} MiB"
         rows.append((requirement, what, limit, measured))
 
     system = f"{platform.system()} {platform.machine()}, Python {platform.python_version()}"

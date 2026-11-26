@@ -3,8 +3,8 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Baselined |
-| **Version** | 0.25 |
-| **Date** | 2026-11-24 |
+| **Version** | 0.26 |
+| **Date** | 2026-11-26 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Intended Use
@@ -110,6 +110,7 @@ General vocabulary (CIUS, Leitweg-ID, Peppol …): the [E-Invoicing 101 glossary
 - **Exponent notation on writing** (REQ-004): a `Decimal` in exponent notation, which only a model built in code can hold, is written in plain notation with the same value.
 - **Notation of numbers on reading** (REQ-003): a number keeps its value and its decimal places, not the characters that carry neither: a `+` sign, leading zeros, a decimal point without digits after it, a missing zero before it. `+0336.90` reads as `336.90`, `336.` as `336` and `.5` as `0.5`.
 - **The VAT point date code in CII** (REQ-003, REQ-004): CII writes BT-8 with the codes of UNTDID 2475, `5` (date of invoice), `29` (date of delivery) and `72` (paid to date), where EN 16931 and UBL use those of UNTDID 2005 for the same dates, `3`, `35` and `432`; CEN's rules accept only the first in CII and only the second in UBL (`BR-CL-06`). The model holds EN 16931's code: a CII `5`, `29` or `72` reads as `3`, `35` or `432` and is written back as it was, so that the CII and the UBL file of an invoice read alike and a model read from either is written as valid CII. A CII `3`, `35` or `432`, which CEN's rules reject there, is EN 16931's code for its date and is written as CII's; a model holding `5`, `29` or `72` is refused before writing, naming EN 16931's code, so that every model written reads back alike. Any other code is read and written as it is.
+- **A line feed after XRechnung's discount terms on writing** (REQ-004): payment terms (BT-20) that hold a line starting with `#` and end with a `#…#` run are written with a line feed after it, which XRechnung's `BR-DE-18` requires; reading removes it again as surrounding whitespace.
 - **Base64 of an attached document** (REQ-003, REQ-004): the attached document (BT-125) is a file's bytes, which the XML carries as Base64 text. Reading decodes the text, without the whitespace `xs:base64Binary` allows within it, and writing encodes the bytes without line breaks: the bytes stay exactly as they are, the text that carries them may change ([ADR-011](../arc42/adr/ADR-011-attached-documents.md)).
 
 #### REQ-001-URS-NF002: Refuse or report, never guess
@@ -276,7 +277,7 @@ General vocabulary (CIUS, Leitweg-ID, Peppol …): the [E-Invoicing 101 glossary
 
 #### REQ-001-PRS-F005: Refusals and findings name their subject
 
-**Description**: A refusal's reason SHALL name the business term or group (`BT-n`, `BG-n`) it concerns, where there is one, and for a term or group within an invoice line (BG-25) also the line: its position among the lines and its identifier (BT-126), where it has one. A finding SHALL carry the ID of its rule, and a location that selects its element with no prefixes declared ([REQ-002-PRS-F002](req-002-conformance.md#req-002-prs-f002-findings)).
+**Description**: A refusal's reason SHALL name the business term or group (`BT-n`, `BG-n`) it concerns, where there is one, and for a term or group within an invoice line (BG-25) also the line: its position among the lines and its identifier (BT-126), where it has one. A finding SHALL carry the ID of its rule, empty where the rule set gives none, and a location that selects its element with no prefixes declared, or `line n` where the XML Schema check names no element or one Haflinger can't tell from its siblings ([REQ-002-PRS-F002](req-002-conformance.md#req-002-prs-f002-findings)).
 
 **Related URS**: REQ-001-URS-NF002
 
@@ -326,7 +327,7 @@ The docstring of `haflinger` SHALL name its entry points and `haflinger.pdf`'s. 
 - The model holds the business terms of REQ-001-PRS-F001, with equality and edition as REQ-001-PRS-F002 and REQ-001-PRS-F003 say.
 - No value is rounded, reformatted or invented on reading or writing.
 - Outside XML with a DTD or entity is refused before anything processes it, also when embedded in a PDF; outside input beyond its size limit is refused before parsing.
-- Every refusal names its business term where there is one, every finding its rule.
+- Every refusal names its business term where there is one, every finding its rule where the rule set gives one.
 - The library loads no Frappe or ERPNext module.
 - The public names are those of `haflinger` and `haflinger.pdf`; every other module is private.
 
