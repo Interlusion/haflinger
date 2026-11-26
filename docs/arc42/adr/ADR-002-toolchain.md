@@ -3,7 +3,7 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Accepted |
-| **Date** | 2026-11-13 |
+| **Date** | 2026-11-26 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Context
@@ -19,7 +19,7 @@ Every runtime dependency has to coexist with the versions its host pins; in a Fr
 - **Runtime dependencies, each for one job**:
   - `defusedxml` with the standard library's `ElementTree`, for parsing outside XML and for writing CII;
   - `saxonche`, for the official stylesheets ([ADR-006](ADR-006-validation-with-official-rules.md));
-  - `lxml`, only for XML Schema checks ([ADR-006](ADR-006-validation-with-official-rules.md)), of written invoices and of incoming ones after `defusedxml` has checked them;
+  - `lxml`, for XML Schema checks ([ADR-006](ADR-006-validation-with-official-rules.md)), of written invoices and of incoming ones after `defusedxml` has checked them, and for reading BT-24's text nodes as KoSIT's scenarios compare them when the rule set is chosen (REQ-002-PRS-F003), which ElementTree's tree, without comments and processing instructions, can't give; where libxml2 can't parse an invoice, ElementTree's tree serves;
   - in the optional extra `pdf`: `factur-x`, for embedding invoices into PDFs, and `pypdf`, which `factur-x` brings anyway and Haflinger uses directly to take the invoice out of a PDF ([ADR-001](ADR-001-library-and-app.md)).
 - **The model as frozen dataclasses** with `Decimal` and `date`, not pydantic.
 - **Test-only tools stay in the test group**.
@@ -57,7 +57,7 @@ Every runtime dependency has to coexist with the versions its host pins; in a Fr
 - Saxon is large and native ([ADR-006](ADR-006-validation-with-official-rules.md)).
 - Three of CI's checks need Docker locally (`scripts/check-links.sh`, `scripts/check-workflows.sh`, `scripts/check-secrets.sh`); measuring the worker process makes the tests with coverage about a third slower.
 - Hand-written XML access instead of generated bindings.
-- Two XML stacks: lxml checks invoices against their XML Schema, beside ElementTree for everything else. Weighed when lxml arrived (2026-10-31), and again when the schema check came to incoming invoices (2026-11-01, trigger 3): kept, because `defusedxml` stays the gate for outside input, and lxml only reads what has passed it, with entities, DTDs and the network off.
+- Two XML stacks: lxml checks invoices against their XML Schema and reads BT-24 for the choice of rule set, beside ElementTree for everything else. Weighed when lxml arrived (2026-10-31), again when the schema check came to incoming invoices (2026-11-01, trigger 3), and when the choice of rule set came to read BT-24's text nodes (2026-11-15, trigger 3): kept, because `defusedxml` stays the gate for outside input, and lxml only reads what has passed it, with entities, DTDs and the network off.
 
 ## Reconsideration Triggers
 
