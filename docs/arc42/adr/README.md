@@ -13,7 +13,7 @@ Decisions about Haflinger. The architecture they shape is in the [arc42 overview
 | [ADR-007](ADR-007-model-scope-and-editions.md) | A model that grows towards all of EN 16931, edition-aware from the start | Accepted | 2026-11-01 |
 | [ADR-008](ADR-008-vendoring-official-files.md) | Official artefacts and test files vendored, pinned and byte for byte | Accepted | 2026-11-01 |
 | [ADR-009](ADR-009-licences-and-name.md) | Apache-2.0, the licences of what is vendored, and a name without ERPNext or Frappe | Accepted | 2026-11-20 |
-| [ADR-010](ADR-010-saxon-in-a-worker-process.md) | Saxon runs in a worker process, never in the caller's | Accepted | 2026-11-20 |
+| [ADR-010](ADR-010-saxon-in-a-worker-process.md) | Saxon runs in a worker process, never in the caller's | Accepted | 2026-11-26 |
 | [ADR-011](ADR-011-attached-documents.md) | Attached documents in the model, as bytes, within the input's size limit | Accepted | 2026-11-20 |
 | [ADR-012](ADR-012-public-api.md) | Two public modules, the rest private, the API what their `__all__` lists | Accepted | 2026-11-24 |
 | [ADR-013](ADR-013-releases.md) | Releases: SemVer, a changelog, and PyPI from a tag through Trusted Publishing | Accepted | 2026-11-20 |
