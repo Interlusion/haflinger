@@ -597,13 +597,22 @@ def test_object_streams_just_under_the_limits_are_refused_in_time(
     entries: int, listed: int, filler: bytes
 ) -> None:
     """REQ-003-PRS-NF003: each stream under 2 MB, listing one object thousands of times; pypdf
-    parses every object a stream lists, and skips the whitespace after each one byte by byte."""
+    parses every object a stream lists, and skips the whitespace after each one byte by byte.
+    pypdf refuses such offsets itself from 7.0 on, which aren't strictly increasing; before, the
+    time limit refuses the PDF."""
     data = object_stream_bomb(entries, 1_990_000, listed=listed, filler=filler)
     assert len(data) < 100 * 1024
     start = time.monotonic()
-    with pytest.raises(InvoiceReadError, match="takes more than"):
+    with pytest.raises(InvoiceReadError, match=r"takes more than|isn't a readable PDF"):
         extract_xml(data)
     assert time.monotonic() - start < 5
+
+
+def test_the_time_limit_refuses_a_pdf(monkeypatch: pytest.MonkeyPatch) -> None:
+    """REQ-003-PRS-NF003: the time limit, whatever shapes pypdf itself refuses."""
+    monkeypatch.setattr("haflinger.pdf._TIME_LIMIT", 0.0)
+    with pytest.raises(InvoiceReadError, match="takes more than 0 s"):
+        extract_xml(attached("factur-x.xml", XML))
 
 
 @pytest.mark.parametrize(
