@@ -4,6 +4,8 @@ What changed in each release of Haflinger, for its callers. The format follows [
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-26
+
 ### Added
 
 - `check_german_vat(data)` checks a CII invoice or a UBL invoice or credit note that German invoicing law (§14 UStG) governs, which the caller decides, for what §14(4) UStG asks beyond the rules of its profile: KoSIT's German rules of XRechnung run on any profile and give `BR-DE-TMP-32` (the time of supply, `information`), `BR-DE-3`, `BR-DE-4`, `BR-DE-8` and `BR-DE-9` (city and post code of seller and buyer). Factur-X MINIMUM and BASIC WL get `HAFL-DE-PROFILE`, as they are no e-invoices under §14(1) UStG; small invoices of at most 250 EUR (§33 UStDV) drop the time of supply and the buyer's address, credit notes (`381`) and advance payments (`386`) the time of supply. It refuses what `validate` refuses, checks the XML Schema first and takes `max_size` and `timeout`. Every finding is meant to be shown, whatever its flag; `is_valid` isn't for them ([ADR-014](https://github.com/Interlusion/haflinger/blob/main/docs/arc42/adr/ADR-014-german-vat-checks.md)).
@@ -54,4 +56,5 @@ The first release, an alpha; the README lists its known limits.
 [0.1.0]: https://github.com/Interlusion/haflinger/tree/v0.1.0
 [0.2.0]: https://github.com/Interlusion/haflinger/compare/v0.1.0...v0.2.0
 [0.2.1]: https://github.com/Interlusion/haflinger/compare/v0.2.0...v0.2.1
-[unreleased]: https://github.com/Interlusion/haflinger/compare/v0.2.1...HEAD
+[0.3.0]: https://github.com/Interlusion/haflinger/compare/v0.2.1...v0.3.0
+[unreleased]: https://github.com/Interlusion/haflinger/compare/v0.3.0...HEAD
