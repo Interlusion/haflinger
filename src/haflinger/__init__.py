@@ -17,7 +17,7 @@ An invoice is read into the model, validated with the official rules and written
   refusal whatever findings it holds (REQ-004).
 
 `haflinger.pdf`, with the extra `pdf`, takes the invoice out of a ZUGFeRD PDF with
-`extract_xml(pdf)` and puts CII of the first target profile, EN 16931, into one with
+`extract_xml(data)` and puts CII of the first target profile, EN 16931, into one with
 `embed(pdf, xml)`. `InvoiceReadError` refuses input that can't be read, and from `validate` also
 says that the rules gave no verdict, as when they took longer than their time limit. The names
 in `__all__` here and in `haflinger.pdf` are the API; every other module is internal (ADR-012).

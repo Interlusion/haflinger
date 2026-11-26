@@ -260,6 +260,28 @@ def test_deeply_nested_objects_are_refused(data: bytes) -> None:
         read_invoice(data)
 
 
+def name_tree_of_depth(depth: int) -> bytes:
+    """A PDF whose only embedded file, the invoice, lies `depth` kids below the tree's root."""
+    first = 3  # the tree's root; its kids follow, the file's leaf last
+    nodes = [b"<< /Kids [%d 0 R] >>" % (first + level + 1) for level in range(depth)]
+    leaf = first + depth
+    return raw_pdf(
+        b"<< /Type /Catalog /Pages 2 0 R /Names << /EmbeddedFiles 3 0 R >> >>",
+        b"<< /Type /Pages /Kids [] /Count 0 >>",
+        *nodes,
+        b"<< /Names [(factur-x.xml) %d 0 R] >>" % (leaf + 1),
+        b"<< /Type /Filespec /F (factur-x.xml) /EF << /F %d 0 R >> >>" % (leaf + 2),
+        b"<< /Type /EmbeddedFile /Length %d >>\nstream\n" % len(XML) + XML + b"\nendstream",
+    )
+
+
+def test_a_tree_of_embedded_files_32_levels_deep_is_read_and_33_refused() -> None:
+    """The limit of REQ-003-PRS-F007 on its own, far below the limit on entries."""
+    assert extract_xml(name_tree_of_depth(32)) == XML
+    with pytest.raises(InvoiceReadError, match="nested too deeply"):
+        extract_xml(name_tree_of_depth(33))
+
+
 def test_mutated_pdfs_read_or_are_refused_in_time() -> None:
     """Random bytes changed in copies of the test PDFs: each read gives a result or
     `InvoiceReadError`, within 5 s."""

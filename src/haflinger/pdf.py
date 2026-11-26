@@ -88,8 +88,12 @@ class _OutOfTime(BaseException):
 
 def extract_xml(data: bytes, *, max_size: int = MAX_SIZE) -> bytes:
     """The invoice embedded in a ZUGFeRD PDF, byte for byte and not parsed. Raises
-    `InvoiceReadError` when the input isn't a readable PDF, holds no invoice or more than one
-    under the names of `INVOICE_NAMES`, or the invoice exceeds `max_size`."""
+    `InvoiceReadError` when the PDF itself exceeds `max_size` or isn't readable, holds no
+    invoice or more than one under the names of `INVOICE_NAMES`, encodes it otherwise than with
+    FlateDecode without parameters that change its data, or the invoice exceeds `max_size`; and
+    when looking for the invoice passes the limits of REQ-003-PRS-F007: a tree of embedded files
+    of more than 100 entries or nested deeper than 32 levels, a stream on the way that decodes
+    to more than 2 MB, or more than 3 s."""
     if not isinstance(cast(object, data), bytes):
         raise InvoiceReadError(f"the input is not bytes but {type(data).__name__}")
     check_size(data, max_size)
@@ -134,7 +138,10 @@ def _deadline(seconds: float) -> Generator[None]:
 
 
 def embed(pdf: bytes, xml: bytes, *, timeout: float | None = None) -> bytes:
-    """`pdf`, a PDF/A file, as a PDF/A-3 ZUGFeRD PDF with `xml` embedded, when `xml` is a CII
+    """`pdf`, a PDF/A-1, -2 or -3 file by its XMP metadata, as a PDF/A-3 ZUGFeRD PDF with `xml`
+    embedded as `factur-x.xml`, its XMP metadata and document information replaced by the
+    invoice's, when `pdf` holds no name tree (`/Names`: embedded files, named destinations and
+    the others) and no associated files (`/AF`), which embedding would drop, and `xml` is a CII
     invoice of the target profile embed writes and passes the XML Schema and the official rules,
     which end within `timeout` seconds, by default `HAFLINGER_RULES_TIMEOUT` or 60
     (REQ-002-PRS-NF004). Raises `InvoiceWriteError` otherwise (REQ-004-PRS-F007)."""

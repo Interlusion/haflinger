@@ -328,14 +328,16 @@ flowchart LR
         RCV["E-mail, upload,<br/>Peppol (later)"] --> EXT["Extract XML from PDF"]
         RCV --> R["Read CII or UBL"]
         EXT --> R
+        RCV --> V2["Validate the XML<br/>as received"]
+        EXT --> V2
         R --> M2["Haflinger model"]
-        M2 --> V2["Validate and show"]
-        V2 --> PI["ERPNext<br/>Purchase Invoice draft"]
+        M2 --> PI["ERPNext<br/>Purchase Invoice draft,<br/>shown with the findings"]
+        V2 --> PI
         RCV --> ARC["Archive the original XML unchanged"]
     end
 ```
 
-Haflinger receives every format the law allows and sends CII only. How it does that: the [architecture](../arc42/README.md), section 5 for what is built so far, section 6 for these two flows.
+Haflinger receives the two syntaxes of EN 16931, CII and UBL, invoices and credit notes of the 2017 edition, as XML or embedded in a ZUGFeRD / Factur-X PDF; it refuses other formats, such as EDIFACT, ZUGFeRD 1.0 and FatturaPA. It sends CII only. How it does that: the [architecture](../arc42/README.md), section 5 for what is built so far, section 6 for these two flows.
 
 ## 12. Where the complexity hides
 

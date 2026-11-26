@@ -186,8 +186,10 @@ sequenceDiagram
     H->>H: check the target profile and the values
     H->>H: write CII
     H->>H: XML Schema check (lxml, ADR-006)
-    H->>S: written bytes, rules for the target profile
-    S-->>H: findings
+    opt schema-valid
+        H->>S: written bytes, rules for the target profile
+        S-->>H: findings
+    end
     alt fatal or error findings
         H-->>A: InvoiceWriteError: findings and the written document
     else valid
@@ -200,7 +202,7 @@ sequenceDiagram
     end
 ```
 
-An invalid invoice is refused with its findings and the written document; a model that can't be written at all (an unsupported profile, a value of the wrong type) is refused before writing ([REQ-004-PRS-F001](../specs/req-004-outgoing-invoices.md#req-004-prs-f001-one-entry-point)). Rendering the readable PDF as PDF/A is the caller's job.
+An invalid invoice is refused with its findings and the written document; one that fails the XML Schema gets its `HAFL-XSD` findings alone, as the rules run only on a schema-valid invoice; a model that can't be written at all (an unsupported profile, a value of the wrong type) is refused before writing ([REQ-004-PRS-F001](../specs/req-004-outgoing-invoices.md#req-004-prs-f001-one-entry-point)). Rendering the readable PDF as PDF/A is the caller's job.
 
 ## 7. Deployment view
 
@@ -230,11 +232,11 @@ Releases go to PyPI from a tag, built and tested in CI and uploaded through Trus
 
 ## 8. Cross-cutting concepts
 
-- **Hostile input:** XML is parsed with `defusedxml`, DTDs forbidden, before any other component sees it, also XML embedded in a PDF. Saxon, in its worker process, and lxml's check of an incoming invoice then get the document as received, decoded once in Python and held as text in memory, never a re-serialised tree or a file; Saxon opens only local files ([ADR-006](adr/ADR-006-validation-with-official-rules.md)). Every input, and every file unpacked from a PDF, has a size limit (REQ-001); looking for the invoice in a PDF is bounded too, in the entries of its tree of embedded files, in the bytes of the streams it decodes on the way, and in time: it stops after 3 s, which no ZUGFeRD PDF comes near (REQ-003). The official rules run within a time limit, in a worker process that is killed when it passes, so that neither a slow invoice nor a crash in Saxon holds or ends the caller's process (REQ-002-PRS-NF004, REQ-002-PRS-NF005). An attached document (BT-125) is held as bytes and never opened, rendered or checked against its media type, and its file name is never used as a path ([ADR-011](adr/ADR-011-attached-documents.md)). Rendering for people, later, needs the current KoSIT release, which fixed script injection through attachment names.
+- **Hostile input:** XML is parsed with `defusedxml`, DTDs forbidden, before any other component sees it, also XML embedded in a PDF. Saxon, in its worker process, and lxml's check of an incoming invoice then get the document as received, decoded once in Python and held as text in memory, never a re-serialised tree or a file; Saxon opens only local files ([ADR-006](adr/ADR-006-validation-with-official-rules.md)). Every input, and every file unpacked from a PDF, has a size limit (REQ-001); looking for the invoice in a PDF is bounded too, in the entries and the depth of its tree of embedded files, in the bytes of the streams it decodes on the way, and in time: it stops after 3 s, which no ZUGFeRD PDF comes near (REQ-003). The official rules run within a time limit, in a worker process that is killed when it passes, so that neither a slow invoice nor a crash in Saxon holds or ends the caller's process (REQ-002-PRS-NF004, REQ-002-PRS-NF005). An attached document (BT-125) is held as bytes and never opened, rendered or checked against its media type, and its file name is never used as a path ([ADR-011](adr/ADR-011-attached-documents.md)). Rendering for people, later, needs the current KoSIT release, which fixed script injection through attachment names.
 
-- **Exact values:** amounts, quantities, prices and rates are `Decimal` exactly as written, in XML Schema's decimal form; dates are `date`. Nothing is rounded on reading or on writing; the writer writes the digits the model holds. REQ-001 names the only three exceptions (whitespace and the notation of numbers on reading, exponent notation on writing).
+- **Exact values:** amounts, quantities, prices and rates are `Decimal` exactly as written, in XML Schema's decimal form; dates are `date`. Nothing is rounded on reading or on writing; the writer writes the digits the model holds. REQ-001 names the only exceptions: whitespace and the notation of numbers on reading, exponent notation on writing, CII's VAT point date codes (BT-8), read as EN 16931's and written back as CII's, and the Base64 text of an attached document (BT-125), whose bytes stay exactly as they are ([ADR-011](adr/ADR-011-attached-documents.md)).
 
-- **Business terms as names:** each model field maps to its BT or BG ID; refusals name the business term, findings the rule ID (`BR-CO-15`). Haflinger's own findings have IDs starting `HAFL-`, all defined in REQ-002: `HAFL-PROFILE`, `HAFL-XSD`, `HAFL-RULES` (the official rules failed on a schema-valid invoice), `HAFL-VALUE` and `HAFL-DROPPED`.
+- **Business terms as names:** each model field maps to its BT or BG ID; refusals name the business term, findings the rule ID (`BR-CO-15`). Haflinger's own findings have IDs starting `HAFL-`, all defined in REQ-002: `HAFL-PROFILE`, `HAFL-XSD`, `HAFL-RULES` (the official rules failed on a schema-valid invoice), `HAFL-DE-PROFILE` (the German VAT check on Factur-X MINIMUM or BASIC WL, [ADR-014](adr/ADR-014-german-vat-checks.md)), `HAFL-VALUE` and `HAFL-DROPPED`.
 
 - **The original is the invoice:** the bytes received are the legal document to archive (GoBD). The model is a derived view, never the source for re-creating an incoming invoice. Content beyond the model (extensions, terms not modelled yet) stays in the original.
 
