@@ -20,7 +20,10 @@ class ReadResult:
 
 def read_invoice(data: bytes, *, max_size: int = MAX_SIZE) -> ReadResult:
     """Read a CII invoice or a UBL invoice or credit note; the syntax is detected from the root
-    element. Raises `InvoiceReadError` for input that can't be read (REQ-003-PRS-F006)."""
+    element. With the extra `pdf`, read a ZUGFeRD PDF through the invoice
+    `haflinger.pdf.extract_xml` takes out of it, `max_size` bounding the PDF and the invoice.
+    Raises `InvoiceReadError` for input that can't be read, and for a PDF when the extra isn't
+    installed (REQ-003-PRS-F006, REQ-003-PRS-F007)."""
     check_bytes(data)
     if is_pdf(data):
         return _read_pdf(data, max_size)
