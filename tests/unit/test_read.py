@@ -1570,6 +1570,50 @@ def test_a_ubl_party_tax_scheme_vat_in_any_case_gives_the_vat_identifier(
     assert result.findings == ()
 
 
+@pytest.mark.parametrize("party", ["seller", "buyer", "tax_representative"])
+@pytest.mark.parametrize(
+    "tax_scheme",
+    [b"<cac:TaxScheme/>", b"<cac:TaxScheme><cbc:ID> </cbc:ID></cac:TaxScheme>", b""],
+    ids=["no-id", "empty-id", "no-tax-scheme"],
+)
+def test_a_ubl_party_tax_scheme_without_a_scheme_id_is_left_out_with_a_finding(
+    party: str, tax_scheme: bytes, selects: Callable[[bytes, str], Element]
+) -> None:
+    """CEN's rules count it for neither the VAT identifier nor the tax registration identifier,
+    as CII's without `schemeID` (REQ-003-PRS-F002, REQ-003-URS-F006)."""
+    scheme = (
+        b"<cac:PartyTaxScheme><cbc:CompanyID>DE 9</cbc:CompanyID>"
+        + tax_scheme
+        + b"</cac:PartyTaxScheme>"
+    )
+    if party == "seller":
+        start, end = b"<cac:PartyTaxScheme>", b"</cac:PartyTaxScheme>"
+        data = edit(UBL, UBL[UBL.index(start) : UBL.index(end) + len(end)], scheme)
+        terms = "BT-31 or BT-32"
+    elif party == "buyer":
+        end = b"</cac:Party>\r\n    </cac:AccountingCustomerParty>"
+        data = edit(UBL, end, scheme + end)
+        terms = "BT-48"
+    else:
+        representative = UBL_TAX_REPRESENTATIVE.replace(
+            UBL_TAX_REPRESENTATIVE[UBL_TAX_REPRESENTATIVE.index(b"<cac:PartyTaxScheme>") :],
+            scheme + b"</cac:TaxRepresentativeParty>",
+        )
+        data = edit(UBL, UBL_CUSTOMER_END, UBL_CUSTOMER_END + representative)
+        terms = "BT-63"
+    result = read_invoice(data)
+    found = getattr(result.invoice, party)
+    assert found.vat_id is None
+    assert getattr(found, "tax_registration_id", None) is None
+    assert [(f.rule, f.text) for f in result.findings] == [
+        (
+            "HAFL-DROPPED",
+            f"{terms} in a cac:PartyTaxScheme without cac:TaxScheme/cbc:ID is left out: 'DE 9'",
+        )
+    ]
+    assert selects(data, result.findings[0].location).text == "DE 9"
+
+
 def test_address_lines_and_subdivision() -> None:
     cii = edit(
         CII,
