@@ -3,8 +3,8 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Baselined |
-| **Version** | 0.16 |
-| **Date** | 2026-11-24 |
+| **Version** | 0.17 |
+| **Date** | 2026-11-26 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Intended Use
@@ -258,14 +258,14 @@ Where the stylesheet fails on the invoice, the check SHALL return the `HAFL-RULE
 
 **Description**: The check SHALL drop findings of REQ-002-PRS-F013 that the law doesn't support, judged by the values `read_invoice` reads from the invoice (REQ-003-PRS-F001):
 
-- a small invoice, whose invoice total with VAT (BT-112) is at most 250 in absolute value, in the currency (BT-5) `EUR`, with no VAT breakdown whose category (BT-118) is `K` or `AE`: the findings of `BR-DE-TMP-32`, `BR-DE-8` and `BR-DE-9`;
+- a small invoice, whose invoice total with VAT (BT-112) is at most 250 in absolute value, in the currency (BT-5) `EUR`, with a VAT breakdown (BG-23), and with no VAT category of the breakdown (BT-118) or of a line (BT-151) that is `K` or `AE`: the findings of `BR-DE-TMP-32`, `BR-DE-8` and `BR-DE-9`;
 - a credit note or an invoice for an advance payment, whose type (BT-3) is `381` or `386`: the finding of `BR-DE-TMP-32`.
 
-Where a value an exception judges by isn't read (BT-3; for small invoices BT-112, BT-5, or the category of any VAT breakdown), that exception SHALL NOT apply.
+Where a value an exception judges by isn't read (BT-3; for small invoices BT-112, BT-5, the VAT breakdown, or the category of any VAT breakdown or line), that exception SHALL NOT apply.
 
-**Related URS**: REQ-002-URS-F005 | **Rationale**: [ADR-014](../arc42/adr/ADR-014-german-vat-checks.md). An invoice of at most €250 including VAT needs neither the time of supply nor the buyer (§33 UStDV), except for distance sales (§3c UStG), which the invoice doesn't show, intra-Community supplies (§6a, category `K`) and reverse charge (§13b, `AE`); a corrective invoice (`384`) may be negative. A credit note corrects an invoice it refers to; an invoice for an advance payment states the date of the payment, where known, not the time of supply (§14(4) no. 6). A value that isn't read can't show that an exception holds.
+**Related URS**: REQ-002-URS-F005 | **Rationale**: [ADR-014](../arc42/adr/ADR-014-german-vat-checks.md). An invoice of at most €250 including VAT needs neither the time of supply nor the buyer (§33 UStDV), except for distance sales (§3c UStG), which the invoice doesn't show, intra-Community supplies (§6a, category `K`) and reverse charge (§13b, `AE`), on any line; a corrective invoice (`384`) may be negative. A credit note corrects an invoice it refers to; an invoice for an advance payment states the date of the payment, where known, not the time of supply (§14(4) no. 6). A value that isn't read can't show that an exception holds.
 
-**Definition of Done**: copies of KoSIT case 01.01a in CII and UBL without the time of supply and the buyer's city and post code: with BT-112 at 250.00 and at -250.00 `EUR` get none of the three findings, at 250.01 and at -250.01 all three; at 100.00 `USD` all three; at 100.00 `EUR` with a breakdown of category `K`, and one of `AE`, all three; with BT-3 `381` or `386` and BT-112 above 250, `BR-DE-8` and `BR-DE-9` and no `BR-DE-TMP-32`; without BT-112, which the XML Schema allows, all three; a copy of CEN's UBL credit note (BT-3 `381` in `cbc:CreditNoteTypeCode`) with BT-112 above 250, without BG-14 and the buyer's city and post code, gets `BR-DE-8` and `BR-DE-9` and no `BR-DE-TMP-32` (tests).
+**Definition of Done**: copies of KoSIT case 01.01a in CII and UBL without the time of supply and the buyer's city and post code: with BT-112 at 250.00 and at -250.00 `EUR` get none of the three findings, at 250.01 and at -250.01 all three; at 100.00 `USD` all three; at 100.00 `EUR` with a breakdown of category `K`, and one of `AE`, all three, as do copies with a line of category `K`, one of `AE`, and one whose category isn't read; a UBL copy without a VAT breakdown, which UBL's XML Schema allows, all three; with BT-3 `381` or `386` and BT-112 above 250, `BR-DE-8` and `BR-DE-9` and no `BR-DE-TMP-32`; without BT-112, which the XML Schema allows, all three; a copy of CEN's UBL credit note (BT-3 `381` in `cbc:CreditNoteTypeCode`) with BT-112 above 250, without BG-14 and the buyer's city and post code, gets `BR-DE-8` and `BR-DE-9` and no `BR-DE-TMP-32` (tests).
 
 #### REQ-002-PRS-F015: What the check states
 

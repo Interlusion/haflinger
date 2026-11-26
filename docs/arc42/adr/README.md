@@ -17,6 +17,6 @@ Decisions about Haflinger. The architecture they shape is in the [arc42 overview
 | [ADR-011](ADR-011-attached-documents.md) | Attached documents in the model, as bytes, within the input's size limit | Accepted | 2026-11-20 |
 | [ADR-012](ADR-012-public-api.md) | Two public modules, the rest private, the API what their `__all__` lists | Accepted | 2026-11-24 |
 | [ADR-013](ADR-013-releases.md) | Releases: SemVer, a changelog, and PyPI from a tag through Trusted Publishing | Accepted | 2026-11-20 |
-| [ADR-014](ADR-014-german-vat-checks.md) | German VAT checks with KoSIT's German rules, on any invoice the caller names | Proposed | 2026-11-24 |
+| [ADR-014](ADR-014-german-vat-checks.md) | German VAT checks with KoSIT's German rules, on any invoice the caller names | Proposed | 2026-11-26 |
 
 New ADRs take the highest number + 1 and start as Proposed. An ADR is Accepted when the maintainer accepts it; ADR-001 to ADR-013 were accepted on 2026-11-11. Until Haflinger 1.0.0, Proposed and Accepted ADRs alike are edited in place. From the merge of the 1.0.0 release pull request on ([ADR-013](ADR-013-releases.md)), an Accepted ADR is no longer rewritten, a typo or a link aside: a change is a new ADR that supersedes it. An ADR's `Date` is the date of its last change; an edit updates it in the ADR and in its row above, which a test checks. Agent-drafted ADRs say so under Author.
