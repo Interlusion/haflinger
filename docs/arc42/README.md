@@ -206,7 +206,7 @@ An invalid invoice is refused with its findings and the written document; one th
 
 ## 7. Deployment view
 
-The library is a Python package installed into the caller's Python environment. No service, no container, no network at runtime. Validation starts one worker process per calling process, from the same environment, and keeps it: about 180 MiB at its peak with a rule set compiled, as the benchmark measures it, while the caller holds no Saxon ([ADR-010](adr/ADR-010-saxon-in-a-worker-process.md)). The worker's pipes need a POSIX system (Linux, macOS). The first host is a Frappe bench, where the ERPNext app and the library share one environment, so the library's dependencies have to fit the versions the bench pins ([ADR-002](adr/ADR-002-toolchain.md)).
+The library is a Python package installed into the caller's Python environment. No service, no container, no network at runtime. Validation starts one worker process per calling process, from the same environment, and keeps it: at its peak about 180 MiB with a rule set compiled on a small invoice, and more on a large one, about 630 MiB for the 25.7 MB Peppol invoice, while the caller holds no Saxon ([ADR-010](adr/ADR-010-saxon-in-a-worker-process.md)). The worker's pipes need a POSIX system (Linux, macOS). The first host is a Frappe bench, where the ERPNext app and the library share one environment, so the library's dependencies have to fit the versions the bench pins ([ADR-002](adr/ADR-002-toolchain.md)).
 
 ```mermaid
 flowchart LR
