@@ -66,9 +66,9 @@ zugferd = embed(Path("rendered-pdfa.pdf").read_bytes(), xml)  # PDF/A in, PDF/A-
 
 What Haflinger doesn't do yet ([backlog](https://github.com/Interlusion/haflinger/blob/main/docs/backlog/backlog.md)):
 
-- **Writing** targets EN 16931 and XRechnung 3.0, as CII: not XRechnung's extension or CVD, the other Factur-X profiles, or UBL. `write_cii` refuses a model whose BT-24 names another profile before it writes, as it does 4 of KoSIT's 86 test invoices.
+- **Writing** targets EN 16931 and XRechnung 3.0, as CII: not XRechnung's extension or CVD, the other Factur-X profiles, or UBL. `write_cii` refuses a model whose BT-24 names another profile before it writes, as it does 8 of KoSIT's 86 test invoices, which name XRechnung's extension or CVD; written as XRechnung 3.0 instead, 4 of them fail the official rules on codes or terms only their own profile allows.
 - **One preceding invoice**: CII D16B holds one (BG-3), so `write_cii` refuses a model with more, as UBL invoices can carry, before it writes.
-- **ZUGFeRD PDFs**: `embed` writes the profile EN 16931 only, from a PDF that already is PDF/A.
+- **ZUGFeRD PDFs**: `embed` writes the profile EN 16931 only, from a PDF that already is PDF/A-1, -2 or -3 and holds no name tree (`/Names`, such as named destinations or embedded files) and no associated files (`/AF`), which embedding would drop.
 - **Peppol**: the Peppol BIS rules don't run; a Peppol invoice gets CEN's EN 16931 rules and a `HAFL-PROFILE` warning.
 - **The 2017 edition only**: the model holds the terms of EN 16931-1:2017, and reading, validation and writing refuse an invoice of another edition, such as 2026, naming it; extensions, such as XRechnung's, stay in the original invoice.
 - **Nesting**: `validate` gives `HAFL-XSD` for a document nested deeper than 2,048 elements, where the XML Schema check stops, though KoSIT's validator checks it; and it refuses an invoice whose empty elements' locations total more than 10,000,000 characters, as their findings would take gigabytes.
