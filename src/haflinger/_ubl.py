@@ -63,6 +63,7 @@ from haflinger._xml import (
     none_if_empty,
     of_code,
     one_value,
+    quoted,
     vat_only,
 )
 
@@ -374,8 +375,11 @@ def _tax_identifiers(
     party: Node, vat_term: str, tax_term: str | None
 ) -> tuple[str | None, str | None]:
     """The party's VAT identifier, of tax scheme `VAT` in any case, as CEN's rules compare it, and,
-    where `tax_term` names one, its tax registration identifier, of another tax scheme."""
-    taxes = ", ".join(term for term in (vat_term, tax_term) if term)
+    where `tax_term` names one, its tax registration identifier, of another tax scheme. A tax
+    scheme without an ID, which CEN's rules count for neither, is left out with a finding, as
+    CII's tax registration without `schemeID` (REQ-003-PRS-F002)."""
+    terms = [term for term in (vat_term, tax_term) if term]
+    taxes = ", ".join(terms)
     vat_ids: list[Node] = []
     tax_ids: list[Node] = []
     for scheme in party.findall("cac:PartyTaxScheme"):
@@ -384,6 +388,13 @@ def _tax_identifiers(
             vat_ids += scheme.holding(vat_term, "cbc:CompanyID")
         elif kind is not None and tax_term is not None:
             tax_ids += scheme.holding(tax_term, "cbc:CompanyID")
+        elif kind is None:
+            for node in scheme.findall("cbc:CompanyID"):
+                if (content := node.content) is not None:
+                    node.drop(
+                        f"{' or '.join(terms)} in a cac:PartyTaxScheme without {_TAX_SCHEME}"
+                        f" is left out: {quoted(content)}"
+                    )
     vat_id = first_of(vat_ids, vat_term)
     tax_id = None if tax_term is None else first_of(tax_ids, tax_term)
     return (None if vat_id is None else vat_id.value), (None if tax_id is None else tax_id.value)
