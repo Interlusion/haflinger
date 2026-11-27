@@ -419,7 +419,7 @@ def _no_parameters(value: object) -> bool:
     if resolved is None:
         return False
     return all(
-        key == "/Predictor" and isinstance(entry, NumberObject) and int(entry) == 1
+        key == "/Predictor" and isinstance(number := _resolved(entry), NumberObject) and number == 1
         for key, entry in resolved.items()
     )
 
