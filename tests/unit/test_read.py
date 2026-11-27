@@ -264,15 +264,18 @@ def test_findings_come_in_document_order() -> None:
 # REQ-003-PRS-F003: missing terms
 
 
-def test_an_invoice_without_lines_reads_without_findings() -> None:
+def test_an_invoice_without_lines_reads_without_findings_and_fails_br_16() -> None:
+    """Reading leaves the missing lines missing; the official rules report them."""
     start = CII.index(b"<ram:IncludedSupplyChainTradeLineItem>")
     end = CII.rindex(b"</ram:IncludedSupplyChainTradeLineItem>") + len(
         b"</ram:IncludedSupplyChainTradeLineItem>"
     )
-    result = read_invoice(CII[:start] + CII[end:])
+    data = CII[:start] + CII[end:]
+    result = read_invoice(data)
     assert result.invoice.lines == ()
     assert result.invoice.number == "123456XX"
     assert result.findings == ()
+    assert ("BR-16", "fatal") in {(finding.rule, finding.flag) for finding in validate(data)}
 
 
 def test_an_invoice_without_parties_and_totals_reads_without_findings() -> None:
