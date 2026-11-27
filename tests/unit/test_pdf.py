@@ -282,6 +282,74 @@ def test_a_tree_of_embedded_files_32_levels_deep_is_read_and_33_refused() -> Non
         extract_xml(name_tree_of_depth(33))
 
 
+CATALOGUE = b"<< /Type /Catalog /Pages 2 0 R /Names << /EmbeddedFiles 3 0 R >> >>"
+PAGES = b"<< /Type /Pages /Kids [] /Count 0 >>"
+FILESPEC = b"<< /Type /Filespec /F (factur-x.xml) /EF << /F %d 0 R >> >>"
+STREAM = b"<< /Type /EmbeddedFile /Length %d >>\nstream\n" % len(XML) + XML + b"\nendstream"
+DEFLATED = zlib.compress(XML)
+
+
+def deflated(entries: bytes) -> bytes:
+    return (
+        b"<< /Type /EmbeddedFile /Length %d " % len(DEFLATED)
+        + entries
+        + b" >>\nstream\n"
+        + DEFLATED
+        + b"\nendstream"
+    )
+
+
+LEAF = b"<< /Names [(factur-x.xml) 4 0 R] >>"
+
+
+@pytest.mark.parametrize(
+    "objects",
+    [
+        pytest.param(
+            (b"<< /Names 4 0 R >>", b"[(factur-x.xml) 5 0 R]", FILESPEC % 6, STREAM),
+            id="names",
+        ),
+        pytest.param(
+            (
+                b"<< /Kids 4 0 R >>",
+                b"[5 0 R]",
+                b"<< /Names [(factur-x.xml) 6 0 R] >>",
+                FILESPEC % 7,
+                STREAM,
+            ),
+            id="kids",
+        ),
+        pytest.param(
+            (
+                LEAF,
+                b"<< /Type /Filespec /F 5 0 R /UF 5 0 R /EF << /F 6 0 R >> >>",
+                b"(factur-x.xml)",
+                STREAM,
+            ),
+            id="file name",
+        ),
+        pytest.param(
+            (LEAF, FILESPEC % 5, deflated(b"/Filter 6 0 R"), b"[/FlateDecode]"),
+            id="filter",
+        ),
+        pytest.param(
+            (
+                LEAF,
+                FILESPEC % 5,
+                deflated(b"/Filter [/FlateDecode] /DecodeParms 6 0 R"),
+                b"[<< /Predictor 1 >>]",
+            ),
+            id="decode parameters",
+        ),
+    ],
+)
+def test_values_given_as_references_are_read(objects: tuple[bytes, ...]) -> None:
+    """REQ-003-PRS-F007: the PDF format lets any value be an indirect object."""
+    data = raw_pdf(CATALOGUE, PAGES, *objects)
+    assert extract_xml(data) == XML
+    assert read_invoice(data) == read_invoice(XML)
+
+
 def test_mutated_pdfs_read_or_are_refused_in_time() -> None:
     """Random bytes changed in copies of the test PDFs: each read gives a result or
     `InvoiceReadError`, within 5 s."""
