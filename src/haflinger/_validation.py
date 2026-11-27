@@ -160,9 +160,14 @@ def validate(
     data: bytes, *, max_size: int = MAX_SIZE, timeout: float | None = None
 ) -> tuple[Finding, ...]:
     """Validate a CII invoice or a UBL invoice or credit note with the rule set its syntax and
-    BT-24 call for. Raises `InvoiceReadError` for input that can't be read (REQ-002-PRS-F001),
-    and where the rules don't end within `timeout` seconds, by default `HAFLINGER_RULES_TIMEOUT`
-    or 60 (REQ-002-PRS-NF004)."""
+    BT-24 call for. Raises `InvoiceReadError` for input that can't be read, and for an invoice
+    on which the rules would take minutes or gigabytes, which `read_invoice` reads: more than
+    1,000 empty elements or 10,000,000 characters of their locations, a number of more than
+    1,000 digits, a telephone number of more than 100 characters (REQ-002-PRS-F001). Raises it
+    too, as no verdict on the invoice, where the rules don't end within `timeout` seconds, by
+    default `HAFLINGER_RULES_TIMEOUT` or 60, where their worker dies or can't be started, and for
+    a `timeout` or `HAFLINGER_RULES_TIMEOUT` that isn't valid (REQ-002-PRS-NF004,
+    REQ-002-PRS-NF005)."""
     limit = _saxon.time_limit(timeout)
     opened, name, no_profile, schema = _schema_checked(data, max_size, "validate")
     findings = [] if no_profile is None else [no_profile]
