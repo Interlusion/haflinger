@@ -90,10 +90,10 @@ def extract_xml(data: bytes, *, max_size: int = MAX_SIZE) -> bytes:
     """The invoice embedded in a ZUGFeRD PDF, byte for byte and not parsed. Raises
     `InvoiceReadError` when the PDF itself exceeds `max_size` or isn't readable, holds no
     invoice or more than one under the names of `INVOICE_NAMES`, encodes it otherwise than with
-    FlateDecode without parameters that change its data, or the invoice exceeds `max_size`; and
-    when looking for the invoice passes the limits of REQ-003-PRS-F007: a tree of embedded files
-    of more than 100 entries or nested deeper than 32 levels, a stream on the way that decodes
-    to more than 2 MB, or more than 3 s."""
+    FlateDecode, without decode parameters or with a predictor of 1, or the invoice exceeds
+    `max_size`; and when looking for the invoice passes the limits of REQ-003-PRS-F007: a tree
+    of embedded files of more than 100 entries or nested deeper than 32 levels, a stream on the
+    way that decodes to more than 2 MB, or more than 3 s."""
     if not isinstance(cast(object, data), bytes):
         raise InvoiceReadError(f"the input is not bytes but {type(data).__name__}")
     check_size(data, max_size)
@@ -401,8 +401,10 @@ def _stream(name: str, spec: DictionaryObject) -> StreamObject:
 
 
 def _no_parameters(value: object) -> bool:
-    """Decode parameters that change nothing: none, null, an empty dictionary, a predictor of 1
-    (none), or an array of one of these, as for a filter given as an array."""
+    """The decode parameters Haflinger takes: none, null, an empty dictionary, a predictor of 1
+    (none), or an array of one of these, as for a filter given as an array; any other is
+    refused, also one that changes nothing, such as /Columns without a predictor
+    (REQ-003-PRS-F007)."""
     if isinstance(value, ArrayObject):
         return len(value) == 1 and _no_parameters(value[0])
     resolved = _dictionary(value)
@@ -432,10 +434,15 @@ def _inflate(name: str, stream: StreamObject, max_size: int) -> bytes:
             raise InvoiceReadError(f"the PDF's {name} can't be inflated: {error}") from None
         if len(data) <= max_size and not inflater.eof:
             raise InvoiceReadError(f"the PDF's {name} is cut off")
+    elif names == ["/FlateDecode"]:
+        raise InvoiceReadError(
+            f"the PDF's {name} is encoded with FlateDecode with decode parameters, which"
+            " Haflinger doesn't take; only none or a /Predictor of 1"
+        )
     else:
         raise InvoiceReadError(
             f"the PDF's {name} is encoded with {', '.join(names)}, which Haflinger doesn't"
-            " decode; only FlateDecode without parameters"
+            " decode; only FlateDecode"
         )
     if len(data) > max_size:
         raise InvoiceReadError(f"the PDF's {name} is larger than max_size ({max_size:,} bytes)")
