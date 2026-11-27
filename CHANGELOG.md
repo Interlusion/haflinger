@@ -7,6 +7,8 @@ What changed in each release of Haflinger, for its callers. The format follows [
 ### Fixed
 
 - `read_invoice` leaves out a UBL seller's, buyer's or tax representative's `cac:PartyTaxScheme` whose `cac:TaxScheme` has no `cbc:ID` with a `HAFL-DROPPED` finding naming its `cbc:CompanyID`, as it does a CII tax registration without `schemeID`. Before, it dropped the VAT identifier (BT-31, BT-48, BT-63) or the seller's tax registration identifier (BT-32) without a finding; CEN's rules count such a tax scheme for neither.
+- `haflinger.pdf.embed` replaces the PDF's document information with the invoice's, as its docstring says. Before, the input's other entries, such as `/Producer` and keys of its own, stayed in the result beside the invoice's title, subject, author and keywords.
+- `read_invoice` leaves out a UBL tax representative's `cac:PartyTaxScheme` of another tax scheme than VAT, such as `VA`, with a `HAFL-DROPPED` finding naming BT-63 and quoting its `cbc:CompanyID`, as it does in CII. Before, it dropped the identifier without a finding.
 - `read_invoice` reads a UBL VAT total (BT-110, BT-111) from the `cbc:TaxAmount` its `cac:TaxTotal` was chosen by. Before, where a first `cbc:TaxAmount` held an element and a second one a value, it read the first, which its `HAFL-VALUE` finding calls missing, and lost the second without a finding.
 - `haflinger.pdf.extract_xml`, and `read_invoice` with a PDF, refuse an embedded invoice stored with FlateDecode and decode parameters other than none or a `/Predictor` of 1 with a reason naming the parameters. Before, the reason said that FlateDecode isn't decoded.
 

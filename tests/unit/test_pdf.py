@@ -454,6 +454,22 @@ def incrementally_updated(base: bytes) -> bytes:
     return second.getvalue()
 
 
+def test_embed_replaces_the_document_information() -> None:
+    """REQ-004-PRS-F007: none of the input's document information is left, neither its producer
+    nor a key of its own; the title, subject and author are the invoice's."""
+    writer = PdfWriter(io.BytesIO(PDFA), incremental=True)
+    writer.add_metadata({"/Producer": "Example ERP", "/ExampleKey": "internal"})
+    pdf = io.BytesIO()
+    writer.write(pdf)
+    info = PdfReader(io.BytesIO(embed(pdf.getvalue(), XML))).metadata
+    assert info is not None
+    assert "/ExampleKey" not in info
+    assert info.get("/Producer") != "Example ERP"
+    assert info["/Title"] == "[Seller name]: Invoice 123456XX"
+    assert info["/Subject"] == "Invoice 123456XX dated 2016-04-04 issued by [Seller name]"
+    assert info["/Author"] == "[Seller name]"
+
+
 def test_embed_into_an_incrementally_updated_pdf() -> None:
     """REQ-004-PRS-F007: the result is one PDF that a strict reader reads."""
     result = embed(incrementally_updated(PDFA), XML)
