@@ -1112,6 +1112,25 @@ def test_deeply_nested_xml_is_a_schema_finding() -> None:
     assert {f.rule for f in findings} == {"HAFL-XSD"}
 
 
+@pytest.mark.parametrize(
+    "declaration",
+    ['<?xml version="1.0" encoding="UTF-8"?>', '<?xml version="1.0"\n  encoding="UTF-8"?>'],
+    ids=["one-line", "two-lines"],
+)
+def test_a_schema_finding_located_at_a_line_names_the_inputs_line(declaration: str) -> None:
+    """REQ-002-PRS-F010: the line is the input's, also where its XML declaration, which the
+    schema check leaves out, spans lines."""
+    nested = "\n" + "<ram:Bogus>" * 3_000 + "x" + "</ram:Bogus>" * 3_000
+    data = edited(
+        CII,
+        ('<?xml version="1.0" encoding="UTF-8"?>', declaration),
+        ("<ram:ID>123456XX</ram:ID>", "<ram:ID>123456XX</ram:ID>" + nested),
+    )
+    line = data.decode().split("\n").index(nested.strip()) + 1
+    (finding,) = [finding for finding in validate(data) if finding.rule == "HAFL-XSD"]
+    assert finding.location == f"line {line}"
+
+
 @pytest.mark.parametrize("levels", [100, 101, 2048])
 def test_an_extension_as_deep_as_the_schema_check_parses_gets_the_rules(
     extended: Callable[..., bytes], levels: int
