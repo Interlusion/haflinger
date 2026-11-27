@@ -992,6 +992,21 @@ def test_ubl_reads_the_first_tax_amount_holding_a_value() -> None:
     assert result.findings == ()
 
 
+def test_ubl_reads_the_tax_amount_its_tax_total_was_chosen_by(
+    selects: Callable[[bytes, str], Element],
+) -> None:
+    """A first `cbc:TaxAmount` holding an element is missing with its finding; BT-110 is the
+    well-formed one after it, by which its `cac:TaxTotal` was chosen (REQ-003-PRS-F002)."""
+    malformed = b'<cbc:TaxAmount currencyID="EUR">99.99<cbc:Note>x</cbc:Note></cbc:TaxAmount>'
+    data = UBL.replace(UBL_TAX_AMOUNT, malformed + UBL_TAX_AMOUNT, 1)
+    result = read_invoice(data)
+    assert result.invoice.totals is not None
+    assert result.invoice.totals.vat_total == Decimal("22.04")
+    [finding] = result.findings
+    assert finding.rule == "HAFL-VALUE"
+    assert selects(data, finding.location).text == "99.99"
+
+
 def test_ubl_drops_a_second_tax_amount_of_one_tax_total(
     selects: Callable[[bytes, str], Element],
 ) -> None:
