@@ -3,8 +3,8 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Baselined |
-| **Version** | 0.26 |
-| **Date** | 2026-11-26 |
+| **Version** | 0.27 |
+| **Date** | 2026-11-27 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Intended Use
@@ -176,7 +176,7 @@ The findings are those of [REQ-002-PRS-F010](req-002-conformance.md#req-002-prs-
 
 #### REQ-003-PRS-F007: ZUGFeRD PDFs
 
-**Description**: With the extra `pdf` installed, `read_invoice` SHALL read a PDF through its embedded invoice, and `haflinger.pdf.extract_xml(data: bytes, *, max_size: int = …) -> bytes` SHALL return the embedded invoice byte for byte, without parsing it. The embedded invoice is the embedded file named `factur-x.xml`, `zugferd-invoice.xml`, `xrechnung.xml` or, for ZUGFeRD 1.0, `ZUGFeRD-invoice.xml`; it is read whatever its syntax. `extract_xml` SHALL raise `InvoiceReadError` when the input isn't a readable PDF, holds none of these files, holds more than one of them (two files of the same name included), or the file exceeds `max_size`. It SHALL also raise it when looking for the invoice would take more than these limits allow, which no ZUGFeRD PDF seen comes near: a tree of embedded files of more than 100 entries; a stream on the way to the invoice (an object or cross-reference stream) that decodes to more than 2 MB; more than 3 s spent looking for the invoice. A ZUGFeRD PDF takes milliseconds; no limit on sizes or counts bounds the time every malformed PDF keeps the parser busy. `extract_xml` SHALL also raise it for an embedded invoice stored with another filter than FlateDecode, or with decode parameters that change its data, as Haflinger inflates the invoice itself so that inflating stops at `max_size`, and for a tree of embedded files nested deeper than 32 levels. Importing `haflinger.pdf` without the extra SHALL raise `ImportError` naming the extra.
+**Description**: With the extra `pdf` installed, `read_invoice` SHALL read a PDF through its embedded invoice, and `haflinger.pdf.extract_xml(data: bytes, *, max_size: int = …) -> bytes` SHALL return the embedded invoice byte for byte, without parsing it. The embedded invoice is the embedded file named `factur-x.xml`, `zugferd-invoice.xml`, `xrechnung.xml` or, for ZUGFeRD 1.0, `ZUGFeRD-invoice.xml`; it is read whatever its syntax. `extract_xml` SHALL raise `InvoiceReadError` when the input isn't a readable PDF, holds none of these files, holds more than one of them (two files of the same name included), or the file exceeds `max_size`. It SHALL also raise it when looking for the invoice would take more than these limits allow, which no ZUGFeRD PDF seen comes near: a tree of embedded files of more than 100 entries; a stream on the way to the invoice (an object or cross-reference stream) that decodes to more than 2 MB; more than 3 s spent looking for the invoice. A ZUGFeRD PDF takes milliseconds; no limit on sizes or counts bounds the time every malformed PDF keeps the parser busy. `extract_xml` SHALL also raise it for an embedded invoice stored with another filter than FlateDecode, or with decode parameters other than none or a `/Predictor` of 1, which changes nothing, as Haflinger inflates the invoice itself so that inflating stops at `max_size`, and for a tree of embedded files nested deeper than 32 levels. Importing `haflinger.pdf` without the extra SHALL raise `ImportError` naming the extra.
 
 **Related URS**: REQ-003-URS-F002
 
