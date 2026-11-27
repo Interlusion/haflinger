@@ -3,7 +3,7 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Baselined |
-| **Version** | 0.27 |
+| **Version** | 0.28 |
 | **Date** | 2026-11-27 |
 | **Author** | loxy (drafted with Claude) |
 
@@ -72,7 +72,7 @@ General vocabulary (CIUS, Leitweg-ID, Peppol …): the [E-Invoicing 101 glossary
 - **Official rules**: the Schematron rules published by CEN (EN 16931), KoSIT (XRechnung) and FeRD (Factur-X/ZUGFeRD profiles), compiled to XSLT. Rules Haflinger writes itself are not official rules.
 - **Rule set**: the official rules an invoice is checked against, chosen by its syntax and profile (REQ-002).
 - **Official test files**: test material published with the official rules or by the standards' communities: KoSIT's XRechnung test suite, CEN's per-rule unit tests, the ZUGFeRD corpus. Files Haflinger's own tests construct are not.
-- **KoSIT test suite**: the business cases of [`itplr-kosit/xrechnung-testsuite`](https://github.com/itplr-kosit/xrechnung-testsuite), each as a CII and a UBL file.
+- **KoSIT test suite**: the business cases of [`itplr-kosit/xrechnung-testsuite`](https://github.com/itplr-kosit/xrechnung-testsuite), each as a CII file, a UBL file or both: the standard and technical cases in both syntaxes, the extension cases in one.
 - **ZUGFeRD PDF**: a PDF with an invoice in XML embedded as a file, as ZUGFeRD 2 and Factur-X define it. A PDF without such a file, or with a ZUGFeRD 1.0 file, is not one.
 - **Reference machine**: the machine speed requirements are measured on: a laptop or server processor from 2023 or later, measured on one core with the file already in memory. The limits leave several times the time measured in the spikes, so that machines of this description meet them; each benchmark records the machine it ran on.
 

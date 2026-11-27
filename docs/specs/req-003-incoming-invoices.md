@@ -144,7 +144,7 @@ The findings are those of [REQ-002-PRS-F010](req-002-conformance.md#req-002-prs-
 
 #### REQ-003-PRS-F004: CII and UBL agree
 
-**Description**: For every business case of the KoSIT test suite, the CII file and the UBL file SHALL read to equal models, except that an optional sum (BT-107, BT-108, BT-113, BT-114) one file gives as zero and the other leaves out counts as agreeing. The model keeps what each file says.
+**Description**: For every business case of the KoSIT test suite in both syntaxes, the CII file and the UBL file SHALL read to equal models, except that an optional sum (BT-107, BT-108, BT-113, BT-114) one file gives as zero and the other leaves out counts as agreeing. The model keeps what each file says.
 
 **Related URS**: REQ-003-URS-F003
 
@@ -226,7 +226,7 @@ The findings are those of [REQ-002-PRS-F010](req-002-conformance.md#req-002-prs-
 
 ## Acceptance Criteria
 
-- Every KoSIT test file reads in both syntaxes to equal models, and KoSIT's stylesheet agrees for every term both cover; the UBL copy phax's converter makes of a written or a corpus invoice reads as the CII invoice.
+- Every KoSIT business case in both syntaxes reads to equal models, and KoSIT's stylesheet agrees for every term both cover; the UBL copy phax's converter makes of a written or a corpus invoice reads as the CII invoice.
 - ZUGFeRD PDFs read through their embedded XML, which is handed out byte for byte.
 - Incomplete invoices read with what they hold; the rules report the rest.
 - Every value of a term the model holds that reading leaves out or can't read is reported with a `HAFL-DROPPED` or `HAFL-VALUE` finding.
