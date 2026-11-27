@@ -37,7 +37,7 @@ from haflinger._errors import InvoiceReadError, InvoiceWriteError
 from haflinger._input import open_invoice
 from haflinger._model import Invoice
 from haflinger._write import EN16931
-from haflinger._xml import MAX_SIZE, check_size, parse
+from haflinger._xml import MAX_SIZE, check_bytes, check_size, parse
 
 __all__ = ["embed", "extract_xml"]
 
@@ -93,8 +93,7 @@ def extract_xml(data: bytes, *, max_size: int = MAX_SIZE) -> bytes:
     `max_size`; and when looking for the invoice passes the limits of REQ-003-PRS-F007: a tree
     of embedded files of more than 100 entries or nested deeper than 32 levels, a stream on the
     way that decodes to more than 2 MB, or more than 3 s."""
-    if not isinstance(cast(object, data), bytes):
-        raise InvoiceReadError(f"the input is not bytes but {type(data).__name__}")
+    check_bytes(data)
     check_size(data, max_size)
     try:
         # pypdf's own decoding (object and cross-reference streams) stays small: none of what
