@@ -25,7 +25,6 @@ try:
     from pypdf.generic import (
         ArrayObject,
         DictionaryObject,
-        IndirectObject,
         NullObject,
         NumberObject,
         StreamObject,
@@ -199,9 +198,7 @@ def _relates_as_alternative(reader: PdfReader) -> bool:
         )
 
     root = _dictionary(reader.trailer.get("/Root"))
-    associated = None if root is None else root.get("/AF")
-    if isinstance(associated, IndirectObject):
-        associated = associated.get_object()
+    associated = None if root is None else _resolved(root.get("/AF"))
     files: list[object] = list(associated) if isinstance(associated, ArrayObject) else []
     return all(alternative(spec) for _, spec in _embedded_files(reader)) and any(
         alternative(_dictionary(spec)) for spec in files
@@ -351,10 +348,16 @@ def _extract(reader: PdfReader, max_size: int) -> bytes:
     return _inflate(name, _stream(name, spec), max_size)
 
 
+def _resolved(value: object) -> object:
+    """`value`, resolved if it is a reference: the PDF format lets any value be an indirect
+    object (REQ-003-PRS-F007)."""
+    get_object = getattr(value, "get_object", None)
+    return get_object() if callable(get_object) else value
+
+
 def _dictionary(value: object) -> DictionaryObject | None:
     """`value`, resolved if it is a reference, when it is a dictionary."""
-    get_object = getattr(value, "get_object", None)
-    resolved: object = get_object() if callable(get_object) else value
+    resolved = _resolved(value)
     return resolved if isinstance(resolved, DictionaryObject) else None
 
 
@@ -377,10 +380,10 @@ def _embedded_files(reader: PdfReader) -> list[tuple[str, DictionaryObject]]:
             raise InvoiceReadError(
                 f"the PDF's tree of embedded files has more than {_MAX_ENTRIES} entries"
             )
-        kids = node.get("/Kids")
+        kids = _resolved(node.get("/Kids"))
         if isinstance(kids, ArrayObject):
             pending.extend((kid, depth + 1) for kid in kids)
-        entries = node.get("/Names")
+        entries = _resolved(node.get("/Names"))
         if isinstance(entries, ArrayObject):
             for key, value in zip(entries[::2], entries[1::2], strict=False):
                 spec = _dictionary(value)
@@ -408,6 +411,7 @@ def _no_parameters(value: object) -> bool:
     (none), or an array of one of these, as for a filter given as an array; any other is
     refused, also one that changes nothing, such as /Columns without a predictor
     (REQ-003-PRS-F007)."""
+    value = _resolved(value)
     if isinstance(value, ArrayObject):
         return len(value) == 1 and _no_parameters(value[0])
     resolved = _dictionary(value)
@@ -424,7 +428,7 @@ def _no_parameters(value: object) -> bool:
 def _inflate(name: str, stream: StreamObject, max_size: int) -> bytes:
     """The stream's data, decoded; inflating stops once it exceeds `max_size`."""
     raw = StreamObject.get_data(stream)  # the data as stored, before any filter
-    filters: object = stream.get("/Filter")
+    filters = _resolved(stream.get("/Filter"))
     listed: list[object] = list(filters) if isinstance(filters, ArrayObject) else [filters]
     names = [str(f) for f in listed]
     if filters is None:
