@@ -21,7 +21,7 @@ from xml.etree.ElementTree import Element
 
 try:
     import facturx
-    from pypdf import Configuration, PdfReader, apply_configuration
+    from pypdf import Configuration, PdfReader, PdfWriter, apply_configuration
     from pypdf.generic import (
         ArrayObject,
         DictionaryObject,
@@ -271,11 +271,14 @@ def _metadata(invoice: Invoice) -> dict[str, str]:
 
 def _embed(pdf: bytes, xml: bytes, level: str, metadata: dict[str, str]) -> bytes:
     """`factur-x`'s embedding, into a new file: writing back into its input leaves the end of a
-    longer input in place. The input is the caller's own PDF (REQ-001-PRS-NF001)."""
+    longer input in place. The input is the caller's own PDF (REQ-001-PRS-NF001), without its
+    document information, as `factur-x` adds the invoice's to it (REQ-004-PRS-F007)."""
     try:
         with tempfile.TemporaryDirectory(prefix="haflinger-") as directory:
             source, target = Path(directory, "input.pdf"), Path(directory, "output.pdf")
-            source.write_bytes(pdf)
+            writer = PdfWriter(clone_from=io.BytesIO(pdf))
+            writer.metadata = None
+            writer.write(source)
             facturx.generate_from_file(
                 str(source),
                 xml,
