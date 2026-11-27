@@ -96,9 +96,10 @@ def read(root: Node, specification_id: str | None, *, credit_note: bool) -> Invo
     currency_code = root.text("cbc:DocumentCurrencyCode", "BT-5")
     tax_currency_code = root.text("cbc:TaxCurrencyCode", "BT-6")
     tax_totals = _vat_tax_totals(root.findall("cac:TaxTotal"))
-    vat_total, vat_total_in_tax_currency = choose_vat_totals(
+    # Each cac:TaxTotal with the amount it was chosen by, which gives BT-110 or BT-111.
+    chosen, chosen_in_tax_currency = choose_vat_totals(
         [
-            (tax_total, amount)
+            ((tax_total, amount), amount)
             # One holding subtotals first: the VAT breakdown is BT-110's, and BT-111's total holds
             # none (PEPPOL-EN16931-R053, PEPPOL-EN16931-R054).
             for tax_total in sorted(tax_totals, key=lambda total: not _holds_subtotals(total))
@@ -107,6 +108,8 @@ def read(root: Node, specification_id: str | None, *, credit_note: bool) -> Invo
         currency_code,
         tax_currency_code,
     )
+    vat_total, vat_amount = chosen or (None, None)
+    _, vat_amount_in_tax_currency = chosen_in_tax_currency or (None, None)
     allowances, charges = allowances_and_charges(
         root.findall("cac:AllowanceCharge"), "cbc:ChargeIndicator", _allowance_charge
     )
@@ -194,8 +197,8 @@ def read(root: Node, specification_id: str | None, *, credit_note: bool) -> Invo
         charges=charges,
         totals=_totals(
             root.group("cac:LegalMonetaryTotal", "BG-22"),
-            _tax_amount(vat_total),
-            _tax_amount(vat_total_in_tax_currency),
+            vat_amount,
+            vat_amount_in_tax_currency,
         ),
         vat_breakdown=tuple(_vat_breakdown(node) for node in _subtotals(tax_totals, vat_total)),
         supporting_documents=tuple(
@@ -227,13 +230,6 @@ def _supporting_document(node: Node) -> SupportingDocument | None:
             ),
         )
     )
-
-
-def _tax_amount(tax_total: Node | None) -> Node | None:
-    """The first `cbc:TaxAmount` holding a value, which `choose_vat_totals` chose by."""
-    if tax_total is None:
-        return None
-    return next((a for a in tax_total.findall("cbc:TaxAmount") if a.value is not None), None)
 
 
 def _vat_tax_totals(tax_totals: list[Node]) -> list[Node]:
