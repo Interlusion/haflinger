@@ -12,6 +12,7 @@ What changed in each release of Haflinger, for its callers. The format follows [
 - `read_invoice` reads a UBL VAT total (BT-110, BT-111) from the `cbc:TaxAmount` its `cac:TaxTotal` was chosen by. Before, where a first `cbc:TaxAmount` held an element and a second one a value, it read the first, which its `HAFL-VALUE` finding calls missing, and lost the second without a finding.
 - `haflinger.pdf.extract_xml`, and `read_invoice` with a PDF, refuse an embedded invoice stored with FlateDecode and decode parameters other than none or a `/Predictor` of 1 with a reason naming the parameters. Before, the reason said that FlateDecode isn't decoded.
 - `haflinger.pdf.extract_xml`, and `read_invoice` with a PDF, read a PDF whose tree of embedded files gives its `/Names` or `/Kids` array as a reference to an object, which the PDF format allows, and take an embedded invoice whose `/Filter` or `/DecodeParms` array, or a `/Predictor` of 1 within its decode parameters, is one. Before, such a tree was read as holding no embedded files, and such a filter or predictor refused.
+- A `HAFL-XSD` finding located at a line names the input's line also where the invoice's XML declaration spans several lines. Before, it named the line above.
 
 ## [0.3.0] - 2026-11-26
 
