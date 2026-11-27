@@ -72,7 +72,7 @@ flowchart LR
 | Official artefacts | upstream → repository | Rules, reading stylesheets and test files, taken from upstream releases at update time and vendored; nothing is fetched at runtime |
 | Transport | caller ↔ suppliers and customers | Not the library's: e-mail, portals, and Peppol through a certified provider; no AS4 of Haflinger's own ([ADR-003](adr/ADR-003-integrate-dont-implement.md)) |
 
-**Out of scope:** sending and receiving e-mail and Peppol messages (the caller, providers); archiving storage (the caller; Haflinger hands back the original bytes); bookkeeping decisions (a person, in the caller's system); the ERPNext app and its context, described in its own repository, [Haflinger Saddle](https://github.com/Interlusion/haflinger-saddle); rendering invoices for people (later, with KoSIT's visualisation stylesheets, [ITEM-005](../backlog/item-005-rendering.md)).
+**Out of scope:** sending and receiving e-mail and Peppol messages (the caller, providers); archiving storage (the caller, which keeps the bytes it received; `read_invoice` returns the model and findings, `extract_xml` a PDF's embedded XML byte for byte); bookkeeping decisions (a person, in the caller's system); the ERPNext app and its context, described in its own repository, [Haflinger Saddle](https://github.com/Interlusion/haflinger-saddle); rendering invoices for people (later, with KoSIT's visualisation stylesheets, [ITEM-005](../backlog/item-005-rendering.md)).
 
 ## 4. Solution strategy
 
