@@ -368,12 +368,13 @@ def _legal_registration(entity: Node | None, term: str) -> Identifier | None:
 
 
 def _tax_identifiers(
-    party: Node, vat_term: str, tax_term: str | None
+    party: Node, vat_term: str, tax_term: str | None, *, other_left_out: bool = False
 ) -> tuple[str | None, str | None]:
     """The party's VAT identifier, of tax scheme `VAT` in any case, as CEN's rules compare it, and,
     where `tax_term` names one, its tax registration identifier, of another tax scheme. A tax
     scheme without an ID, which CEN's rules count for neither, is left out with a finding, as
-    CII's tax registration without `schemeID` (REQ-003-PRS-F002)."""
+    CII's tax registration without `schemeID`, and so, with `other_left_out`, is another tax
+    scheme where the party has no tax registration identifier (REQ-003-PRS-F002)."""
     terms = [term for term in (vat_term, tax_term) if term]
     taxes = ", ".join(terms)
     vat_ids: list[Node] = []
@@ -384,6 +385,13 @@ def _tax_identifiers(
             vat_ids += scheme.holding(vat_term, "cbc:CompanyID")
         elif kind is not None and tax_term is not None:
             tax_ids += scheme.holding(tax_term, "cbc:CompanyID")
+        elif kind is not None and other_left_out:
+            for node in scheme.findall("cbc:CompanyID"):
+                if (content := node.content) is not None:
+                    node.drop(
+                        f"{vat_term} in a cac:PartyTaxScheme of the tax scheme {kind!r}, not VAT,"
+                        f" is left out: {quoted(content)}"
+                    )
         elif kind is None:
             for node in scheme.findall("cbc:CompanyID"):
                 if (content := node.content) is not None:
@@ -417,7 +425,7 @@ def _tax_representative(party: Node | None) -> TaxRepresentative | None:
     if party is None:
         return None
     address = party.group("cac:PostalAddress", TAX_REPRESENTATIVE_ADDRESS.group)
-    vat_id, _ = _tax_identifiers(party, "BT-63", None)
+    vat_id, _ = _tax_identifiers(party, "BT-63", None, other_left_out=True)
     return none_if_empty(
         TaxRepresentative(
             name=party.text("cac:PartyName/cbc:Name", "BT-62"),
