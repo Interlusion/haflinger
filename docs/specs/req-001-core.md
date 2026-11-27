@@ -3,8 +3,8 @@
 | Meta | Value |
 | :- | :- |
 | **Status** | Baselined |
-| **Version** | 0.26 |
-| **Date** | 2026-11-26 |
+| **Version** | 0.27 |
+| **Date** | 2026-11-27 |
 | **Author** | loxy (drafted with Claude) |
 
 ## Intended Use
@@ -316,7 +316,7 @@ The docstring of `haflinger` SHALL name its entry points and `haflinger.pdf`'s. 
 
 #### REQ-001-PRS-NF003: Size limit
 
-**Description**: Every entry point that takes outside input (`read_invoice`, `validate`, `haflinger.pdf.extract_xml`) SHALL take a keyword argument `max_size`, in bytes, by default 100 MiB (104,857,600 bytes), and SHALL refuse input larger than it before parsing it. XML embedded in a PDF SHALL count against the same limit, checked while it is decompressed.
+**Description**: Every entry point that takes outside input (`read_invoice`, `validate`, `check_german_vat`, `haflinger.pdf.extract_xml`) SHALL take a keyword argument `max_size`, in bytes, by default 100 MiB (104,857,600 bytes), and SHALL refuse input larger than it before parsing it. XML embedded in a PDF SHALL count against the same limit, checked while it is decompressed.
 
 **Related URS**: REQ-001-URS-NF003 | **Rationale**: The default lies above the largest real invoice seen, 61.1 MB in the ZUGFeRD corpus; a caller with less memory to spare passes a lower `max_size`. The memory reading takes is measured (REQ-003-PRS-NF002).
 
