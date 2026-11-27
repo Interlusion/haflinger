@@ -1028,6 +1028,27 @@ def test_writes_preceding_invoice_delivery_and_period_and_reads_them_back() -> N
             "BR-32",
         ),
         (
+            replace(
+                INVOICE,
+                allowances=(
+                    AllowanceCharge(amount=Decimal(0), vat_rate=Decimal(7), reason="Rabatt"),
+                ),
+                totals=replace(TOTALS, allowance_total=Decimal(0)),
+                specification_id=XRECHNUNG,
+            ),
+            "BR-32",
+        ),
+        (
+            replace(
+                INVOICE,
+                allowances=(
+                    AllowanceCharge(amount=Decimal(0), vat_rate=Decimal(7), reason="Rabatt"),
+                ),
+                totals=replace(TOTALS, allowance_total=Decimal(0)),
+            ),
+            "HAFL-XSD",
+        ),
+        (
             replace(INVOICE, delivery=Delivery(city="Example City"), specification_id=XRECHNUNG),
             "BR-57",
         ),
@@ -1050,6 +1071,8 @@ def test_writes_preceding_invoice_delivery_and_period_and_reads_them_back() -> N
         "preceding-invoice-without-number",
         "allowance-without-vat-category",
         "allowance-without-vat-category-factur-x",
+        "allowance-with-a-rate-alone",
+        "allowance-with-a-rate-alone-factur-x",
         "deliver-to-address-without-country",
         "deliver-to-address-without-country-factur-x",
         "supporting-document-without-reference",
@@ -1065,7 +1088,7 @@ def test_the_official_artefacts_refuse_a_group_without_a_term_it_needs(
     allowance without its VAT category code (BT-95) by BR-32, a deliver to address without its
     country code (BT-80) by BR-57, a supporting document without its reference (BT-122), also
     one holding only an attachment, by BR-52; for EN 16931, Factur-X's XML Schema requires BT-81
-    and BT-80 (REQ-004-PRS-F001)."""
+    and BT-80, and BT-95 beside a rate (REQ-004-PRS-F001, REQ-004-PRS-F003)."""
     with pytest.raises(InvoiceWriteError, match=rule) as refusal:
         write_cii(invoice)
     assert rule in {finding.rule for finding in refusal.value.findings}
