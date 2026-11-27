@@ -1,8 +1,9 @@
 """The model of EN 16931 business terms: one invoice, whatever syntax it came in (REQ-001).
 
 Each field holds the business term REQ-001-PRS-F001 names for it. A missing term is `None`, a
-missing repeated group an empty tuple; whether a term is required is checked by reading and
-writing, not here.
+missing repeated group an empty tuple. Whether a term is required is for the official rules, not
+for the model: reading leaves a missing term missing without a finding, `validate` reports it and
+writing refuses it.
 """
 
 import datetime
