@@ -651,6 +651,22 @@ def test_extract_takes_flate_with_parameters_that_change_nothing(dictionary: byt
     assert extract_xml(data) == XML
 
 
+@pytest.mark.parametrize(
+    "parameters",
+    [b"<< /Predictor 12 /Columns 5 >>", b"<< /Columns 4 >>", b"[<< /Predictor 2 >>]"],
+    ids=["png-predictor", "columns-alone", "array-tiff-predictor"],
+)
+def test_extract_refuses_flate_with_other_parameters(parameters: bytes) -> None:
+    """REQ-003-PRS-F007: any but none or a predictor of 1, also /Columns alone, which changes
+    nothing; the reason names the parameters, not FlateDecode, which Haflinger decodes."""
+    dictionary = b"/Filter /FlateDecode /DecodeParms " + parameters + b" "
+    data = with_embedded_stream(b"factur-x.xml", zlib.compress(XML), dictionary)
+    with pytest.raises(InvoiceReadError) as refused:
+        extract_xml(data)
+    assert "decode parameters" in str(refused.value)
+    assert "which Haflinger doesn't decode" not in str(refused.value)
+
+
 def embedded_relationship(pdf: bytes) -> object:
     reader = PdfReader(io.BytesIO(pdf))
     root = cast(DictionaryObject, reader.trailer["/Root"])

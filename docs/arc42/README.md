@@ -72,7 +72,7 @@ flowchart LR
 | Official artefacts | upstream → repository | Rules, reading stylesheets and test files, taken from upstream releases at update time and vendored; nothing is fetched at runtime |
 | Transport | caller ↔ suppliers and customers | Not the library's: e-mail, portals, and Peppol through a certified provider; no AS4 of Haflinger's own ([ADR-003](adr/ADR-003-integrate-dont-implement.md)) |
 
-**Out of scope:** sending and receiving e-mail and Peppol messages (the caller, providers); archiving storage (the caller; Haflinger hands back the original bytes); bookkeeping decisions (a person, in the caller's system); the ERPNext app and its context, described in its own repository, [Haflinger Saddle](https://github.com/Interlusion/haflinger-saddle); rendering invoices for people (later, with KoSIT's visualisation stylesheets, [ITEM-005](../backlog/item-005-rendering.md)).
+**Out of scope:** sending and receiving e-mail and Peppol messages (the caller, providers); archiving storage (the caller, which keeps the bytes it received; `read_invoice` returns the model and findings, `extract_xml` a PDF's embedded XML byte for byte); bookkeeping decisions (a person, in the caller's system); the ERPNext app and its context, described in its own repository, [Haflinger Saddle](https://github.com/Interlusion/haflinger-saddle); rendering invoices for people (later, with KoSIT's visualisation stylesheets, [ITEM-005](../backlog/item-005-rendering.md)).
 
 ## 4. Solution strategy
 
@@ -206,7 +206,7 @@ An invalid invoice is refused with its findings and the written document; one th
 
 ## 7. Deployment view
 
-The library is a Python package installed into the caller's Python environment. No service, no container, no network at runtime. Validation starts one worker process per calling process, from the same environment, and keeps it: about 180 MiB at its peak with a rule set compiled, as the benchmark measures it, while the caller holds no Saxon ([ADR-010](adr/ADR-010-saxon-in-a-worker-process.md)). The worker's pipes need a POSIX system (Linux, macOS). The first host is a Frappe bench, where the ERPNext app and the library share one environment, so the library's dependencies have to fit the versions the bench pins ([ADR-002](adr/ADR-002-toolchain.md)).
+The library is a Python package installed into the caller's Python environment. No service, no container, no network at runtime. Validation starts one worker process per calling process, from the same environment, and keeps it: at its peak about 180 MiB with a rule set compiled on a small invoice, and more on a large one, about 630 MiB for the 25.7 MB Peppol invoice, while the caller holds no Saxon ([ADR-010](adr/ADR-010-saxon-in-a-worker-process.md)). The worker's pipes need a POSIX system (Linux, macOS). The first host is a Frappe bench, where the ERPNext app and the library share one environment, so the library's dependencies have to fit the versions the bench pins ([ADR-002](adr/ADR-002-toolchain.md)).
 
 ```mermaid
 flowchart LR
