@@ -4397,6 +4397,28 @@ def test_a_cii_tax_representatives_vat_identifier_is_one_with_scheme_va(
     ]
 
 
+@pytest.mark.parametrize("tax_scheme", ["VA", "GST"])
+def test_a_ubl_tax_representatives_tax_scheme_of_another_tax_is_left_out_with_a_finding(
+    tax_scheme: str, selects: Callable[[bytes, str], Element]
+) -> None:
+    """EN 16931 has no tax registration identifier for the tax representative, and CEN's `BR-56`
+    counts only VAT's; as in CII, the identifier is left out with a finding (REQ-003-PRS-F002)."""
+    representative = UBL_TAX_REPRESENTATIVE.replace(
+        b"<cbc:ID>VAT</cbc:ID>", b"<cbc:ID>%s</cbc:ID>" % tax_scheme.encode()
+    )
+    data = edit(UBL, UBL_CUSTOMER_END, UBL_CUSTOMER_END + representative)
+    result = read_invoice(data)
+    assert result.invoice.tax_representative == replace(TAX_REPRESENTATIVE, vat_id=None)
+    assert [(f.rule, f.text) for f in result.findings] == [
+        (
+            "HAFL-DROPPED",
+            f"BT-63 in a cac:PartyTaxScheme of the tax scheme {tax_scheme!r}, not VAT, is left"
+            " out: 'DE123456789'",
+        )
+    ]
+    assert selects(data, result.findings[0].location).text == "DE123456789"
+
+
 def test_a_ubl_tax_representatives_tax_scheme_vat_in_any_case_gives_its_vat_identifier() -> None:
     """As CEN's rules compare it (REQ-003-PRS-F002)."""
     representative = UBL_TAX_REPRESENTATIVE.replace(
