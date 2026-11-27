@@ -151,6 +151,12 @@ def test_refuses_more_than_max_size() -> None:
         check_german_vat(CII.read_bytes(), max_size=1000)
 
 
+def test_checks_input_as_large_as_max_size() -> None:
+    """REQ-001-PRS-NF003: just below the limit, for check_german_vat."""
+    data = CII.read_bytes()
+    assert check_german_vat(data, max_size=len(data)) == check_german_vat(data)
+
+
 def test_refuses_empty_elements_whose_locations_take_ten_million_characters(
     extended: Callable[..., bytes],
 ) -> None:
