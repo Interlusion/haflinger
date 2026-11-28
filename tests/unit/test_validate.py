@@ -20,9 +20,9 @@ from haflinger import (
     validate,
 )
 from haflinger._input import open_invoice
-from haflinger._validation import check_rules, rule_set
+from haflinger._validation import _scenarios, check_rules, rule_set  # pyright: ignore[reportPrivateUsage]
 from haflinger._xml import MAX_SIZE, decode
-from haflinger._xsd import Locations, check_cii, tree
+from haflinger._xsd import SCHEMAS, Locations, check_cii, tree
 from haflinger.pdf import extract_xml
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -1110,6 +1110,31 @@ def test_deeply_nested_xml_is_a_schema_finding() -> None:
     data = edited(CII, ("<ram:ID>123456XX</ram:ID>", "<ram:ID>123456XX</ram:ID>" + nested))
     findings = validate(data)
     assert {f.rule for f in findings} == {"HAFL-XSD"}
+
+
+def test_every_scenarios_schema_is_one_the_schema_check_names() -> None:
+    """The vendored schemas' paths are written in `_xsd` and in `_validation`: one the schema
+    check doesn't know raises `KeyError` on an invoice that fails it, not a finding."""
+    assert {scenario.schema for scenario in _scenarios().values()} <= set(SCHEMAS)
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    ['<?xml version="1.0" encoding="UTF-8"?>', '<?xml version="1.0"\n  encoding="UTF-8"?>'],
+    ids=["one-line", "two-lines"],
+)
+def test_a_schema_finding_located_at_a_line_names_the_inputs_line(declaration: str) -> None:
+    """REQ-002-PRS-F010: the line is the input's, also where its XML declaration, which the
+    schema check leaves out, spans lines."""
+    nested = "\n" + "<ram:Bogus>" * 3_000 + "x" + "</ram:Bogus>" * 3_000
+    data = edited(
+        CII,
+        ('<?xml version="1.0" encoding="UTF-8"?>', declaration),
+        ("<ram:ID>123456XX</ram:ID>", "<ram:ID>123456XX</ram:ID>" + nested),
+    )
+    line = data.decode().split("\n").index(nested.strip()) + 1
+    (finding,) = [finding for finding in validate(data) if finding.rule == "HAFL-XSD"]
+    assert finding.location == f"line {line}"
 
 
 @pytest.mark.parametrize("levels", [100, 101, 2048])

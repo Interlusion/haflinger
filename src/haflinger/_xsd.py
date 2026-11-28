@@ -76,11 +76,15 @@ def tree(document: str) -> _Element | None:
 
 
 def _parse(document: bytes | str) -> _Element:
-    if isinstance(document, str):
-        document = (
-            _DECLARATION.sub("", document, count=1) if document.startswith("<?xml") else document
-        )
+    """The document's tree; a text's XML declaration is left out but for its line breaks, so
+    that a finding's line is the input's (REQ-002-PRS-F010)."""
+    if isinstance(document, str) and document.startswith("<?xml"):
+        document = _DECLARATION.sub(_line_breaks, document, count=1)
     return etree.fromstring(document, _PARSER)
+
+
+def _line_breaks(match: re.Match[str]) -> str:
+    return "".join(c for c in match[0] if c in "\r\n")
 
 
 def check(document: bytes | str | _Element, *schemas: str) -> list[Finding]:

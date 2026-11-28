@@ -341,6 +341,15 @@ LEAF = b"<< /Names [(factur-x.xml) 4 0 R] >>"
             ),
             id="decode parameters",
         ),
+        pytest.param(
+            (
+                LEAF,
+                FILESPEC % 5,
+                deflated(b"/Filter /FlateDecode /DecodeParms << /Predictor 6 0 R >>"),
+                b"1",
+            ),
+            id="predictor",
+        ),
     ],
 )
 def test_values_given_as_references_are_read(objects: tuple[bytes, ...]) -> None:
